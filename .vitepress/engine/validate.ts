@@ -77,7 +77,7 @@ function validateImages(post: PostData, issues: ValidationIssue[]): void {
     if (!IMG_NAME_RE.test(baseName)) {
       issues.push({ level: 'warning', message: `图片命名不规范（小写字母/数字/连字符/点）：${where} ${ref}` })
     }
-    const abs = file.startsWith('/posts/')
+    const abs = file.startsWith('/')
       ? join(process.cwd(), 'public', file.replace(/^\//, ''))
       : join(postDir(), file)
     if (!existsSync(abs)) {

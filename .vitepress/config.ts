@@ -68,11 +68,13 @@ export default defineConfig({
   description: site.description,
   cleanUrls: true,
   srcDir: 'docs',
+  scrollOffset: 72,
   srcExclude: srcExcludes,
   base: '/XiaoBlog/',
   markdown: {
     headers: true,
     theme: { light: 'github-light', dark: 'github-dark' },
+    defaultHighlightLang: 'bash',
   },
   rewrites: postRewrites,
   themeConfig: { hasDevDocs } as never,

@@ -4,14 +4,18 @@ import { parseFrontmatter } from './posts.ts'
 import { postDir } from './posts.ts'
 
 const ASSET_RE = /!\[([^\]]*)\]\(\.\/_assets\/([^)]+)\)/g
-const ASSET_PREFIX = './_assets/'
 
 export function assetStagingDir(slug: string): string {
   return join(postDir(), '_assets', slug)
 }
 
+/**
+ * 图片归位目标：public/images/<slug>/。
+ * 与文章路由 /posts/<slug> 完全分离，避免 clean URL 下
+ * posts/<slug>.html 与 posts/<slug>/ 目录同名冲突。
+ */
 export function postAssetDir(slug: string): string {
-  return join(process.cwd(), 'public', 'posts', slug)
+  return join(process.cwd(), 'public', 'images', slug)
 }
 
 export interface CollectResult {
@@ -41,7 +45,7 @@ export function collectAssets(): CollectResult {
     if (refs.length === 0) continue
 
     const staging = join(postDir(), '_assets')
-    const target = join(process.cwd(), 'public', 'posts')
+    const target = join(process.cwd(), 'public', 'images')
     let rewrote = false
     let newRaw = raw
 
@@ -57,7 +61,7 @@ export function collectAssets(): CollectResult {
         copyFileSync(src, dest)
         result.moved.push({ slug, ref })
       }
-      const absRef = `/posts/${ref}`
+      const absRef = `/images/${ref}`
       newRaw = newRaw.replaceAll(`./_assets/${ref}`, absRef)
       rewrote = true
     }

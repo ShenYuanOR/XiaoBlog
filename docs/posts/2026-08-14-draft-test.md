@@ -6,7 +6,7 @@ description: 这是一篇草稿，用于验证构建排除、sitemap/RSS 排除�
 tags:
   - 测试
 draft: true
-updated: '2026-08-15 02:31:24'
+updated: '2026-08-15 02:44:17'
 ---
 
 # 草稿测试

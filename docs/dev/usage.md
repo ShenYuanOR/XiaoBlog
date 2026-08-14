@@ -33,7 +33,7 @@ pnpm install
 1. `pnpm new`，按向导填写：标题 → slug（拼音转写 + 手改确认）→ 日期/摘要/分类/标签/封面/draft/layout
 2. 编辑 `docs/posts/<date>-<slug>.md`
 3. 图片：粘贴/拖入 `docs/posts/_assets/<slug>/`，正文写相对路径 `![](./_assets/<slug>/xxx.png)`；
-   构建时自动归位到 `public/posts/<slug>/` 并把 URL 改写为 `/posts/<slug>/xxx.png`
+   构建时自动归位到 `public/images/<slug>/` 并把 URL 改写为 `/images/<slug>/xxx.png`
 4. `pnpm dev` 预览（`pnpm dev:drafts` 可预览草稿）
 5. `pnpm build` 全绿后提交推送，CI 自动构建发布
 

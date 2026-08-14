@@ -6,7 +6,7 @@ description: 「晓」框架的第一篇样例文章，验证引擎的 SEO、校
 tags:
   - 随笔
 category: 生活
-updated: '2026-08-15 02:31:24'
+updated: '2026-08-15 02:44:37'
 ---
 
 这是「晓」框架的第一篇样例文章，用于验证：
@@ -19,7 +19,7 @@ updated: '2026-08-15 02:31:24'
 
 下面这张图片写在暂存区相对路径，构建时应自动归位到 `public/posts/hello-xiao/` 并以绝对路径输出：
 
-![测试图片](/posts/hello-xiao/2026-08-14-test-image.svg)
+![测试图片](/images/hello-xiao/2026-08-14-test-image.svg)
 
 ## 内部链接测试
 
