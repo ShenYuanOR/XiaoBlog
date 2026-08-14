@@ -59,9 +59,12 @@ if (typeof window !== 'undefined') initTheme()
     </main>
 
     <footer class="x-footer">
-      <div class="x-shell x-footer-inner">
-        <span>© {{ new Date().getFullYear() }} {{ site.title }}</span>
-        <span>Powered by 晓</span>
+      <div class="x-shell">
+        <hr class="x-footer-divider" />
+        <div class="x-footer-inner">
+          <span>© {{ new Date().getFullYear() }} {{ site.title }}</span>
+          <span>Powered by 晓</span>
+        </div>
       </div>
     </footer>
   </div>

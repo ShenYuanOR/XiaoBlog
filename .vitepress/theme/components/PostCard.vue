@@ -14,19 +14,17 @@ function formatDate(date: string): string {
 <template>
   <article class="x-post-card">
     <a :href="post.url" class="x-post-card-link">
+      <div class="x-post-card-main">
+        <h3 class="x-post-card-title">{{ post.title }}<Icon class="x-post-card-arrow" icon="mdi:arrow-right" /></h3>
+        <div class="x-post-meta">
+          <span><Icon icon="mdi:calendar" />{{ formatDate(post.date) }}</span>
+          <span v-if="post.category"><Icon icon="mdi:folder" />{{ post.category }}</span>
+          <span v-if="post.tags.length"><Icon icon="mdi:tag" />{{ post.tags.slice(0, 3).join(' / ') }}</span>
+        </div>
+        <p class="x-post-card-desc">{{ post.description }}</p>
+      </div>
       <div v-if="post.cover" class="x-post-card-cover">
         <img :src="post.cover" :alt="post.title" loading="lazy" />
-      </div>
-      <div class="x-post-card-body">
-        <div class="x-post-card-time">{{ formatDate(post.date) }}</div>
-        <h3 class="x-post-card-title">{{ post.title }}</h3>
-        <p class="x-post-card-desc">{{ post.description }}</p>
-        <div class="x-post-card-meta">
-          <span v-if="post.category" class="x-badge"><Icon icon="mdi:folder" />{{ post.category }}</span>
-          <a v-for="tag in post.tags.slice(0, 4)" :key="tag" class="x-badge" :href="`/tags#${tag}`">
-            <Icon icon="mdi:tag" />{{ tag }}
-          </a>
-        </div>
       </div>
     </a>
   </article>
@@ -34,13 +32,21 @@ function formatDate(date: string): string {
 
 <style scoped>
 .x-post-card-link {
-  display: block;
-  height: 100%;
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.x-post-card-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .x-post-card-cover {
-  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
-  aspect-ratio: 16 / 7;
+  flex-shrink: 0;
+  width: 120px;
+  aspect-ratio: 1 / 0.85;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -52,6 +58,26 @@ function formatDate(date: string): string {
 }
 
 .x-post-card:hover .x-post-card-cover img {
-  transform: scale(1.04);
+  transform: scale(1.06);
+}
+
+.x-post-card-arrow {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: -3px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.x-post-card:hover .x-post-card-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+@media (max-width: 640px) {
+  .x-post-card-cover {
+    width: 88px;
+  }
 }
 </style>

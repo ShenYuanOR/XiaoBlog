@@ -2,6 +2,8 @@
 import { useData } from 'vitepress'
 import { Content } from 'vitepress'
 import SiteShell from './components/SiteShell.vue'
+import SiteSidebar from './components/SiteSidebar.vue'
+import TocCard from './components/TocCard.vue'
 import PostView from './views/PostView.vue'
 import AutoPageView from './views/AutoPageView.vue'
 import NotFoundView from './views/NotFoundView.vue'
@@ -20,12 +22,18 @@ function kind(): 'md' | 'post' | 'auto' | 'not-found' {
 <template>
   <SiteShell>
     <NotFoundView v-if="kind() === 'not-found'" />
-    <PostView v-else-if="kind() === 'post'" />
-    <AutoPageView v-else-if="kind() === 'auto'" :type="frontmatter.autoPage" />
-    <div v-else class="x-md-page">
-      <article class="post-prose" data-layout="page">
-        <Content />
-      </article>
+    <div v-else class="x-two-col">
+      <div class="x-main-col">
+        <PostView v-if="kind() === 'post'" />
+        <AutoPageView v-else-if="kind() === 'auto'" :type="frontmatter.autoPage" />
+        <article v-else class="post-prose" data-layout="page">
+          <Content />
+        </article>
+      </div>
+      <aside class="x-side-col">
+        <TocCard v-if="kind() === 'post'" />
+        <SiteSidebar />
+      </aside>
     </div>
   </SiteShell>
 </template>

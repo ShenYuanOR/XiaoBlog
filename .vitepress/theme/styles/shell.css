@@ -7,18 +7,15 @@
 }
 
 .x-shell {
-  width: min(var(--shell-width), 100% - var(--space-6));
+  width: min(1080px, 100% - var(--space-6));
   margin-inline: auto;
 }
 
+/* 顶部留白 + 居中圆角卡片导航（Fuwari 风格） */
 .x-header {
   position: sticky;
-  top: 0;
+  top: var(--space-3);
   z-index: 20;
-  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .x-header-inner {
@@ -27,6 +24,13 @@
   justify-content: space-between;
   gap: var(--space-4);
   height: 60px;
+  padding-inline: var(--space-5);
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--color-shadow);
 }
 
 .x-site-name {
@@ -43,76 +47,115 @@
 .x-nav {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-2);
 }
 
 .x-nav a {
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
-  position: relative;
-  transition: color 0.2s ease;
-  padding-block: 4px;
-}
-
-.x-nav a::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--color-gradient);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.2s ease;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  transition: color 0.2s ease, background 0.2s ease;
 }
 
 .x-nav a:hover {
   color: var(--color-text);
-}
-
-.x-nav a:hover::after {
-  transform: scaleX(1);
+  background: var(--color-accent-soft);
 }
 
 .x-main {
   flex: 1;
-  padding-block: var(--space-8);
+  padding-block: var(--space-6) var(--space-8);
+}
+
+/* 两栏布局 */
+.x-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.x-main-col {
+  min-width: 0;
+}
+
+.x-side-col {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .x-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .x-side-col {
+    position: static;
+    order: 2;
+  }
+
+  .x-header {
+    top: 0;
+  }
+
+  .x-header-inner {
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+}
+
+@media (max-width: 560px) {
+  .x-nav a {
+    padding: 6px 8px;
+    font-size: 0.8125rem;
+  }
 }
 
 .x-footer {
-  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-6);
   padding-block: var(--space-6);
   font-size: var(--font-size-sm);
   color: var(--color-text-faint);
+}
+
+.x-footer-divider {
+  border: none;
+  border-top: 1px dashed var(--color-border-strong);
+  margin-bottom: var(--space-6);
 }
 
 .x-footer-inner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: var(--space-2);
+}
+
+.x-footer-inner span + span::before {
+  content: '·';
+  margin-inline: var(--space-2);
+  opacity: 0.6;
 }
 
 .x-theme-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-full);
   color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
 .x-theme-toggle:hover {
   color: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
   transform: rotate(15deg);
 }
 
