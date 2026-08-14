@@ -4,6 +4,8 @@ description: 「晓」个人内容站——写 Markdown 就好，路由、SEO、
 home: true
 ---
 
+<HomeHero />
+
 <div class="x-home-grid">
   <aside class="x-home-aside">
     <CategoryWidget />

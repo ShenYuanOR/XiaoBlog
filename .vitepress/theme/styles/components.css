@@ -542,6 +542,105 @@ html.dark .x-post-card:hover {
   gap: var(--space-6);
 }
 
+/* ---- 首页 Hero（克制：卡片风格、无渐变光晕） ---- */
+.x-home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-6);
+  background: var(--card-bg);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-5);
+}
+
+.x-home-hero-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+  box-shadow: 0 4px 14px oklch(0.70 0.14 var(--hue) / 0.25);
+}
+
+.x-home-hero-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.x-home-hero-title {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--deep-text);
+  margin: 0;
+}
+
+.x-home-hero-subtitle {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-xl);
+  color: var(--text-secondary);
+}
+
+.x-home-hero-intro {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-base);
+  color: var(--text-faint);
+}
+
+.x-home-hero-actions {
+  margin-top: var(--space-5);
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.x-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 11px 26px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.x-hero-btn:hover {
+  transform: translateY(-2px);
+}
+
+.x-hero-btn-primary {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.x-hero-btn-primary:hover {
+  background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.x-hero-btn-ghost {
+  background: var(--btn-bg);
+  color: var(--btn-content);
+}
+
+.x-hero-btn-ghost:hover {
+  background: var(--btn-bg-hover);
+  color: var(--deep-text);
+}
+
 /* ---- 两栏：侧栏在左 + 文章列表在右 ---- */
 .x-home-grid {
   display: grid;

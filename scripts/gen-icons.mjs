@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 const USED = [
   'tag', 'folder', 'calendar', 'moon-full', 'white-balance-sunny',
   'arrow-left', 'arrow-right', 'github', 'clock-outline',
-  'heart', 'email',
+  'heart', 'email', 'book-open-page-variant',
 ]
 
 const full = JSON.parse(readFileSync(resolve('node_modules/@iconify-json/mdi/icons.json'), 'utf-8'))

@@ -43,7 +43,16 @@ const draftExcludes = process.env.XIAO_INCLUDE_DRAFTS === '1'
 
 const srcExcludes = [...draftExcludes]
 
+const hasDevDocs = (() => {
+  try {
+    return readdirSync(join(process.cwd(), 'docs', 'dev')).some((f) => f.endsWith('.md'))
+  } catch {
+    return false
+  }
+})()
+
 function listDevDocRoutes(): string[] {
+  if (!hasDevDocs) return []
   try {
     return readdirSync(join(process.cwd(), 'docs', 'dev'))
       .filter((f) => f.endsWith('.md'))
@@ -66,6 +75,7 @@ export default defineConfig({
     theme: { light: 'github-light', dark: 'github-dark' },
   },
   rewrites: postRewrites,
+  themeConfig: { hasDevDocs } as never,
   head: [
     ['link', { rel: 'icon', href: `${site.url}/favicon.svg` }],
   ],
