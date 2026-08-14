@@ -27,6 +27,9 @@ importers:
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
+      pinyin-pro:
+        specifier: ^3.29.0
+        version: 3.29.0
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -739,6 +742,9 @@ packages:
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
+
+  pinyin-pro@3.29.0:
+    resolution: {integrity: sha512-CMKi2UygycqEtliM1P1QzcQPy5IcFkMqOcd8ZcuBpLZx/BsZGtNlzPwZQXJuzqb4eiDQm8tATayWiHq6mIGL9A==}
 
   postcss@8.5.26:
     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
@@ -1563,6 +1569,8 @@ snapshots:
   perfect-debounce@1.0.0: {}
 
   picocolors@1.1.1: {}
+
+  pinyin-pro@3.29.0: {}
 
   postcss@8.5.26:
     dependencies:
