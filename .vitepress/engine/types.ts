@@ -1,4 +1,4 @@
-import type { PostLayout } from '../blog.config'
+import type { PostLayout } from '../blog.config.ts'
 
 export interface PostFrontmatter {
   title: string
@@ -18,6 +18,7 @@ export interface PostFrontmatter {
 export interface PostData {
   frontmatter: PostFrontmatter
   content: string
+  fileBase: string
   route: string
   url: string
 }

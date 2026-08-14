@@ -1,5 +1,5 @@
-import { site } from '../site.config'
-import { blog } from '../blog.config'
+import { site } from '../site.config.ts'
+import { blog } from '../blog.config.ts'
 
 export function siteUrl(): string {
   return site.url.replace(/\/+$/, '')
