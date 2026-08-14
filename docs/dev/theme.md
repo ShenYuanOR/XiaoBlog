@@ -1,3 +1,8 @@
+---
+title: 主题开发指南
+description: CSS layers、布局变体、页面分发、首页自定义与组件机制。
+---
+
 # 主题开发指南
 
 ## CSS Cascade Layers

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useData } from 'vitepress'
+import { useData, withBase } from 'vitepress'
 import { Content } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import { blog } from '../../blog.config'
@@ -31,7 +31,7 @@ const licenseText = computed(() => (typeof current.value.license === 'string' ? 
         <span><Icon icon="mdi:calendar" />{{ formatDate(current.date as string) }}</span>
         <span v-if="current.updated"><Icon icon="mdi:clock-outline" />更新于 {{ formatDate(current.updated as string) }}</span>
         <span v-if="current.category">
-          <Icon icon="mdi:folder" /><a :href="`/categories#${current.category}`">{{ current.category }}</a>
+          <Icon icon="mdi:folder" /><a :href="withBase(`/categories#${current.category}`)">{{ current.category }}</a>
         </span>
       </div>
     </header>
@@ -42,15 +42,15 @@ const licenseText = computed(() => (typeof current.value.license === 'string' ? 
 
     <footer>
       <div v-if="(current.tags as string[])?.length" class="x-tag-list" style="margin-top: 24px">
-        <a v-for="tag in current.tags as string[]" :key="tag" class="x-badge" :href="`/tags#${tag}`">
+        <a v-for="tag in current.tags as string[]" :key="tag" class="x-badge" :href="withBase(`/tags#${tag}`)">
           <Icon icon="mdi:tag" />{{ tag }}
         </a>
       </div>
 
       <nav v-if="prev || next" class="x-pagination">
-        <a v-if="prev" :href="prev.url"><Icon icon="mdi:arrow-left" />{{ prev.title }}</a>
+        <a v-if="prev" :href="withBase(prev.url)"><Icon icon="mdi:arrow-left" />{{ prev.title }}</a>
         <span v-else></span>
-        <a v-if="next" :href="next.url" class="x-pagination-next">{{ next.title }}<Icon icon="mdi:arrow-right" /></a>
+        <a v-if="next" :href="withBase(next.url)" class="x-pagination-next">{{ next.title }}<Icon icon="mdi:arrow-right" /></a>
       </nav>
 
       <div v-if="blog.license.enabled" class="x-license">

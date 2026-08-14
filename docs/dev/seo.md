@@ -1,3 +1,8 @@
+---
+title: SEO 管线
+description: 自动生成、校验门禁、redirects.yml 与上线清单。
+---
+
 # SEO 管线
 
 SEO 是「晓」的核心能力：**构建期自动生成、自动校验、失败拦截发布**。

@@ -28,7 +28,7 @@ export default createContentLoader('posts/*.md', {
         category: p.frontmatter.category as string | undefined,
         cover: p.frontmatter.cover as string | undefined,
         layout: (p.frontmatter.layout as string) ?? 'essay',
-        url: p.url,
+        url: `/posts/${p.frontmatter.slug as string}`,
       }))
   },
 })

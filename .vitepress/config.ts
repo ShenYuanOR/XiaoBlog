@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress'
-import { resolve } from 'node:path'
+import { readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { site } from './site.config.ts'
 import { collectAssets } from './engine/assets.ts'
 import { syncTimestamps } from './engine/timestamps.ts'
@@ -40,7 +41,17 @@ const draftExcludes = process.env.XIAO_INCLUDE_DRAFTS === '1'
   ? []
   : allPosts.filter((p) => p.frontmatter.draft).map((p) => `posts/${p.fileBase}.md`)
 
-const srcExcludes = ['dev/**', ...draftExcludes]
+const srcExcludes = [...draftExcludes]
+
+function listDevDocRoutes(): string[] {
+  try {
+    return readdirSync(join(process.cwd(), 'docs', 'dev'))
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => (f.toLowerCase() === 'index.md' ? '/dev' : `/dev/${f.replace(/\.md$/, '')}`))
+  } catch {
+    return []
+  }
+}
 
 export default defineConfig({
   lang: site.lang,
@@ -49,13 +60,14 @@ export default defineConfig({
   cleanUrls: true,
   srcDir: 'docs',
   srcExclude: srcExcludes,
+  base: '/XiaoBlog/',
   markdown: {
     headers: true,
     theme: { light: 'github-light', dark: 'github-dark' },
   },
   rewrites: postRewrites,
   head: [
-    ['link', { rel: 'icon', href: '/favicon.svg' }],
+    ['link', { rel: 'icon', href: `${site.url}/favicon.svg` }],
   ],
   transformPageData(pageData, ctx) {
     const fm = pageData.frontmatter as Record<string, unknown>
@@ -91,7 +103,8 @@ export default defineConfig({
     const posts = loadPosts()
     const issues = [...validatePosts(posts)]
 
-    const routes = ['/', ...autoPageRoutes(), ...posts.filter((p) => !p.frontmatter.draft && !p.frontmatter.noindex).map((p) => p.route)]
+    const devRoutes = listDevDocRoutes()
+    const routes = ['/', ...autoPageRoutes(), ...devRoutes, ...posts.filter((p) => !p.frontmatter.draft && !p.frontmatter.noindex).map((p) => p.route)]
     issues.push(...validateBuild(outDir, routes, posts))
     buildAutoPagesData()
 
@@ -100,7 +113,7 @@ export default defineConfig({
       throw new Error(`「晓」校验失败：\n${errors.map((e) => `  - ${e.message}`).join('\n')}`)
     }
 
-    writeSitemap(outDir, posts, autoPageRoutes())
+    writeSitemap(outDir, posts, [...autoPageRoutes(), ...devRoutes])
     writeFeeds(outDir, posts)
     writeRobots(outDir)
   },

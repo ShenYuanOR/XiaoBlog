@@ -1,3 +1,8 @@
+---
+title: 使用说明
+description: 命令、写作流程、frontmatter Schema、URL 策略与发布步骤。
+---
+
 # 使用说明
 
 ## 环境要求

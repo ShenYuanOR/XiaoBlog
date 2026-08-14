@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { withBase } from 'vitepress'
 import { groupByDate, groupByTag, groupByCategory } from '../data'
 import { data as posts } from '../posts.data'
 
@@ -39,7 +40,7 @@ function formatDay(date: string): string {
           <ul>
             <li v-for="post in m.posts" :key="post.slug" class="x-archive-item">
               <time :datetime="post.date">{{ formatDay(post.date) }}</time>
-              <a :href="post.url">{{ post.title }}</a>
+              <a :href="withBase(post.url)">{{ post.title }}</a>
             </li>
           </ul>
         </template>
@@ -54,7 +55,7 @@ function formatDay(date: string): string {
         </h2>
         <ul class="x-group-list">
           <li v-for="post in g.posts" :key="post.slug">
-            <a :href="post.url">{{ post.title }}</a>
+            <a :href="withBase(post.url)">{{ post.title }}</a>
           </li>
         </ul>
       </template>
@@ -68,7 +69,7 @@ function formatDay(date: string): string {
         </h2>
         <ul class="x-group-list">
           <li v-for="post in g.posts" :key="post.slug">
-            <a :href="post.url">{{ post.title }}</a>
+            <a :href="withBase(post.url)">{{ post.title }}</a>
           </li>
         </ul>
       </template>

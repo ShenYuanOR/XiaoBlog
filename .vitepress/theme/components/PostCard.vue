@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import type { PostSummary } from '../data'
+import { withBase } from 'vitepress'
 
 defineProps<{ post: PostSummary }>()
 
@@ -12,7 +13,7 @@ function formatDate(date: string): string {
 
 <template>
   <article class="x-post-card">
-    <a :href="post.url" class="x-post-card-link">
+    <a :href="withBase(post.url)" class="x-post-card-link">
       <div class="x-post-card-main">
         <h3 class="x-post-card-title">{{ post.title }}<Icon class="x-post-card-arrow" icon="mdi:arrow-right" /></h3>
         <div class="x-post-meta">
@@ -23,7 +24,7 @@ function formatDate(date: string): string {
         <p class="x-post-card-desc">{{ post.description }}</p>
       </div>
       <div v-if="post.cover" class="x-post-card-cover">
-        <img :src="post.cover" :alt="post.title" loading="lazy" />
+        <img :src="withBase(post.cover)" :alt="post.title" loading="lazy" />
       </div>
     </a>
   </article>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useData } from 'vitepress'
+import { useData, withBase } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import { ref } from 'vue'
 
@@ -49,12 +49,13 @@ if (typeof window !== 'undefined') {
   <div class="x-site">
     <header class="x-header">
       <div class="x-header-inner" :class="{ 'x-header-scrolled': scrolled }">
-        <a href="/" class="x-site-name">{{ site.title }}</a>
+        <a :href="withBase('/')" class="x-site-name">{{ site.title }}</a>
         <nav class="x-nav">
-          <a href="/archives">归档</a>
-          <a href="/tags">标签</a>
-          <a href="/categories">分类</a>
-          <a href="/about">关于</a>
+          <a :href="withBase('/archives')">归档</a>
+          <a :href="withBase('/tags')">标签</a>
+          <a :href="withBase('/categories')">分类</a>
+          <a :href="withBase('/dev')">文档</a>
+          <a :href="withBase('/about')">关于</a>
           <button class="x-theme-toggle" type="button" aria-label="切换主题" @click="toggleTheme">
             <Icon icon="mdi:white-balance-sunny" class="x-icon-sun" />
             <Icon icon="mdi:moon-full" class="x-icon-moon" />

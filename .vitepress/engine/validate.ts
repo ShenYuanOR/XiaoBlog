@@ -91,12 +91,15 @@ function validateInternalLinks(post: PostData, issues: ValidationIssue[]): void 
   const where = `${slug} (${title})`
   const posts = loadPosts({ includeDrafts: true })
   const known = new Set(posts.map((p) => normalizeRoute(p.route)))
-  for (const name of ['archives', 'tags', 'categories', 'about']) {
+  for (const name of ['archives', 'tags', 'categories', 'about', 'dev']) {
     known.add(normalizeRoute(`/${name}`))
   }
   try {
     for (const file of readdirSync(join(process.cwd(), 'docs')).filter((f) => f.endsWith('.md') && f !== 'index.md')) {
       known.add(normalizeRoute(`/${file.replace(/\.md$/, '')}`))
+    }
+    for (const file of readdirSync(join(process.cwd(), 'docs', 'dev')).filter((f) => f.endsWith('.md'))) {
+      known.add(normalizeRoute(`/dev/${file.replace(/\.md$/, '')}`))
     }
   } catch {
     // docs 目录不存在时跳过
@@ -134,8 +137,8 @@ export function validateBuild(distDir: string, routes: string[], posts: PostData
   if (existsSync(distDir)) walk(distDir)
 
   for (const route of routes) {
-    const expected = (route === '/' ? 'index' : route.replace(/^\//, '').replace(/\/$/, '')) + '.html'
-    if (!built.has(expected)) {
+    const base = (route === '/' ? 'index' : route.replace(/^\//, '').replace(/\/$/, '')) + '.html'
+    if (!built.has(base) && !built.has(base.replace(/\.html$/, '/index.html'))) {
       issues.push({ level: 'error', message: `路由未产出 HTML：${route}` })
     }
   }
