@@ -105,3 +105,14 @@ redirects/redirects.yml   # URL 变更唯一事实来源
 - 参考主题在 `.vitepress/theme/`，整体可替换：改 tokens 换配色、改 layouts/views 换结构
 - 引擎（`.vitepress/engine/`）不依赖主题任何部分，替换主题不动引擎
 - 新增自动页：在 `engine/automata.ts` 注册 + `docs/` 建占位 md（frontmatter 标记 `autoPage`）+ 主题中增加对应视图分支
+
+## 自定义首页
+
+首页就是 `docs/index.md`，内容完全由你掌控，可任意组合：
+
+- 普通 Markdown：标题、段落、图片、引用、代码块
+- 全局组件（`.vitepress/theme/index.ts` 注册，md 中直接使用）：
+  - `<PostList />` 文章卡片列表（`:limit="2"` 限制数量）
+  - `<TagCloud />` 标签云
+  - `<PostCard :post="post" />` 单篇卡片
+- 新增自己的首页组件：写入 `.vitepress/theme/components/`，在 `theme/index.ts` 的 `enhanceApp` 注册，即可在首页 md 中使用

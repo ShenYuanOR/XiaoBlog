@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { groupByDate, groupByTag, groupByCategory } from '../data'
-import type { PostSummary } from '../data'
+import { data as posts } from '../posts.data'
 
-const props = defineProps<{ type: string; posts: PostSummary[] }>()
+const props = defineProps<{ type: string }>()
 
 const title = computed(() => (props.type === 'archives' ? '归档' : props.type === 'tags' ? '标签' : '分类'))
 const desc = computed(() =>

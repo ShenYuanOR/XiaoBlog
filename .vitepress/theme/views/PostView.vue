@@ -4,19 +4,19 @@ import { useData } from 'vitepress'
 import { Content } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import { blog } from '../../blog.config'
-import type { PostSummary } from '../data'
+import { data as posts } from '../posts.data'
+
 
 const { page, frontmatter } = useData()
-const props = defineProps<{ posts: PostSummary[] }>()
 
 const current = computed(() => frontmatter.value as Record<string, unknown>)
 const layout = computed(() => (typeof current.value.layout === 'string' ? current.value.layout : 'essay'))
 const headers = computed(() => (page.value.headers as { level: number; title: string; slug: string }[]) ?? [])
 const showToc = computed(() => headers.value.length >= 3)
 
-const index = computed(() => props.posts.findIndex((p) => p.slug === current.value.slug))
-const prev = computed(() => (index.value > 0 ? props.posts[index.value - 1] : undefined))
-const next = computed(() => (index.value >= 0 && index.value < props.posts.length - 1 ? props.posts[index.value + 1] : undefined))
+const index = computed(() => posts.findIndex((p) => p.slug === current.value.slug))
+const prev = computed(() => (index.value > 0 ? posts[index.value - 1] : undefined))
+const next = computed(() => (index.value >= 0 && index.value < posts.length - 1 ? posts[index.value + 1] : undefined))
 
 function formatDate(date: string): string {
   const d = new Date(date)
