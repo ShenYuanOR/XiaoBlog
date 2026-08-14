@@ -25,7 +25,6 @@
     "gray-matter": "^4.0.3",
     "js-yaml": "^5.2.3",
     "pinyin-pro": "^3.29.0",
-    "puppeteer-core": "^25.6.0",
     "typescript": "^5.7.3"
   }
 }

@@ -39,13 +39,15 @@ const draftExcludes = process.env.XIAO_INCLUDE_DRAFTS === '1'
   ? []
   : allPosts.filter((p) => p.frontmatter.draft).map((p) => `posts/${p.fileBase}.md`)
 
+const srcExcludes = ['dev/**', ...draftExcludes]
+
 export default defineConfig({
   lang: site.lang,
   title: site.title,
   description: site.description,
   cleanUrls: true,
   srcDir: 'docs',
-  srcExclude: draftExcludes,
+  srcExclude: srcExcludes,
   markdown: {
     headers: true,
     theme: { light: 'github-light', dark: 'github-dark' },
