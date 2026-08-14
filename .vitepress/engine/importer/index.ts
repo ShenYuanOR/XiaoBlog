@@ -47,13 +47,14 @@ export function extractDescription(content: string, max = 120): string {
 }
 
 function buildFrontmatter(post: MigratedPost): string {
+  const tags = post.tags.length > 0 ? post.tags : ['未分类']
   const lines = [
     '---',
     `title: ${post.title.replace(/\n/g, ' ')}`,
     `slug: ${post.slug}`,
     `date: ${post.date}`,
     `description: ${(post.description ?? extractDescription(post.content)).replace(/\n/g, ' ')}`,
-    post.tags.length ? `tags:\n${post.tags.map((t) => `  - ${t.replace(/\n/g, ' ')}`).join('\n')}` : 'tags: []',
+    `tags:\n${tags.map((t) => `  - ${t.replace(/\n/g, ' ')}`).join('\n')}`,
     post.category ? `category: ${post.category}` : null,
     'layout: essay',
     '---',
@@ -139,10 +140,10 @@ export function apply(report: MigrationReport, options: ApplyOptions = {}): Appl
       } else {
         yml = `${header}redirects:\n${rules}\n`
       }
+      mkdirSync(join(redirectsFile, '..'), { recursive: true })
       writeFileSync(redirectsFile, yml, 'utf-8')
       result.redirectsAdded = toAdd.length
     }
   }
-
   return result
 }

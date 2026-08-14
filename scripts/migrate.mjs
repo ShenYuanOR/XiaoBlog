@@ -3,12 +3,13 @@
  * 晓 · 迁移工具：pnpm migrate
  *
  * 用法：
- *   pnpm migrate --from valaxy --source <旧站路径> [--site-url <旧站域名>] [--keep-date-slug]
+ *   pnpm migrate --from valaxy --source <旧站路径> [--site-url <旧站域名>] [--keep-date-slug] [--out <输出根目录>]
  *   pnpm migrate --from hexo  --source <旧站路径> [--apply] [--yes]
  *
  * 默认只读：扫描并输出迁移报告（不写任何文件）。
  * 加 --apply 落盘（文章 + 图片 + redirects.yml），落盘前会再次确认（--yes 跳过）。
  * --keep-date-slug：保留源文件名（含日期前缀）作 slug，旧 URL 不变、零重定向（默认：纯净 slug + 自动登记 301）。
+ * --out：落盘输出根目录（默认项目根；演练时可用临时目录，验证后删除）。
  */
 import { createInterface } from 'node:readline'
 import { scan, apply } from '../.vitepress/engine/importer/index.ts'
@@ -43,6 +44,7 @@ async function main() {
   const doApply = has('--apply')
   const yes = has('--yes')
   const keepDateSlug = has('--keep-date-slug')
+  const outDir = flag('--out')
 
   if (!['valaxy', 'hexo'].includes(from)) {
     console.error('用法: pnpm migrate --from <valaxy|hexo> --source <旧站路径> [--site-url <域名>] [--keep-date-slug] [--apply] [--yes]')
@@ -94,7 +96,13 @@ async function main() {
     return
   }
 
-  const result = apply(report)
+  const result = apply(report, outDir
+    ? {
+        postsDir: `${outDir}/docs/posts`,
+        assetsDir: `${outDir}/docs/posts/_assets`,
+        redirectsFile: `${outDir}/redirects/redirects.yml`,
+      }
+    : undefined)
   console.log(`\n完成: 写入 ${result.written.length} 篇，跳过 ${result.skipped.length}，复制图片 ${result.imagesCopied} 个，登记重定向 ${result.redirectsAdded} 条`)
   if (result.written.length) console.log('\n下一步: pnpm dev 预览 → pnpm build 校验 → 检查 slug 与图片 → 提交')
 }
