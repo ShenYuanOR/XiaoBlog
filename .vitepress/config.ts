@@ -99,6 +99,10 @@ export default defineConfig({
   },
   vite: {
     publicDir: resolve(process.cwd(), 'public'),
+    server: {
+      host: true,
+      strictPort: false,
+    },
     plugins: [
       {
         name: 'xiao-assets',
