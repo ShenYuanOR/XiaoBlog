@@ -21,6 +21,8 @@ export interface BlogConfig {
   feature: {
     darkMode: boolean
     vercount: boolean
+    autoDate: boolean
+    autoUpdated: boolean
   }
 }
 
@@ -44,5 +46,7 @@ export const blog: BlogConfig = {
   feature: {
     darkMode: true,
     vercount: false,
+    autoDate: true,
+    autoUpdated: true,
   },
 }

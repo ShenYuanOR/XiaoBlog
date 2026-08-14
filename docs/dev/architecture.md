@@ -70,7 +70,7 @@ docs/posts/*.md
 
 构建钩子执行顺序：
 
-1. `vite.buildStart` → `collectAssets()`：扫描 `docs/posts/_assets/<slug>/`，归位到 `public/posts/<slug>/`，并把 md 源文件的相对引用改写为绝对路径
+1. `vite.buildStart` → `collectAssets()`：扫描 `docs/posts/_assets/<slug>/`，归位到 `public/posts/<slug>/`，并把 md 源文件的相对引用改写为绝对路径；随后 `syncTimestamps()` 自动补齐缺失的 date（文件创建时间）与过期的 updated（开关见 blog.config.feature）
 2. `transformPageData` → 注入每页 head（title/description/canonical；文章页追加 OG/Twitter/JSON-LD；noindex 页加 noindex）
 3. `buildEnd` → 全量校验（失败抛错中断构建）→ 写 sitemap.xml / atom.xml / robots.txt
 

@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import matter from 'gray-matter'
+import { parseFrontmatter } from './posts.ts'
 import { postDir } from './posts.ts'
 
 const ASSET_RE = /!\[([^\]]*)\]\(\.\/_assets\/([^)]+)\)/g
@@ -32,7 +32,7 @@ export function collectAssets(): CollectResult {
   for (const file of files) {
     const filePath = join(postDir(), file)
     const raw = readFileSync(filePath, 'utf-8')
-    const { data } = matter(raw)
+    const { data } = parseFrontmatter(raw)
     const slug = data.slug
     if (typeof slug !== 'string' || !slug) continue
 

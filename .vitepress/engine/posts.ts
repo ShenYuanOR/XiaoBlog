@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
+import { CORE_SCHEMA, load as parseYaml } from 'js-yaml'
 import { blog } from '../blog.config.ts'
 import { postUrl, urlOf } from './url.ts'
 import type { PostData, PostFrontmatter } from './types.ts'
@@ -11,6 +12,18 @@ export interface LoadOptions {
 
 export function postDir(): string {
   return join(process.cwd(), 'docs', 'posts')
+}
+
+/**
+ * 解析 frontmatter。使用 YAML CORE_SCHEMA：
+ * 时间戳（如 2026-08-14 20:00:00）保持字符串，避免 js-yaml 按 UTC 解析成 Date 造成时区漂移。
+ */
+export function parseFrontmatter(raw: string): matter.GrayMatterFile<string> {
+  return matter(raw, {
+    engines: {
+      yaml: (s) => parseYaml(s, { schema: CORE_SCHEMA }) as object,
+    },
+  })
 }
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -47,7 +60,7 @@ export function loadPosts(options: LoadOptions = {}): PostData[] {
   const posts: PostData[] = []
   for (const file of files) {
     const raw = readFileSync(join(dir, file), 'utf-8')
-    const { data, content } = matter(raw)
+    const { data, content } = parseFrontmatter(raw)
     const fm = data as Partial<PostFrontmatter>
     if (!fm.slug) continue
     if (fm.draft && !options.includeDrafts) continue

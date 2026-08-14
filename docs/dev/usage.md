@@ -77,12 +77,12 @@ export const site: SiteConfig = {
 
 ## 时间字段说明
 
-| 字段 | 来源 | 说明 |
+| 字段 | 机制 | 说明 |
 |---|---|---|
-| `date` | 半自动 | `pnpm new` 向导默认填入当前时间（可修改）；手写文章时需自行填写。引擎只读取/校验，不会改动它 |
-| `updated` | 手动 | 完全由作者维护。引擎读取 frontmatter 中的 `updated` 用于展示"更新于"、sitemap `lastmod` 与 RSS `updated`；**不写就不显示**，也没有自动写入机制（不读取 git 时间戳，构建不回写文件） |
+| `date` | 自动补齐 | 开关 `feature.autoDate`（默认开）。frontmatter **缺失或为空时**，构建时用文件创建时间自动写入；**已有值不覆盖**。写作时建议用 `pnpm new`（默认填当前时间）或手写 |
+| `updated` | 自动维护 | 开关 `feature.autoUpdated`（默认开）。文件修改时间晚于已记录的 date/updated 时，构建时自动写入当前时间；**关闭开关或未触发条件时不写**。写回后与文件时间一致，构建幂等 |
 
-约定：每次修订文章时手动更新 `updated`（不得早于 `date`，校验器会检查）。若文章尚未发布（`draft: true`），无需维护 `updated`。
+自动写入在 `vite buildStart` 钩子执行（`engine/timestamps.ts`），本地 `pnpm build` 会回写源文件并产生可见 diff，属预期行为；CI 构建不回传变更。frontmatter 解析使用 YAML CORE_SCHEMA，时间戳保持字符串，全链路无时区漂移。
 
 ## 草稿与 noindex
 

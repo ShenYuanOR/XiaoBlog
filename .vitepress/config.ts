@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress'
 import { resolve } from 'node:path'
 import { site } from './site.config.ts'
 import { collectAssets } from './engine/assets.ts'
+import { syncTimestamps } from './engine/timestamps.ts'
 import { registerBuiltinAutoPages, buildAutoPagesData, autoPageRoutes } from './engine/automata.ts'
 import { loadPosts } from './engine/posts.ts'
 import { validatePosts, validateBuild } from './engine/validate.ts'
@@ -114,6 +115,7 @@ export default defineConfig({
         name: 'xiao-assets',
         buildStart() {
           collectAssets()
+          syncTimestamps()
         },
       },
     ],
