@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { useData } from 'vitepress'
 import { Icon } from '@iconify/vue'
+import { ref } from 'vue'
 
 const { site } = useData()
+
+const scrolled = ref(false)
+
+function onScroll() {
+  scrolled.value = window.scrollY > 8
+}
 
 function applyTheme(theme: 'light' | 'dark') {
   document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -31,13 +38,17 @@ function initTheme() {
   applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 }
 
-if (typeof window !== 'undefined') initTheme()
+if (typeof window !== 'undefined') {
+  initTheme()
+  onScroll()
+  window.addEventListener('scroll', onScroll, { passive: true })
+}
 </script>
 
 <template>
   <div class="x-site">
     <header class="x-header">
-      <div class="x-shell x-header-inner">
+      <div class="x-header-inner" :class="{ 'x-header-scrolled': scrolled }">
         <a href="/" class="x-site-name">{{ site.title }}</a>
         <nav class="x-nav">
           <a href="/archives">归档</a>

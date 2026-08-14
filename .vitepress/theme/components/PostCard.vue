@@ -44,10 +44,11 @@ function formatDate(date: string): string {
 
 .x-post-card-cover {
   flex-shrink: 0;
-  width: 120px;
-  aspect-ratio: 1 / 0.85;
-  border-radius: var(--radius-md);
+  width: 28%;
+  max-width: 220px;
+  border-radius: var(--radius-medium);
   overflow: hidden;
+  align-self: center;
 }
 
 .x-post-card-cover img {

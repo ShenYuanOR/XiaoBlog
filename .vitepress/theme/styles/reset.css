@@ -16,10 +16,10 @@ html {
 body {
   line-height: 1.6;
   font-family: var(--font-sans);
-  color: var(--color-text);
-  background: var(--color-bg);
+  color: var(--deep-text);
+  background: var(--page-bg);
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background 0.3s ease;
 }
 
 img,
@@ -52,4 +52,8 @@ button {
 ul,
 ol {
   list-style: none;
+}
+
+::selection {
+  background: var(--selection);
 }

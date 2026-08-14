@@ -1,15 +1,14 @@
-/* 晓 · 文章排版域（layer: prose）——只作用于 .post-prose */
+/* 晓 · 文章排版域（layer: prose）——对齐 Fuwari markdown.css */
 
 .post-prose {
   font-size: var(--font-size-base);
-  line-height: 1.85;
-  color: var(--color-text);
+  line-height: 1.75;
+  color: var(--deep-text);
   max-width: var(--prose-width);
-  margin-inline: auto;
 }
 
 .post-prose > * + * {
-  margin-top: 1.1em;
+  margin-top: 1em;
 }
 
 .post-prose h1,
@@ -20,10 +19,10 @@
 .post-prose h6 {
   font-family: var(--font-display);
   line-height: 1.4;
-  font-weight: 750;
+  font-weight: 700;
   margin-top: 1.7em;
   margin-bottom: 0.7em;
-  scroll-margin-top: 80px;
+  scroll-margin-top: 88px;
 }
 
 .post-prose h1 {
@@ -32,8 +31,8 @@
 
 .post-prose h2 {
   font-size: var(--font-size-2xl);
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--line-divider);
+  padding-bottom: 0.4em;
 }
 
 .post-prose h3 {
@@ -49,15 +48,14 @@
 }
 
 .post-prose a {
-  color: var(--color-prose-link);
+  color: var(--deep-text);
   text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-prose-link) 35%, transparent);
-  transition: border-color 0.2s ease, opacity 0.2s ease;
+  background: linear-gradient(transparent 62%, var(--link-underline) 62%);
+  transition: background 0.2s ease;
 }
 
 .post-prose a:hover {
-  border-bottom-color: var(--color-prose-link);
-  opacity: 0.9;
+  background: linear-gradient(transparent 62%, var(--link-hover) 62%);
 }
 
 .post-prose strong {
@@ -65,12 +63,10 @@
 }
 
 .post-prose blockquote {
-  border-left: 3px solid var(--color-accent);
-  padding: var(--space-2) var(--space-5);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-2);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  margin-block: 1.3em;
+  border-left: 3px solid var(--primary);
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  margin-block: 1.2em;
 }
 
 .post-prose ul,
@@ -88,83 +84,70 @@
 }
 
 .post-prose li + li {
-  margin-top: 0.35em;
+  margin-top: 0.3em;
 }
 
 .post-prose li > ul,
 .post-prose li > ol {
-  margin-block: 0.35em;
+  margin-block: 0.3em;
 }
 
 .post-prose code {
   font-family: var(--font-mono);
-  font-size: 0.875em;
-  background: var(--color-code-bg);
-  color: var(--color-code-text);
-  padding: 0.18em 0.45em;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-code-border);
+  font-size: 0.85em;
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-small);
 }
 
 .post-prose pre {
-  background: var(--color-code-bg);
-  color: var(--color-code-text);
-  border: 1px solid var(--color-code-border);
-  border-radius: var(--radius-lg);
+  background: var(--codeblock-bg);
+  color: var(--codeblock-text);
+  border-radius: var(--radius-large);
   padding: var(--space-5);
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.7;
-  margin-block: 1.4em;
-  box-shadow: var(--color-shadow);
+  margin-block: 1.3em;
 }
 
 .post-prose pre code {
   background: none;
   padding: 0;
-  border: none;
   font-size: inherit;
   color: inherit;
 }
 
 .post-prose img {
-  border-radius: var(--radius-lg);
-  margin-block: 1.4em;
-  box-shadow: var(--color-shadow);
+  border-radius: var(--radius-medium);
+  margin-block: 1.3em;
 }
 
 .post-prose hr {
   border: none;
-  height: 1px;
-  background: var(--color-gradient);
-  opacity: 0.25;
-  margin-block: 2.2em;
+  border-top: 1px dashed var(--line);
+  margin-block: 2em;
 }
 
 .post-prose table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
-  margin-block: 1.4em;
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  margin-block: 1.3em;
 }
 
 .post-prose th,
 .post-prose td {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--line);
   padding: 0.6em 0.9em;
   text-align: left;
 }
 
 .post-prose th {
-  background: var(--color-surface-2);
+  background: var(--code-bg);
   font-weight: 700;
-}
-
-.post-prose tr:nth-child(even) {
-  background: var(--color-surface-2);
 }
 
 /* 变体：essay（长文，默认） */
@@ -175,7 +158,7 @@
 /* 变体：note（随笔，更紧凑） */
 .post-prose[data-layout='note'] {
   font-size: 0.95rem;
-  line-height: 1.75;
+  line-height: 1.7;
 }
 
 .post-prose[data-layout='note'] h1 {
@@ -188,5 +171,5 @@
 
 /* 变体：page（独立页面，更宽） */
 .post-prose[data-layout='page'] {
-  max-width: var(--shell-width);
+  max-width: var(--page-width);
 }

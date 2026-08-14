@@ -1,37 +1,46 @@
-/* 晓 · 设计 token（layer: tokens） */
+/* 晓 · 设计 token（layer: tokens）——对齐 Fuwari 变量体系（oklch + hue） */
 
 :root {
+  --hue: 250;
+
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
   --font-display: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
 
-  --color-bg: #f7f8fb;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f3f9;
-  --color-text: #1c2135;
-  --color-text-secondary: #5b6278;
-  --color-text-faint: #9aa1b5;
-  --color-border: #e6e8f0;
-  --color-border-strong: #d5d9e6;
+  --primary: oklch(0.70 0.14 var(--hue));
+  --primary-contrast: #ffffff;
+  --primary-soft: oklch(0.92 0.03 var(--hue));
 
-  --color-accent: #5b5bd6;
-  --color-accent-2: #9d5bd6;
-  --color-accent-soft: rgba(91, 91, 214, 0.1);
-  --color-accent-contrast: #ffffff;
-  --color-gradient: linear-gradient(120deg, #5b5bd6 0%, #9d5bd6 100%);
+  --page-bg: oklch(0.95 0.01 var(--hue));
+  --card-bg: #ffffff;
 
-  --color-code-bg: #f2f3f8;
-  --color-code-text: #2a3050;
-  --color-code-border: #e4e6f0;
-  --color-blockquote-border: #c9cde0;
-  --color-prose-link: #5b5bd6;
-  --color-shadow: 0 1px 2px rgba(28, 33, 53, 0.04), 0 8px 24px rgba(28, 33, 53, 0.06);
-  --color-shadow-hover: 0 2px 4px rgba(28, 33, 53, 0.06), 0 16px 40px rgba(28, 33, 53, 0.12);
+  --deep-text: oklch(0.25 0.02 var(--hue));
+  --text-secondary: oklch(0.48 0.02 var(--hue));
+  --text-faint: oklch(0.60 0.015 var(--hue));
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-full: 999px;
+  --line: rgba(0, 0, 0, 0.1);
+  --line-divider: rgba(0, 0, 0, 0.08);
+  --meta-divider: rgba(0, 0, 0, 0.2);
+
+  --btn-bg: oklch(0.95 0.025 var(--hue));
+  --btn-bg-hover: oklch(0.90 0.05 var(--hue));
+  --btn-bg-active: oklch(0.85 0.08 var(--hue));
+  --btn-plain-hover: oklch(0.95 0.025 var(--hue));
+  --btn-plain-active: oklch(0.98 0.01 var(--hue));
+  --btn-content: oklch(0.55 0.12 var(--hue));
+
+  --code-bg: oklch(0.97 0.008 var(--hue));
+  --code-text: oklch(0.30 0.03 var(--hue));
+  --codeblock-bg: oklch(0.17 0.015 var(--hue));
+  --codeblock-text: oklch(0.90 0.01 var(--hue));
+
+  --link-underline: oklch(0.90 0.05 var(--hue));
+  --link-hover: oklch(0.93 0.03 var(--hue));
+  --selection: oklch(0.90 0.05 var(--hue));
+
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --radius-large: 16px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -41,39 +50,50 @@
   --space-6: 32px;
   --space-8: 48px;
 
-  --shell-width: 960px;
-  --prose-width: 700px;
+  --page-width: 1200px;
+  --prose-width: 46rem;
 
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.125rem;
-  --font-size-xl: 1.375rem;
-  --font-size-2xl: 1.75rem;
-  --font-size-3xl: 2.375rem;
-  --font-size-4xl: 3rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 html.dark {
-  --color-bg: #0c101d;
-  --color-surface: #131a2a;
-  --color-surface-2: #1a2236;
-  --color-text: #e7eaf6;
-  --color-text-secondary: #a3aac0;
-  --color-text-faint: #6b7391;
-  --color-border: #232c42;
-  --color-border-strong: #33405c;
+  --primary: oklch(0.75 0.14 var(--hue));
+  --primary-contrast: #0c101d;
+  --primary-soft: oklch(0.30 0.04 var(--hue));
 
-  --color-accent: #8b8bf0;
-  --color-accent-2: #c08bf0;
-  --color-accent-soft: rgba(139, 139, 240, 0.14);
-  --color-accent-contrast: #0c101d;
-  --color-gradient: linear-gradient(120deg, #8b8bf0 0%, #c08bf0 100%);
+  --page-bg: oklch(0.16 0.014 var(--hue));
+  --card-bg: oklch(0.23 0.015 var(--hue));
 
-  --color-code-bg: #171e30;
-  --color-code-text: #dbe0f2;
-  --color-code-border: #26304a;
-  --color-blockquote-border: #3a4466;
-  --color-prose-link: #8b8bf0;
-  --color-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
-  --color-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.5);
+  --deep-text: oklch(0.93 0.01 var(--hue));
+  --text-secondary: oklch(0.72 0.02 var(--hue));
+  --text-faint: oklch(0.60 0.015 var(--hue));
+
+  --line: rgba(255, 255, 255, 0.1);
+  --line-divider: rgba(255, 255, 255, 0.08);
+  --meta-divider: rgba(255, 255, 255, 0.2);
+
+  --btn-bg: oklch(0.33 0.035 var(--hue));
+  --btn-bg-hover: oklch(0.38 0.04 var(--hue));
+  --btn-bg-active: oklch(0.43 0.045 var(--hue));
+  --btn-plain-hover: oklch(0.30 0.035 var(--hue));
+  --btn-plain-active: oklch(0.27 0.025 var(--hue));
+  --btn-content: oklch(0.75 0.1 var(--hue));
+
+  --code-bg: oklch(0.28 0.02 var(--hue));
+  --code-text: oklch(0.90 0.01 var(--hue));
+  --codeblock-bg: oklch(0.17 0.015 var(--hue));
+  --codeblock-text: oklch(0.90 0.01 var(--hue));
+
+  --link-underline: oklch(0.40 0.08 var(--hue));
+  --link-hover: oklch(0.40 0.08 var(--hue));
+  --selection: oklch(0.40 0.08 var(--hue));
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
