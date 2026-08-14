@@ -1,5 +1,6 @@
 ---
 title: 归档
+autoPage: archives
 layout: page
 description: 全部文章按时间归档。
 ---

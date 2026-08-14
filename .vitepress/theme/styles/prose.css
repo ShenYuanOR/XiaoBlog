@@ -1,0 +1,174 @@
+/* 晓 · 文章排版域（layer: prose）——只作用于 .post-prose */
+
+.post-prose {
+  font-size: var(--font-size-base);
+  line-height: 1.75;
+  color: var(--color-text);
+  max-width: var(--prose-width);
+  margin-inline: auto;
+}
+
+.post-prose > * + * {
+  margin-top: 1em;
+}
+
+.post-prose h1,
+.post-prose h2,
+.post-prose h3,
+.post-prose h4,
+.post-prose h5,
+.post-prose h6 {
+  line-height: 1.35;
+  font-weight: 650;
+  margin-top: 1.6em;
+  margin-bottom: 0.6em;
+}
+
+.post-prose h1 {
+  font-size: var(--font-size-3xl);
+}
+
+.post-prose h2 {
+  font-size: var(--font-size-2xl);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3em;
+}
+
+.post-prose h3 {
+  font-size: var(--font-size-xl);
+}
+
+.post-prose h4 {
+  font-size: var(--font-size-lg);
+}
+
+.post-prose p {
+  margin-block: 1em;
+}
+
+.post-prose a {
+  color: var(--color-prose-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.post-prose a:hover {
+  opacity: 0.85;
+}
+
+.post-prose strong {
+  font-weight: 650;
+}
+
+.post-prose blockquote {
+  border-left: 3px solid var(--color-blockquote-border);
+  padding-left: var(--space-4);
+  color: var(--color-text-secondary);
+  margin-block: 1.2em;
+}
+
+.post-prose ul,
+.post-prose ol {
+  padding-left: 1.6em;
+  margin-block: 1em;
+}
+
+.post-prose ul {
+  list-style: disc;
+}
+
+.post-prose ol {
+  list-style: decimal;
+}
+
+.post-prose li + li {
+  margin-top: 0.35em;
+}
+
+.post-prose li > ul,
+.post-prose li > ol {
+  margin-block: 0.35em;
+}
+
+.post-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+}
+
+.post-prose pre {
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin-block: 1.2em;
+}
+
+.post-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.post-prose img {
+  border-radius: var(--radius-md);
+  margin-block: 1.2em;
+}
+
+.post-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin-block: 2em;
+}
+
+.post-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  margin-block: 1.2em;
+}
+
+.post-prose th,
+.post-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+
+.post-prose th {
+  background: var(--color-code-bg);
+  font-weight: 650;
+}
+
+/* 变体：essay（长文，默认） */
+.post-prose[data-layout='essay'] {
+  letter-spacing: 0.01em;
+}
+
+/* 变体：note（随笔，更紧凑） */
+.post-prose[data-layout='note'] {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.post-prose[data-layout='note'] h1 {
+  font-size: var(--font-size-2xl);
+}
+
+.post-prose[data-layout='note'] h2 {
+  font-size: var(--font-size-xl);
+}
+
+/* 变体：page（独立页面，更宽） */
+.post-prose[data-layout='page'] {
+  max-width: var(--shell-width);
+}

@@ -1,5 +1,6 @@
 ---
 title: 分类
+autoPage: categories
 layout: page
 description: 全部文章按分类聚合。
 ---
