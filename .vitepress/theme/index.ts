@@ -2,7 +2,6 @@ import type { Theme } from 'vitepress'
 import Layout from './Layout.vue'
 import PostList from './components/PostList.vue'
 import PostCard from './components/PostCard.vue'
-import HomeHero from './components/HomeHero.vue'
 import ProfileCard from './components/ProfileCard.vue'
 import CategoryWidget from './components/CategoryWidget.vue'
 import TagWidget from './components/TagWidget.vue'
@@ -16,7 +15,6 @@ export default {
   enhanceApp({ app }) {
     app.component('PostList', PostList)
     app.component('PostCard', PostCard)
-    app.component('HomeHero', HomeHero)
     app.component('ProfileCard', ProfileCard)
     app.component('CategoryWidget', CategoryWidget)
     app.component('TagWidget', TagWidget)
