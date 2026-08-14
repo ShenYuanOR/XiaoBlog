@@ -46,6 +46,10 @@ export default defineConfig({
   cleanUrls: true,
   srcDir: 'docs',
   srcExclude: draftExcludes,
+  markdown: {
+    headers: true,
+    theme: { light: 'github-light', dark: 'github-dark' },
+  },
   rewrites: postRewrites,
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg' }],

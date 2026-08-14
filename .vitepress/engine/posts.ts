@@ -25,7 +25,13 @@ export function isValidDate(value: unknown): boolean {
 }
 
 export function toDateString(value: unknown): string {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const d = value
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    return `${date} ${time}`
+  }
   if (typeof value === 'string') return value
   return ''
 }

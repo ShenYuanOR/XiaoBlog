@@ -5,9 +5,8 @@ import type { PostSummary } from '../data'
 defineProps<{ post: PostSummary }>()
 
 function formatDate(date: string): string {
-  const d = new Date(date)
-  if (Number.isNaN(d.getTime())) return date
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const m = date.slice(0, 10).split('-')
+  return m.length === 3 ? m.join('-') : date
 }
 </script>
 

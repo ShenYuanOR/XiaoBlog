@@ -1,14 +1,22 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { site } from '../../site.config'
 
 const initials = (site.author.name ?? '晓').slice(0, 1)
+const imgFailed = ref(false)
 </script>
 
 <template>
   <div class="x-widget">
     <div class="x-profile-avatar">
-      <img v-if="site.author.avatar" :src="site.author.avatar" :alt="site.author.name" loading="lazy" />
+      <img
+        v-if="site.author.avatar && !imgFailed"
+        :src="site.author.avatar"
+        :alt="site.author.name"
+        loading="lazy"
+        @error="imgFailed = true"
+      />
       <span v-else>{{ initials }}</span>
     </div>
     <div class="x-profile-name">{{ site.author.name }}</div>

@@ -10,11 +10,9 @@ description: 「晓」个人内容站框架——自定义首页、文章、归�
 一个属于你的内容站：写 Markdown 就好，路由、SEO、构建全自动。
 
 <div class="x-hero-badges">
-
-- [<FeatureBadge text="Markdown 写作" />](#)
-- [<FeatureBadge text="自动 SEO" />](#)
-- [<FeatureBadge text="自定主题" />](#)
-
+<FeatureBadge text="Markdown 写作" />
+<FeatureBadge text="自动 SEO" />
+<FeatureBadge text="自定主题" />
 </div>
 
 </div>

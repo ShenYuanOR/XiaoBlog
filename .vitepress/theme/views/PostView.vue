@@ -16,9 +16,8 @@ const prev = computed(() => (index.value > 0 ? posts[index.value - 1] : undefine
 const next = computed(() => (index.value >= 0 && index.value < posts.length - 1 ? posts[index.value + 1] : undefined))
 
 function formatDate(date: string): string {
-  const d = new Date(date)
-  if (Number.isNaN(d.getTime())) return date
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const m = date.slice(0, 10).split('-')
+  return m.length === 3 ? m.join('-') : date
 }
 
 const licenseText = computed(() => (typeof current.value.license === 'string' ? current.value.license : blog.license.default))

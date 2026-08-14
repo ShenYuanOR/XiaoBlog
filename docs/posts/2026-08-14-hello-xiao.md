@@ -8,8 +8,6 @@ tags:
 category: 生活
 ---
 
-# 你好，晓
-
 这是「晓」框架的第一篇样例文章，用于验证：
 
 1. SEO 自动生成（canonical / OG / JSON-LD / sitemap / RSS）
@@ -20,7 +18,7 @@ category: 生活
 
 下面这张图片写在暂存区相对路径，构建时应自动归位到 `public/posts/hello-xiao/` 并以绝对路径输出：
 
-![测试图片](/posts/hello-xiao/2026-08-14-test-image.png)
+![测试图片](/posts/hello-xiao/2026-08-14-test-image.svg)
 
 ## 内部链接测试
 

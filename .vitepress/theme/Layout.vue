@@ -23,6 +23,10 @@ function kind(): 'md' | 'post' | 'auto' | 'not-found' {
   <SiteShell>
     <NotFoundView v-if="kind() === 'not-found'" />
     <div v-else class="x-two-col">
+      <aside class="x-side-col">
+        <TocCard v-if="kind() === 'post'" />
+        <SiteSidebar />
+      </aside>
       <div class="x-main-col">
         <PostView v-if="kind() === 'post'" />
         <AutoPageView v-else-if="kind() === 'auto'" :type="frontmatter.autoPage" />
@@ -30,10 +34,6 @@ function kind(): 'md' | 'post' | 'auto' | 'not-found' {
           <Content />
         </article>
       </div>
-      <aside class="x-side-col">
-        <TocCard v-if="kind() === 'post'" />
-        <SiteSidebar />
-      </aside>
     </div>
   </SiteShell>
 </template>

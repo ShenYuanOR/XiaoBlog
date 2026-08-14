@@ -41,9 +41,9 @@ export interface ArchiveYear {
 export function groupByDate(posts: PostSummary[]): ArchiveYear[] {
   const years = new Map<string, Map<string, PostSummary[]>>()
   for (const post of posts) {
-    const date = new Date(post.date)
-    const year = String(date.getFullYear())
-    const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const date = post.date.slice(0, 10)
+    const year = date.slice(0, 4)
+    const month = date.slice(0, 7)
     if (!years.has(year)) years.set(year, new Map())
     const months = years.get(year)!
     if (!months.has(month)) months.set(month, [])

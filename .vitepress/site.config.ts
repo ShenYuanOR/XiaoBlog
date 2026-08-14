@@ -24,8 +24,8 @@ export const site: SiteConfig = {
   description: '「晓」框架的个人博客，记录技术、生活与思考。',
   author: {
     name: 'Shen Yuan',
-    avatar: '/avatar.png',
-    intro: '',
+    avatar: '/avatar.svg',
+    intro: '一个安静写代码的人。',
   },
   social: [
     {
