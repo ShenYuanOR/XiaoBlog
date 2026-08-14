@@ -6,3 +6,6 @@ dist/
 .DS_Store
 .vitepress/**/*.timestamp-*
 docs/.vitepress/
+# 生成物（gen-redirects / 构建）
+public/_redirects
+redirects/redirects.nginx.conf
