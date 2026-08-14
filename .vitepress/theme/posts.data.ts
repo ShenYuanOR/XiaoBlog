@@ -11,7 +11,6 @@ export interface PostSummary {
   cover?: string
   layout: string
   url: string
-  headers: { level: number; title: string; slug: string }[]
 }
 
 export default createContentLoader('posts/*.md', {
@@ -30,7 +29,6 @@ export default createContentLoader('posts/*.md', {
         cover: p.frontmatter.cover as string | undefined,
         layout: (p.frontmatter.layout as string) ?? 'essay',
         url: p.url,
-        headers: (p.headers as PostSummary['headers']) ?? [],
       }))
   },
 })
