@@ -75,6 +75,15 @@ export const site: SiteConfig = {
 
 `.vitepress/blog.config.ts`：布局变体注册、license 默认值、功能开关（darkMode / vercount）。
 
+## 时间字段说明
+
+| 字段 | 来源 | 说明 |
+|---|---|---|
+| `date` | 半自动 | `pnpm new` 向导默认填入当前时间（可修改）；手写文章时需自行填写。引擎只读取/校验，不会改动它 |
+| `updated` | 手动 | 完全由作者维护。引擎读取 frontmatter 中的 `updated` 用于展示"更新于"、sitemap `lastmod` 与 RSS `updated`；**不写就不显示**，也没有自动写入机制（不读取 git 时间戳，构建不回写文件） |
+
+约定：每次修订文章时手动更新 `updated`（不得早于 `date`，校验器会检查）。若文章尚未发布（`draft: true`），无需维护 `updated`。
+
 ## 草稿与 noindex
 
 - `draft: true`：不构建、不进 sitemap/RSS；仓库公开时文件本身可见（接受的取舍）
