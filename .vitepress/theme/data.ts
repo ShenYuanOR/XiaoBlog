@@ -1,3 +1,5 @@
+import type { PostSummary } from './posts.data'
+
 export type { PostSummary } from './posts.data'
 
 export interface TagGroup {
