@@ -1,0 +1,6 @@
+# 「晓」URL 迁移唯一事实来源
+# from: 旧路径（不含域名）；to: 目标路径或完整 URL；status: 301 / 302 / 410
+# 运行 pnpm gen:redirects 生成 _redirects（GitHub Pages / Netlify）与 nginx 规则
+# 新站上线时不需要任何重定向；仅当 slug 变更时在此登记，禁止改旧文章 URL 而不登记
+
+redirects: []
