@@ -190,12 +190,6 @@ html.dark .x-post-card:hover {
   gap: var(--space-2);
 }
 
-.x-tag-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
 /* ---- Widget 卡片（Fuwari WidgetLayout：标题竖条 + 卡片） ---- */
 .x-widget {
   background: var(--card-bg);
@@ -519,54 +513,6 @@ html.dark .x-post-card:hover {
   padding-block: var(--space-2);
 }
 
-/* ---- Hero（首页示例） ---- */
-.x-hero {
-  text-align: center;
-  padding-block: var(--space-6);
-}
-
-.x-hero h1 {
-  font-family: var(--font-display);
-  font-size: 2.25rem;
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--deep-text);
-}
-
-.x-hero-desc {
-  max-width: 560px;
-  margin: var(--space-4) auto 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-lg);
-  line-height: 1.8;
-}
-
-.x-hero-badges {
-  margin-top: var(--space-5);
-  display: flex;
-  justify-content: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.x-hero-badges ul,
-.x-hero-badges li {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.x-hero-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  padding: 6px 16px;
-  border-radius: var(--radius-full);
-  background: var(--btn-bg);
-  color: var(--btn-content);
-}
-
 .x-section {
   margin-top: var(--space-8);
 }
@@ -587,47 +533,6 @@ html.dark .x-post-card:hover {
   height: 20px;
   border-radius: var(--radius-medium);
   background: var(--primary);
-}
-
-/* ---- 自定义组件演示 ---- */
-.x-feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--space-4);
-}
-
-.x-feature-card {
-  background: var(--card-bg);
-  border-radius: var(--radius-large);
-  padding: var(--space-5);
-}
-
-.x-feature-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-medium);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--btn-bg);
-  color: var(--btn-content);
-  font-size: 1.25rem;
-  margin-bottom: var(--space-4);
-}
-
-.x-feature-card h3 {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  margin: 0 0 var(--space-2) !important;
-  border: none;
-  padding: 0;
-}
-
-.x-feature-card p {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.7;
-  margin: 0 !important;
 }
 
 /* ==== 首页（由 index.md 自主布局，home 分支不套 x-two-col） ==== */
