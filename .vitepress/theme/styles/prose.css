@@ -7,8 +7,16 @@
   max-width: var(--prose-width);
 }
 
-.post-prose > * + * {
+/* 仅正文流式子元素；组件根节点（PostList 等）不参与，避免卡片上方被撑出大块空白 */
+.post-prose > :not([class^='x-']):not([class*=' x-']) + :not([class^='x-']):not([class*=' x-']) {
   margin-top: 1em;
+}
+
+.post-prose > * + .x-post-card,
+.post-prose > * + .x-feature-grid,
+.post-prose > * + .x-tag-cloud,
+.post-prose > * + .x-hero {
+  margin-top: 0;
 }
 
 .post-prose h1,
@@ -47,15 +55,27 @@
   margin-block: 1em;
 }
 
-.post-prose a {
+/*
+ * 下划线渐变只给正文行内链接。
+ * 不能写 .post-prose a —— 会污染 PostCard / Badge 等整块组件链接，
+ * 把卡片底部刷成大色块。
+ */
+.post-prose :where(p, li, blockquote, td, th, dd, figcaption) a {
   color: var(--deep-text);
   text-decoration: none;
   background: linear-gradient(transparent 62%, var(--link-underline) 62%);
   transition: background 0.2s ease;
 }
 
-.post-prose a:hover {
+.post-prose :where(p, li, blockquote, td, th, dd, figcaption) a:hover {
   background: linear-gradient(transparent 62%, var(--link-hover) 62%);
+}
+
+/* 组件链接彻底脱离 prose 装饰 */
+.post-prose :where(.x-post-card, .x-badge, .x-hero-badge, .x-feature-card, .x-tag-cloud, .x-widget) a,
+.post-prose a:where(.x-post-card-link, .x-badge, .x-hero-badge, .x-profile-link) {
+  background: none;
+  color: inherit;
 }
 
 .post-prose strong {

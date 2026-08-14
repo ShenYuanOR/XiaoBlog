@@ -6,6 +6,7 @@ const USED = [
   'arrow-left', 'arrow-right', 'eye', 'github', 'clock-outline',
   'pen', 'code-tags', 'palette', 'rocket', 'auto-fix', 'magnify',
   'shield-check', 'image', 'format-list-bulleted', 'map-marker', 'heart',
+  'book-open-page-variant', 'account-heart', 'email',
 ]
 
 const full = JSON.parse(readFileSync(resolve('node_modules/@iconify-json/mdi/icons.json'), 'utf-8'))
@@ -17,6 +18,12 @@ for (const name of USED) {
 
 writeFileSync(
   resolve('.vitepress/theme/mdi-subset.json'),
-  JSON.stringify({ prefix: full.prefix, icons }),
+  JSON.stringify({
+    prefix: full.prefix,
+    // MDI path 坐标基于 24×24；缺省 width/height 会被 Iconify 当成 16 裁切
+    width: full.width ?? 24,
+    height: full.height ?? 24,
+    icons,
+  }),
 )
 console.log(`[gen-icons] 已生成 ${Object.keys(icons).length} 个图标 → .vitepress/theme/mdi-subset.json`)

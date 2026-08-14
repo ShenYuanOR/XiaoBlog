@@ -1,30 +1,13 @@
 <script setup lang="ts">
 import ProfileCard from './ProfileCard.vue'
-import WidgetCard from './WidgetCard.vue'
-import { groupByCategory, groupByTag } from '../data'
-import { data as posts } from '../posts.data'
-
-const categories = groupByCategory(posts).slice(0, 8)
-const tags = groupByTag(posts).slice(0, 16)
+import CategoryWidget from './CategoryWidget.vue'
+import TagWidget from './TagWidget.vue'
 </script>
 
 <template>
   <div class="x-sidebar">
     <ProfileCard />
-    <WidgetCard v-if="categories.length" title="分类" icon="folder">
-      <ul class="x-widget-list">
-        <li v-for="g in categories" :key="g.name">
-          <a :href="`/categories#${g.name}`">
-            <span class="x-widget-list-name">{{ g.name }}</span>
-            <span class="x-widget-count">{{ g.posts.length }}</span>
-          </a>
-        </li>
-      </ul>
-    </WidgetCard>
-    <WidgetCard v-if="tags.length" title="标签" icon="tag">
-      <div class="x-widget-tags">
-        <a v-for="g in tags" :key="g.name" class="x-badge" :href="`/tags#${g.name}`">{{ g.name }}</a>
-      </div>
-    </WidgetCard>
+    <CategoryWidget />
+    <TagWidget />
   </div>
 </template>

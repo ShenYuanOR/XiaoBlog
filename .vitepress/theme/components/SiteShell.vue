@@ -57,7 +57,7 @@ if (typeof window !== 'undefined') {
           <a href="/about">关于</a>
           <button class="x-theme-toggle" type="button" aria-label="切换主题" @click="toggleTheme">
             <Icon icon="mdi:white-balance-sunny" class="x-icon-sun" />
-            <Icon icon="mdi:moon" class="x-icon-moon" />
+            <Icon icon="mdi:moon-full" class="x-icon-moon" />
           </button>
         </nav>
       </div>

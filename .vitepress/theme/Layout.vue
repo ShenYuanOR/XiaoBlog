@@ -10,9 +10,10 @@ import NotFoundView from './views/NotFoundView.vue'
 
 const { page, frontmatter } = useData()
 
-function kind(): 'md' | 'post' | 'auto' | 'not-found' {
+function kind(): 'md' | 'post' | 'auto' | 'home' | 'not-found' {
   const rel = page.value.relativePath
   if (rel === '404.md') return 'not-found'
+  if (frontmatter.value.home === true) return 'home'
   if (typeof frontmatter.value.autoPage === 'string') return 'auto'
   if (typeof frontmatter.value.slug === 'string' && frontmatter.value.slug) return 'post'
   return 'md'
@@ -22,6 +23,9 @@ function kind(): 'md' | 'post' | 'auto' | 'not-found' {
 <template>
   <SiteShell>
     <NotFoundView v-if="kind() === 'not-found'" />
+    <div v-else-if="kind() === 'home'" class="x-home">
+      <Content />
+    </div>
     <div v-else class="x-two-col">
       <aside class="x-side-col">
         <TocCard v-if="kind() === 'post'" />

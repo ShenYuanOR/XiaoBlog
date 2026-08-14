@@ -30,21 +30,16 @@ function formatDate(date: string): string {
 </template>
 
 <style scoped>
+/* 全局样式在 components.css；此处只覆盖封面尺寸与 scoped 防泄漏 */
 .x-post-card-link {
-  display: flex;
-  gap: 20px;
-  align-items: stretch;
-}
-
-.x-post-card-main {
-  flex: 1;
-  min-width: 0;
+  background: transparent !important;
+  background-image: none !important;
 }
 
 .x-post-card-cover {
   flex-shrink: 0;
   width: 28%;
-  max-width: 220px;
+  max-width: 200px;
   border-radius: var(--radius-medium);
   overflow: hidden;
   align-self: center;
@@ -54,25 +49,12 @@ function formatDate(date: string): string {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  aspect-ratio: 1;
   transition: transform 0.4s ease;
 }
 
 .x-post-card:hover .x-post-card-cover img {
   transform: scale(1.06);
-}
-
-.x-post-card-arrow {
-  display: inline-block;
-  margin-left: 6px;
-  vertical-align: -3px;
-  opacity: 0;
-  transform: translateX(-4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.x-post-card:hover .x-post-card-arrow {
-  opacity: 1;
-  transform: translateX(0);
 }
 
 @media (max-width: 640px) {
