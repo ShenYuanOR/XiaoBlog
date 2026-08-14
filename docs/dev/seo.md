@@ -72,6 +72,5 @@ redirects:
 
 ## Roadmap（未实现）
 
-- 迁移适配器（engine/importer 接口已预留：报告先行、确认后落盘）
 - 站内搜索索引（buildEnd 生成 `search-index.json`，前端轻量组件）
 - GitHub Pages `_redirects` 支持需要线上实测确认（Phase 0 遗留项）

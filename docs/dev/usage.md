@@ -26,6 +26,7 @@ pnpm install
 | `pnpm preview` | 预览构建产物 |
 | `pnpm validate` | 单独运行校验器（需先 build） |
 | `pnpm gen:redirects` | 生成重定向规则（redirects.yml → `_redirects` + nginx） |
+| `pnpm migrate` | 从其他框架迁移（Valaxy/Hexo），详见[迁移指南](migration.md) |
 
 ## 写作流程
 

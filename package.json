@@ -11,7 +11,8 @@
     "new": "node scripts/new.mjs",
     "tidy": "node scripts/tidy.mjs",
     "validate": "node scripts/validate.mjs",
-    "gen:redirects": "node scripts/gen-redirects.mjs"
+    "gen:redirects": "node scripts/gen-redirects.mjs",
+    "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
     "@iconify-json/mdi": "^1.2.3",
