@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { site } from './site.config.ts'
 import { collectAssets } from './engine/assets.ts'
 import { syncTimestamps } from './engine/timestamps.ts'
+import { loadRedirects, findRedirect, syncRedirectFiles } from './engine/redirects.ts'
 import { registerBuiltinAutoPages, buildAutoPagesData, autoPageRoutes } from './engine/automata.ts'
 import { loadPosts } from './engine/posts.ts'
 import { validatePosts, validateBuild } from './engine/validate.ts'
@@ -141,6 +142,25 @@ export default defineConfig({
         buildStart() {
           collectAssets()
           syncTimestamps()
+          syncRedirectFiles()
+        },
+      },
+      {
+        name: 'xiao-redirects-dev',
+        configureServer(server) {
+          const redirects = loadRedirects()
+          server.middlewares.use((req, res, next) => {
+            const pathname = (req.url ?? '').split('?')[0]
+            const rule = findRedirect(redirects, pathname)
+            if (rule) {
+              res.statusCode = rule.status
+              res.setHeader('Location', rule.to)
+              res.setHeader('Cache-Control', 'no-store')
+              res.end()
+              return
+            }
+            next()
+          })
         },
       },
     ],

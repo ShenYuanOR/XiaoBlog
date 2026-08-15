@@ -104,6 +104,17 @@ async function main() {
       }
     : undefined)
   console.log(`\n完成: 写入 ${result.written.length} 篇，跳过 ${result.skipped.length}，复制图片 ${result.imagesCopied} 个，登记重定向 ${result.redirectsAdded} 条`)
+
+  if (!outDir) {
+    const { syncRedirectFiles } = await import('../.vitepress/engine/redirects.ts')
+    const gen = syncRedirectFiles()
+    if (gen.issues.length) {
+      console.warn(`\n⚠️ redirects 校验警告:\n${gen.issues.map((i) => `  - ${i}`).join('\n')}`)
+    } else {
+      console.log(`已生成 _redirects（${gen.count} 条规则），部署后旧 URL 自动 301 跳转`)
+    }
+  }
+
   if (result.written.length) console.log('\n下一步: pnpm dev 预览 → pnpm build 校验 → 检查 slug 与图片 → 提交')
 }
 
