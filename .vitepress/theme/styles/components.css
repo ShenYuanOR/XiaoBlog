@@ -478,9 +478,9 @@ html.dark .x-post-card:hover {
   border-radius: var(--radius-medium);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   cursor: zoom-in;
-  transition: transform 0.05s linear;
   user-select: none;
   -webkit-user-drag: none;
+  will-change: transform;
 }
 
 .x-lightbox-close {

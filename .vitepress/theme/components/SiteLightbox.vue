@@ -10,16 +10,45 @@ const scale = ref(1)
 const tx = ref(0)
 const ty = ref(0)
 const dragging = ref(false)
+const imgEl = ref<HTMLImageElement | null>(null)
 
 let startX = 0
 let startY = 0
 let startTx = 0
 let startTy = 0
+let moved = false
+let rafId = 0
+let pendingTx = 0
+let pendingTy = 0
+
+/** transform 直接写 DOM（rAF 合并），完全绕过 Vue 响应式，保证拖拽零卡顿 */
+function applyTransform() {
+  const el = imgEl.value
+  if (!el) return
+  pendingTx = tx.value
+  pendingTy = ty.value
+  if (rafId) return
+  rafId = requestAnimationFrame(() => {
+    rafId = 0
+    el.style.transform = `translate(${pendingTx}px, ${pendingTy}px) scale(${scale.value})`
+  })
+}
+
+function applyTransformNow() {
+  const el = imgEl.value
+  if (!el) return
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+  el.style.transform = `translate(${tx.value}px, ${ty.value}px) scale(${scale.value})`
+}
 
 function resetTransform() {
   scale.value = 1
   tx.value = 0
   ty.value = 0
+  applyTransformNow()
 }
 
 function openAt(img: HTMLImageElement) {
@@ -67,11 +96,13 @@ function onWheel(e: WheelEvent) {
   e.preventDefault()
   const delta = e.deltaY < 0 ? 1.15 : 0.87
   scale.value = Math.min(8, Math.max(1, scale.value * delta))
+  applyTransform()
 }
 
 function onPointerDown(e: PointerEvent) {
   if (scale.value <= 1) return
   dragging.value = true
+  moved = false
   startX = e.clientX
   startY = e.clientY
   startTx = tx.value
@@ -80,16 +111,28 @@ function onPointerDown(e: PointerEvent) {
 
 function onPointerMove(e: PointerEvent) {
   if (!dragging.value) return
-  tx.value = startTx + e.clientX - startX
-  ty.value = startTy + e.clientY - startY
+  const dx = e.clientX - startX
+  const dy = e.clientY - startY
+  if (Math.abs(dx) + Math.abs(dy) > 4) moved = true
+  tx.value = startTx + dx
+  ty.value = startTy + dy
+  applyTransform()
 }
 
 function stopDrag() {
+  if (!dragging.value) return
   dragging.value = false
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
 }
 
 function onClickImage() {
-  if (scale.value > 1) return
+  if (scale.value > 1) {
+    if (moved) return
+    return
+  }
   if (gallery.value.length > 1) next()
   else close()
 }
@@ -106,6 +149,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
+  if (rafId) cancelAnimationFrame(rafId)
 })
 </script>
 
@@ -121,10 +165,10 @@ onBeforeUnmount(() => {
       @pointerleave="stopDrag"
     >
       <img
+        ref="imgEl"
         :src="src"
         :alt="alt"
         class="x-lightbox-img"
-        :style="{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }"
         @click.stop="onClickImage"
         @dblclick.stop="resetTransform"
       />
