@@ -659,7 +659,7 @@ html.dark .x-post-card:hover {
   position: sticky;
   top: 88px;
   align-self: start;
-  max-height: calc(100vh - 240px);
+  max-height: calc(100vh - 300px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;

@@ -100,7 +100,7 @@
 
 .x-main {
   flex: 1;
-  padding-block: var(--space-6) var(--space-8);
+  padding-block: var(--space-5) var(--space-6);
 }
 
 /* 两栏网格（Fuwari：grid-cols-[17.5rem_auto] gap-4） */
@@ -120,7 +120,7 @@
   position: sticky;
   top: 88px;
   align-self: start;
-  max-height: calc(100vh - 240px);
+  max-height: calc(100vh - 300px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -146,7 +146,7 @@
 
 .x-footer {
   margin-top: var(--space-6);
-  padding-block: var(--space-6) var(--space-8);
+  padding-block: var(--space-5) var(--space-6);
   font-size: var(--font-size-sm);
   color: var(--text-faint);
 }
