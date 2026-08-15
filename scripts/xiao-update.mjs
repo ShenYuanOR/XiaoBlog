@@ -69,6 +69,30 @@ function listLocalFiles() {
   return out
 }
 
+/** 枚举更新源的框架文件（本地目录遍历 / GitHub API 文件树） */
+async function listRemoteFiles() {
+  if (source) {
+    const out = []
+    const walk = (dir) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name)
+        if (name === 'node_modules' || name === '.git' || name === '.xiao' || name === '.xiao-backup') continue
+        const rel = p.replace(source, '').replace(/^[\\/]+/, '').replace(/\\/g, '/')
+        if (statSync(p).isDirectory()) walk(p)
+        else out.push(rel)
+      }
+    }
+    walk(source)
+    return out
+  }
+  const res = await fetch('https://api.github.com/repos/ShenYuanOR/XiaoBlog/git/trees/master?recursive=1')
+  if (!res.ok) throw new Error(`无法获取文件树（HTTP ${res.status}）`)
+  const tree = await res.json()
+  return (tree.tree ?? [])
+    .filter((t) => t.type === 'blob' && !t.path.startsWith('docs/') && !t.path.startsWith('public/') && !t.path.startsWith('redirects/') && !t.path.startsWith('node_modules/'))
+    .map((t) => t.path)
+}
+
 async function main() {
   console.log(`「晓」框架更新${source ? `（本地源: ${source}）` : '（GitHub）'}\n`)
 
@@ -99,7 +123,6 @@ async function main() {
   const userProtected = []
 
   const tryUpdate = async (rel, kind) => {
-    if (!localFiles.includes(rel)) return
     let remote
     try {
       remote = await fetchRemote(rel)
@@ -107,11 +130,20 @@ async function main() {
       console.warn(`  ⚠️ ${rel}: ${e.message}`)
       return
     }
-    const current = readFileSync(join(ROOT, rel))
-    const currentHash = hash(current)
+    const dest = join(ROOT, rel)
+    const current = existsSync(dest) ? readFileSync(dest) : null
+    const currentHash = current ? hash(current) : null
 
     if (kind === 'theme') {
       const remoteHash = hash(remote)
+      if (!current) {
+        // 框架新增文件（用户无此文件）→ 直接创建
+        state.files[rel] = remoteHash
+        mkdirSync(dirname(dest), { recursive: true })
+        writeFileSync(dest, remote)
+        updated.push(rel)
+        return
+      }
       if (isFirstRun) {
         // 首次运行：记录框架基线（源内容 hash），不覆盖，保护用户现有样式
         state.files[rel] = remoteHash
@@ -124,11 +156,10 @@ async function main() {
         skipped.push(rel)
         return
       }
-      // 未改（与基线一致）或框架新增文件 → 更新，并更新基线
+      // 未改（与基线一致）→ 更新，并更新基线
       state.files[rel] = remoteHash
     }
 
-    const dest = join(ROOT, rel)
     mkdirSync(dirname(dest), { recursive: true })
     if (existsSync(dest)) {
       const backup = join(BACKUP_DIR, rel)
@@ -139,14 +170,13 @@ async function main() {
     updated.push(rel)
   }
 
-  for (const pattern of manifest.core) {
-    const rels = localFiles.filter((f) => matchPatterns(f, [pattern]))
-    for (const rel of rels) await tryUpdate(rel, 'core')
+  const remoteFiles = await listRemoteFiles()
+  const tryPattern = async (patterns, kind) => {
+    const rels = remoteFiles.filter((f) => matchPatterns(f, patterns))
+    for (const rel of rels) await tryUpdate(rel, kind)
   }
-  for (const pattern of manifest.theme) {
-    const rels = localFiles.filter((f) => matchPatterns(f, [pattern]))
-    for (const rel of rels) await tryUpdate(rel, 'theme')
-  }
+  await tryPattern(manifest.core, 'core')
+  await tryPattern(manifest.theme, 'theme')
 
   // 记录本次状态：所有已更新的文件 + 框架文件 hash
   const newStateFiles = { ...state.files }
