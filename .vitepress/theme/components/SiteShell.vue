@@ -2,6 +2,7 @@
 import { useData, withBase } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import { computed, ref } from 'vue'
+import SiteLightbox from './SiteLightbox.vue'
 
 const { site, theme } = useData()
 
@@ -81,6 +82,8 @@ if (typeof window !== 'undefined') {
         </div>
       </div>
     </footer>
+
+    <SiteLightbox />
   </div>
 </template>
 

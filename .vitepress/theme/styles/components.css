@@ -448,6 +448,105 @@ html.dark .x-post-card:hover {
   display: none;
 }
 
+/* ---- 图片灯箱 ---- */
+.x-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 18, 0.92);
+  backdrop-filter: blur(4px);
+  animation: x-lightbox-in 0.18s ease;
+  touch-action: none;
+}
+
+@keyframes x-lightbox-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.x-lightbox-img {
+  max-width: 88vw;
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: var(--radius-medium);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: zoom-in;
+  transition: transform 0.05s linear;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.x-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.x-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.x-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 1.8rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.x-lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.x-lightbox-prev {
+  left: 20px;
+}
+
+.x-lightbox-next {
+  right: 20px;
+}
+
+.x-lightbox-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* ---- 归档 / 标签 / 分类 ---- */
 .x-archive-year {
   font-family: var(--font-display);
