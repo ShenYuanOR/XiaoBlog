@@ -194,7 +194,7 @@ html.dark .x-post-card:hover {
 .x-widget {
   background: var(--card-bg);
   border-radius: var(--radius-large);
-  padding: var(--space-5);
+  padding: 14px;
   box-shadow: var(--shadow-card);
 }
 
@@ -205,7 +205,7 @@ html.dark .x-post-card:hover {
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--deep-text);
-  margin: var(--space-2) 0 var(--space-3) var(--space-6);
+  margin: var(--space-1) 0 var(--space-2) var(--space-6);
   position: relative;
 }
 
@@ -232,7 +232,7 @@ html.dark .x-post-card:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-small);
   color: var(--text-secondary);
   transition: background 0.2s ease, color 0.2s ease;
@@ -265,10 +265,10 @@ html.dark .x-post-card:hover {
 
 /* ---- Profile 卡片（Fuwari Profile） ---- */
 .x-profile-avatar {
-  width: 72%;
+  width: 64%;
   aspect-ratio: 1;
-  max-width: 8.5rem;
-  margin: 0 auto var(--space-4);
+  max-width: 7rem;
+  margin: 0 auto var(--space-3);
   border-radius: var(--radius-large);
   background: var(--primary);
   display: flex;
@@ -276,7 +276,7 @@ html.dark .x-post-card:hover {
   justify-content: center;
   color: var(--primary-contrast);
   font-family: var(--font-display);
-  font-size: 2.75rem;
+  font-size: 2.25rem;
   font-weight: 700;
   overflow: hidden;
 }
@@ -290,7 +290,7 @@ html.dark .x-post-card:hover {
 .x-profile-name {
   text-align: center;
   font-family: var(--font-display);
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--deep-text);
 }
@@ -300,15 +300,15 @@ html.dark .x-post-card:hover {
   height: 4px;
   border-radius: var(--radius-medium);
   background: var(--primary);
-  margin: var(--space-2) auto;
+  margin: var(--space-1) auto;
 }
 
 .x-profile-bio {
   text-align: center;
   font-size: var(--font-size-sm);
   color: var(--text-faint);
-  line-height: 1.6;
-  margin-bottom: var(--space-3);
+  line-height: 1.5;
+  margin-bottom: var(--space-2);
 }
 
 .x-profile-links {
@@ -319,8 +319,8 @@ html.dark .x-post-card:hover {
 }
 
 .x-profile-link {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-small);
   background: var(--btn-bg);
   display: flex;
@@ -421,6 +421,31 @@ html.dark .x-post-card:hover {
 .x-toc a:hover {
   background: var(--btn-plain-hover);
   color: var(--deep-text);
+}
+
+/* 侧栏内列表限高（内容多时内部滚动，隐藏滚动条） */
+.x-side-col .x-widget-list,
+.x-home-aside .x-widget-list {
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.x-side-col .x-widget-list::-webkit-scrollbar,
+.x-home-aside .x-widget-list::-webkit-scrollbar {
+  display: none;
+}
+
+.x-side-col,
+.x-home-aside,
+.x-toc {
+  scrollbar-width: none;
+}
+
+.x-side-col::-webkit-scrollbar,
+.x-home-aside::-webkit-scrollbar,
+.x-toc::-webkit-scrollbar {
+  display: none;
 }
 
 /* ---- 归档 / 标签 / 分类 ---- */
@@ -659,12 +684,12 @@ html.dark .x-post-card:hover {
   position: sticky;
   top: 88px;
   align-self: start;
-  max-height: calc(100vh - 300px);
+  max-height: calc(100vh - 280px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  scrollbar-width: thin;
+  gap: var(--space-3);
+  scrollbar-width: none;
   overscroll-behavior: contain;
 }
 
