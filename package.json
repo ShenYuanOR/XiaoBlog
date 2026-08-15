@@ -12,7 +12,9 @@
     "tidy": "node scripts/tidy.mjs",
     "validate": "node scripts/validate.mjs",
     "gen:redirects": "node scripts/gen-redirects.mjs",
-    "migrate": "node scripts/migrate.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "xiao:update": "node scripts/xiao-update.mjs",
+    "annotate": "node scripts/annotate.mjs"
   },
   "dependencies": {
     "@iconify-json/mdi": "^1.2.3",

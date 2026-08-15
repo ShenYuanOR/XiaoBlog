@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from 'node:path'
 import { scanValaxy } from './valaxy.ts'
 import { scanHexo } from './hexo.ts'
-import { isValidSlug } from './common.ts'
+import { isValidSlug, annotateCodeBlocks } from './common.ts'
 import type { ApplyResult, MigrationReport, MigrationSource, MigratedPost } from './types.ts'
 
 export function scan(source: MigrationSource): MigrationReport {
@@ -102,6 +102,10 @@ export function apply(report: MigrationReport, options: ApplyOptions = {}): Appl
         content = content.replaceAll(img.ref, `./_assets/${post.slug}/${img.destName}`)
       }
     }
+
+    // 无语言代码块自动推断语言标记（获得准确高亮）
+    const annotated = annotateCodeBlocks(content)
+    if (annotated.annotated > 0) content = annotated.content
 
     const fm = buildFrontmatter(post)
     writeFileSync(target, `${fm}\n\n${content.trim()}\n`, 'utf-8')

@@ -3,6 +3,7 @@ import { useData, withBase } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import { computed, ref } from 'vue'
 import SiteLightbox from './SiteLightbox.vue'
+import CopyCodeButton from './CopyCodeButton.vue'
 
 const { site, theme } = useData()
 
@@ -84,6 +85,7 @@ if (typeof window !== 'undefined') {
     </footer>
 
     <SiteLightbox />
+    <CopyCodeButton />
   </div>
 </template>
 

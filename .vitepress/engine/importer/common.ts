@@ -42,6 +42,30 @@ export function slugFromTitle(title: string): string {
   return py || `post-${Date.now().toString(36)}`
 }
 
+/** 启发式推断无语言代码块的语言（供迁移时补标记，获得准确高亮） */
+export function inferCodeLang(code: string): string | null {
+  const s = code.trim()
+  if (!s) return null
+  if (/^[{[]/.test(s) && /"[^"]+"\s*:/.test(s) && /[}\]]\s*$/.test(s)) return 'json'
+  if (/<\/?[a-z][^>]*>/i.test(s) && /<\/[a-z]+>/i.test(s)) return 'html'
+  if (s.includes('{') && s.includes('}') && /^[.#\w][\w\s,.#>]*\{/m.test(s) && /[a-z-]+\s*:\s*[^;{}]+;/i.test(s)) return 'css'
+  if (/^(npm|pnpm|yarn|npx|git|cd |sudo |apt|pip|node |docker |bash |sh |curl |wget |chmod|mkdir|cp |mv |rm |echo |set |export |cls|dir |md |powershell|taskkill)/im.test(s)) return 'bash'
+  if (/^[<>]?(?:div|span|a|button|input|h[1-6]|p|img|table|ul|ol|li|form|script|style)(?:\s|>)/i.test(s)) return 'html'
+  return null
+}
+
+/** 为正文中无语言标记的代码块补齐推断语言（` ``` ` → ` ```json ` 等） */
+export function annotateCodeBlocks(content: string): { content: string; annotated: number } {
+  let annotated = 0
+  const result = content.replace(/```(\s*)\n([\s\S]*?)(```)/g, (_m, _space, body, closing) => {
+    const lang = inferCodeLang(body)
+    if (!lang) return _m
+    annotated += 1
+    return `\`\`\`${lang}\n${body}${closing}`
+  })
+  return { content: result, annotated }
+}
+
 /** 从文件名派生 slug：去日期前缀后保留（valaxy 风格），中文转拼音 */
 export function slugFromFile(fileBase: string): string {
   const withoutDate = fileBase.replace(/^\d{4}-\d{2}-\d{2}-/, '')

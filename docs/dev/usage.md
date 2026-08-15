@@ -27,6 +27,8 @@ pnpm install
 | `pnpm validate` | 单独运行校验器（需先 build） |
 | `pnpm gen:redirects` | 生成重定向规则（redirects.yml → `_redirects` + nginx） |
 | `pnpm migrate` | 从其他框架迁移（Valaxy/Hexo），详见[迁移指南](migration.md) |
+| `pnpm annotate` | 为已有文章的无语言代码块自动推断语言标记（json/html/css/bash），获得准确高亮 |
+| `pnpm xiao:update` | 框架更新（`--source <本地框架目录>` 离线更新，详见下文） |
 
 ## 写作流程
 
@@ -89,6 +91,26 @@ export const site: SiteConfig = {
 | `updated` | 自动维护 | 开关 `feature.autoUpdated`（默认开）。文件修改时间晚于已记录的 date/updated 时，构建时自动写入当前时间；**关闭开关或未触发条件时不写**。写回后与文件时间一致，构建幂等 |
 
 自动写入在 `vite buildStart` 钩子执行（`engine/timestamps.ts`），本地 `pnpm build` 会回写源文件并产生可见 diff，属预期行为；CI 构建不回传变更。frontmatter 解析使用 YAML CORE_SCHEMA，时间戳保持字符串，全链路无时区漂移。
+
+## 框架更新（pnpm xiao:update）
+
+框架升级不影响你的内容与样式定制：
+
+```bash
+pnpm xiao:update                 # 从 GitHub 拉取框架最新代码
+pnpm xiao:update --source <本地框架目录>   # 从本地目录更新（离线/先演练）
+```
+
+安全机制（三路合并）：
+
+- **core**（engine/config/scripts/组件等）：框架核心，直接更新
+- **theme**（`theme/styles/**` 样式）：检测你是否定制过——
+  - 首次运行记录框架基线、不覆盖你的现有样式
+  - 之后：你改过的样式文件**永远保留**，未改的随框架更新
+- **user**（docs/public/redirects/站点配置）：**绝不触碰**
+- 覆盖前自动备份到 `.xiao-backup/`，更新记录在 `.xiao/framework-state.json`
+
+更新后：`pnpm install && pnpm build`（校验通过即成功）。
 
 ## 草稿与 noindex
 

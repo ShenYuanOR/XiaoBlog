@@ -131,6 +131,33 @@
   font-size: 0.875rem;
   line-height: 1.7;
   margin-block: 1.3em;
+  position: relative;
+}
+
+.post-prose pre .x-copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 4px 12px;
+  border-radius: var(--radius-small);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--codeblock-text);
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.post-prose pre:hover .x-copy-btn {
+  opacity: 1;
+}
+
+.post-prose pre .x-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.post-prose pre .x-copy-btn-done {
+  color: #3fb950;
 }
 
 .post-prose pre code {
