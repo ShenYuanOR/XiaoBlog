@@ -122,7 +122,7 @@
 }
 
 .post-prose pre {
-  background: var(--codeblock-bg);
+  background-color: var(--codeblock-bg) !important;
   color: var(--codeblock-text);
   border-radius: var(--radius-large);
   padding: var(--space-5);
