@@ -67,11 +67,24 @@ export function annotateCodeBlocks(content: string): { content: string; annotate
   })
 
   // 缩进代码块（markdown 4 空格缩进，无法标注语言）→ 转为 fence 并推断语言，获得高亮
+  // 注意：跳过已有 fence 区域内部（避免嵌套处理）
   const lines = out.split(/\r?\n/)
   const result: string[] = []
   let i = 0
+  let inFence = false
   while (i < lines.length) {
     const line = lines[i]
+    if (/^```/.test(line)) {
+      inFence = !inFence
+      result.push(line)
+      i++
+      continue
+    }
+    if (inFence) {
+      result.push(line)
+      i++
+      continue
+    }
     const m = line.match(/^( {4}|\t)(.*)$/)
     if (m && !line.trim().startsWith('```')) {
       const startIdx = i

@@ -160,6 +160,23 @@
   color: #3fb950;
 }
 
+/* 隐藏 VitePress 自带的死复制按钮（自建主题下无交互），仅保留自研按钮 */
+.post-prose .vp-adaptive-theme > .copy {
+  display: none !important;
+}
+
+/* 代码块语言标签（VitePress span.lang）精致化 */
+.post-prose .vp-adaptive-theme > .lang {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
 .post-prose pre code {
   background: none;
   padding: 0;
