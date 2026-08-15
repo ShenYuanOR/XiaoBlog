@@ -156,7 +156,7 @@ export default defineConfig({
             const rule = findRedirect(redirects, pathname)
             if (rule) {
               res.statusCode = rule.status
-              res.setHeader('Location', rule.to)
+              res.setHeader('Location', `${base.replace(/\/$/, '')}${rule.to}`)
               res.setHeader('Cache-Control', 'no-store')
               res.end()
               return
