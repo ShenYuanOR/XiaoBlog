@@ -42,14 +42,16 @@ export function slugFromTitle(title: string): string {
   return py || `post-${Date.now().toString(36)}`
 }
 
-/** 启发式推断无语言代码块的语言（供迁移时补标记，获得准确高亮） */
+/** 启发式推断无语言代码块的语言（供迁移/标注时补标记，获得准确高亮） */
 export function inferCodeLang(code: string): string | null {
   const s = code.trim()
   if (!s) return null
   if (/^[{[]/.test(s) && /"[^"]+"\s*:/.test(s) && /[}\]]\s*$/.test(s)) return 'json'
   if (/<\/?[a-z][^>]*>/i.test(s) && /<\/[a-z]+>/i.test(s)) return 'html'
   if (s.includes('{') && s.includes('}') && /^[.#\w][\w\s,.#>]*\{/m.test(s) && /[a-z-]+\s*:\s*[^;{}]+;/i.test(s)) return 'css'
-  if (/^(npm|pnpm|yarn|npx|git|cd |sudo |apt|pip|node |docker |bash |sh |curl |wget |chmod|mkdir|cp |mv |rm |echo |set |export |cls|dir |md |powershell|taskkill)/im.test(s)) return 'bash'
+  if (/^(npm|pnpm|yarn|npx|git|cd |sudo|apt|pip|node |docker|bash|sh |curl|wget|chmod|mkdir|cp |mv |rm |echo |set |export |cls|dir |md |powershell|taskkill)/im.test(s)) return 'bash'
+  if (/\b(var|let|const|function|return|typeof|new)\b/.test(s) && /[;{}]/.test(s) && /[\w.]+\s*\(/.test(s)) return 'javascript'
+  if (/\b(public|private|class|void|int|string|using|namespace)\b/.test(s) && /[;{}]/.test(s)) return 'csharp'
   if (/^[<>]?(?:div|span|a|button|input|h[1-6]|p|img|table|ul|ol|li|form|script|style)(?:\s|>)/i.test(s)) return 'html'
   return null
 }
@@ -57,13 +59,50 @@ export function inferCodeLang(code: string): string | null {
 /** 为正文中无语言标记的代码块补齐推断语言（` ``` ` → ` ```json ` 等） */
 export function annotateCodeBlocks(content: string): { content: string; annotated: number } {
   let annotated = 0
-  const result = content.replace(/```(\s*)\n([\s\S]*?)(```)/g, (_m, _space, body, closing) => {
+  let out = content.replace(/```(\s*)\n([\s\S]*?)(```)/g, (_m, _space, body, closing) => {
     const lang = inferCodeLang(body)
     if (!lang) return _m
     annotated += 1
     return `\`\`\`${lang}\n${body}${closing}`
   })
-  return { content: result, annotated }
+
+  // 缩进代码块（markdown 4 空格缩进，无法标注语言）→ 转为 fence 并推断语言，获得高亮
+  const lines = out.split(/\r?\n/)
+  const result: string[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const m = line.match(/^( {4}|\t)(.*)$/)
+    if (m && !line.trim().startsWith('```')) {
+      const startIdx = i
+      const block: string[] = []
+      while (i < lines.length) {
+        const lm = lines[i].match(/^( {4}|\t)(.*)$/)
+        if (lm) {
+          block.push(lm[2])
+          i++
+        } else if (lines[i].trim() === '') {
+          block.push('')
+          i++
+        } else {
+          break
+        }
+      }
+      while (block.length && block[block.length - 1] === '') block.pop()
+      const code = block.join('\n')
+      const lang = inferCodeLang(code)
+      if (lang) {
+        annotated += 1
+        result.push(`\`\`\`${lang}`, ...block, '```')
+      } else {
+        result.push(...lines.slice(startIdx, i))
+      }
+      continue
+    }
+    result.push(line)
+    i++
+  }
+  return { content: result.join('\n'), annotated }
 }
 
 /** 从文件名派生 slug：去日期前缀后保留（valaxy 风格），中文转拼音 */

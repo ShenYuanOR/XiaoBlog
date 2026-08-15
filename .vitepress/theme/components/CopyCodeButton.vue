@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
-import { useRouter } from 'vitepress'
+import { onContentUpdated } from 'vitepress'
 
 let cleanup: (() => void) | null = null
 
@@ -56,13 +56,9 @@ function install() {
 
 onMounted(() => {
   install()
-  const router = useRouter()
-  const unwatch = router.afterEach(() => {
+  cleanup = onContentUpdated(() => {
     requestAnimationFrame(install)
   })
-  cleanup = () => {
-    unwatch?.()
-  }
 })
 
 onBeforeUnmount(() => {
