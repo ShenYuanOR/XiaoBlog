@@ -180,8 +180,18 @@
 .post-prose pre code {
   background: none;
   padding: 0;
+  border: none;
   font-size: inherit;
   color: inherit;
+}
+
+/* Shiki 双主题 token 着色（默认主题的规则不随自建主题加载，需自行声明） */
+.post-prose .shiki .line span {
+  color: var(--shiki-light);
+}
+
+html.dark .post-prose .shiki .line span {
+  color: var(--shiki-dark);
 }
 
 .post-prose img {
