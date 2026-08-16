@@ -1,9 +1,9 @@
 {
   "name": "xiao",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repo": "ShenYuanOR/XiaoBlog",
   "branch": "master",
-  "description": "「晓」框架更新清单：core 可安全覆盖；theme 三路合并（用户定制过的样式自动保留）。",
+  "description": "「晓」更新清单：仅 core 随 xiao:update 覆盖；theme 为默认参考实现（不自动更新，需自行比对合并）；user 永不触碰。",
   "core": [
     ".vitepress/engine/**",
     ".vitepress/config.ts",
@@ -25,16 +25,14 @@
     "package.json",
     "pnpm-workspace.yaml",
     "tsconfig.json",
-    ".gitignore"
+    ".gitignore",
+    "framework-manifest.json"
   ],
   "theme": [
     ".vitepress/theme/styles/**",
     ".vitepress/theme/Layout.vue",
     ".vitepress/theme/views/**",
     ".vitepress/theme/components/**"
-  ],
-  "theme": [
-    ".vitepress/theme/styles/**"
   ],
   "user": [
     "docs/**",

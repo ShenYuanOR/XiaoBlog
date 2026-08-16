@@ -98,23 +98,20 @@ export const site: SiteConfig = {
 
 ## 框架更新（pnpm xiao:update）
 
-框架升级不影响你的内容与样式定制：
-
 ```bash
-pnpm xiao:update                 # 从 GitHub 拉取框架最新代码
+pnpm xiao:update                 # 从 GitHub 拉取 core
 pnpm xiao:update --source <本地框架目录>   # 从本地目录更新（离线/先演练）
 ```
 
-安全机制（三路合并）：
+**只更新 core**，其余自行决定是否合并：
 
-- **core**（engine/config/scripts/组件等）：框架核心，直接更新
-- **theme**（`theme/styles/**` 样式）：检测你是否定制过——
-  - 首次运行记录框架基线、不覆盖你的现有样式
-  - 之后：你改过的样式文件**永远保留**，未改的随框架更新
-- **user**（docs/public/redirects/站点配置）：**绝不触碰**
-- 覆盖前自动备份到 `.xiao-backup/`，更新记录在 `.xiao/framework-state.json`
+| 分区 | 内容 | `xiao:update` |
+|---|---|---|
+| **core** | engine / config / scripts / 数据加载接线等 | 直接覆盖（覆盖前备份到 `.xiao-backup/`） |
+| **theme** | `styles/**`、`Layout.vue`、`views/**`、`components/**` | **不更新**。仓库里是默认参考实现；需要新能力时对照上游自行比对加入 |
+| **user** | docs / public / redirects / 站点配置 | **永不触碰** |
 
-更新后：`pnpm install && pnpm build`（校验通过即成功）。
+更新记录在 `.xiao/framework-state.json`。更新后：`pnpm install && pnpm build`（校验通过即成功）。
 
 ## 草稿与 noindex
 
