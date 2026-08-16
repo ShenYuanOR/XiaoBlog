@@ -37,6 +37,34 @@ async function ask(question) {
   return (pipedLines.shift() ?? '').trim()
 }
 
+function printUsage() {
+  console.error(`晓 · 迁移工具
+
+用法:
+  pnpm migrate --from <valaxy|hexo> --source <旧站路径> [选项]
+
+必填:
+  --from <valaxy|hexo>   旧站框架
+  --source <路径>        旧站项目根目录
+
+可选:
+  --site-url <域名>      旧站完整域名（用于还原绝对 URL 图片等）
+  --keep-date-slug       保留源文件名（含日期）作 slug，旧 URL 不变
+  --apply                扫描通过后写入文章 / 图片 / redirects.yml
+  --yes                  与 --apply 联用，跳过落盘确认（CI/脚本）
+  --out <目录>           落盘到指定根目录（默认当前项目；演练可用临时目录）
+
+流程建议:
+  1. 先不加 --apply，只看报告
+  2. 确认无误后加 --apply 落盘（TTY 下会再问一次）
+  3. pnpm dev 预览 → pnpm build 校验 → 提交
+
+示例:
+  pnpm migrate --from hexo --source ../my-hexo-blog
+  pnpm migrate --from valaxy --source ../old-site --site-url https://example.com --apply
+`)
+}
+
 async function main() {
   const from = (flag('--from') ?? '').toLowerCase()
   const sourceDir = flag('--source')
@@ -46,13 +74,28 @@ async function main() {
   const keepDateSlug = has('--keep-date-slug')
   const outDir = flag('--out')
 
-  if (!['valaxy', 'hexo'].includes(from)) {
-    console.error('用法: pnpm migrate --from <valaxy|hexo> --source <旧站路径> [--site-url <域名>] [--keep-date-slug] [--apply] [--yes]')
+  if (!['valaxy', 'hexo'].includes(from) || !sourceDir) {
+    printUsage()
+    if (!['valaxy', 'hexo'].includes(from)) {
+      console.error('错误: 缺少或无效的 --from（应为 valaxy 或 hexo）')
+    } else {
+      console.error('错误: 缺少 --source <旧站路径>')
+    }
     process.exit(1)
   }
-  if (!sourceDir) {
-    console.error('缺少 --source <旧站路径>')
-    process.exit(1)
+
+  if (isTTY) {
+    console.log('晓 · 迁移工具')
+    console.log(`来源框架: ${from}`)
+    console.log(`旧站路径: ${sourceDir}`)
+    if (siteUrl) console.log(`旧站域名: ${siteUrl}`)
+    if (keepDateSlug) console.log('slug 策略: 保留日期前缀（--keep-date-slug）')
+    else console.log('slug 策略: 纯净 slug（变更将登记 301）')
+    if (outDir) console.log(`输出目录: ${outDir}`)
+    console.log(doApply
+      ? '模式: 扫描 + 落盘（--apply）'
+      : '模式: 仅扫描报告（不加 --apply 不会写入任何文件）')
+    console.log('')
   }
 
   const source = {
@@ -86,11 +129,29 @@ async function main() {
   }
 
   if (!doApply) {
-    console.log('\n（仅报告，未写入任何文件。确认后加 --apply 落盘）')
+    console.log('\n── 仅报告，未写入任何文件 ──')
+    if (isTTY) {
+      console.log('确认报告无误后，在同一命令后加 --apply 落盘，例如:')
+      console.log(`  pnpm migrate --from ${from} --source ${sourceDir}${siteUrl ? ` --site-url ${siteUrl}` : ''}${keepDateSlug ? ' --keep-date-slug' : ''}${outDir ? ` --out ${outDir}` : ''} --apply`)
+      console.log('落盘前 TTY 下仍会二次确认；脚本/CI 可再加 --yes 跳过确认。')
+    } else {
+      console.log('（确认后加 --apply 落盘）')
+    }
     return
   }
 
-  const confirm = yes ? 'y' : (await ask('\n确认落盘？将写入文章、复制图片、更新 redirects.yml（y/N）: ')).toLowerCase()
+  if (isTTY && !yes) {
+    console.log('\n即将落盘，会执行:')
+    console.log(`  · 写入文章 → ${outDir ? `${outDir}/docs/posts` : 'docs/posts'}`)
+    console.log(`  · 复制图片 → ${outDir ? `${outDir}/docs/posts/_assets` : 'docs/posts/_assets'}`)
+    console.log(`  · 更新重定向 → ${outDir ? `${outDir}/redirects/redirects.yml` : 'redirects/redirects.yml'}`)
+    if (!outDir) console.log('  · 同步生成 public/_redirects 与 nginx 片段')
+    if (report.slugConflicts.length) {
+      console.log('\n⚠️ 仍存在 slug 冲突，建议先处理后再落盘。')
+    }
+  }
+
+  const confirm = yes ? 'y' : (await ask('\n确认落盘？输入 y 继续，其他键取消（y/N）: ')).toLowerCase()
   if (confirm !== 'y' && confirm !== 'yes') {
     console.log('已取消，未写入任何文件')
     return
@@ -115,7 +176,13 @@ async function main() {
     }
   }
 
-  if (result.written.length) console.log('\n下一步: pnpm dev 预览 → pnpm build 校验 → 检查 slug 与图片 → 提交')
+  if (result.written.length) {
+    console.log('\n下一步:')
+    console.log('  1. pnpm dev 预览迁移结果（检查 slug、正文、图片）')
+    console.log('  2. pnpm build 全量校验')
+    console.log('  3. 抽查 redirects.yml 与旧站 URL 是否一致')
+    console.log('  4. 确认无误后提交')
+  }
 }
 
 main().catch((e) => {

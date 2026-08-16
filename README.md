@@ -2,6 +2,8 @@
 
 个人内容站框架：VitePress 只负责 Markdown 渲染、路由与静态构建，站点 UI、内容模型、SEO 与写作体验全部自持。
 
+**在线演示：** [https://shenyuanor.github.io/XiaoBlog/](https://shenyuanor.github.io/XiaoBlog/)
+
 ## 快速开始
 
 ```bash
