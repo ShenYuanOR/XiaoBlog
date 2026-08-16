@@ -392,35 +392,107 @@ html.dark .x-post-card:hover {
   text-align: center;
 }
 
-/* ---- TOC（Fuwari TOC 卡） ---- */
+/* ---- TOC（多级展开 + 当前章节高亮） ---- */
 .x-toc {
-  max-height: 36vh;
+  max-height: 42vh;
   overflow-y: auto;
   scrollbar-width: thin;
+  padding-right: 2px;
 }
 
-.x-toc ul {
-  padding-left: 0;
-  margin-block: var(--space-1);
+.x-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.x-toc li {
-  margin-block: 2px;
+.x-toc-list-nested {
+  margin-top: 2px;
+  margin-left: 10px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-divider);
 }
 
-.x-toc a {
+.x-toc-item {
+  margin: 0;
+}
+
+.x-toc-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.x-toc-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.x-toc-toggle:hover {
+  background: var(--btn-plain-hover);
+  color: var(--deep-text);
+}
+
+.x-toc-toggle-spacer {
+  cursor: default;
+  pointer-events: none;
+}
+
+.x-toc-caret {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+}
+
+.x-toc-item.is-open > .x-toc-row .x-toc-caret {
+  transform: rotate(90deg);
+}
+
+.x-toc-link {
+  flex: 1;
+  min-width: 0;
   color: var(--text-secondary);
   display: block;
-  padding: 5px 12px;
+  padding: 5px 8px 5px 4px;
   border-radius: var(--radius-small);
   font-size: var(--font-size-sm);
   font-weight: 500;
-  transition: background 0.2s ease, color 0.2s ease;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.x-toc a:hover {
+.x-toc-link:hover {
   background: var(--btn-plain-hover);
   color: var(--deep-text);
+}
+
+.x-toc-link.active {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  font-weight: 700;
+}
+
+.x-toc-item.is-active > .x-toc-row .x-toc-link {
+  color: var(--primary);
 }
 
 /* 侧栏内列表限高（内容多时内部滚动，隐藏滚动条） */

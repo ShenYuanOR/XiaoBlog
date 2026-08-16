@@ -1,12 +1,12 @@
 import { defineConfig } from 'vitepress'
-import { readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { site } from './site.config.ts'
 import { collectAssets } from './engine/assets.ts'
 import { syncTimestamps } from './engine/timestamps.ts'
 import { loadRedirects, findRedirect, syncRedirectFiles } from './engine/redirects.ts'
 import { registerBuiltinAutoPages, buildAutoPagesData, autoPageRoutes } from './engine/automata.ts'
-import { loadPosts } from './engine/posts.ts'
+import { loadPosts, parseFrontmatter } from './engine/posts.ts'
 import { validatePosts, validateBuild } from './engine/validate.ts'
 import { writeSitemap } from './engine/seo/sitemap.ts'
 import { writeFeeds } from './engine/seo/rss.ts'
@@ -35,12 +35,26 @@ function toHeadEntries(entries: HeadEntry[]): unknown[] {
 
 registerBuiltinAutoPages()
 
+/**
+ * 文章路由重写：文件名 posts/YYYY-MM-DD-<slug>.md → URL /posts/<slug>
+ * 使用函数形式，dev 下新增/删除文章时 resolvePages 会重新求值，避免静态表导致 404。
+ * 草稿也参与重写（是否可见由 srcExclude 控制）。
+ */
+function postRewrite(id: string): string {
+  if (!id.startsWith('posts/') || !id.endsWith('.md') || id.includes('/_')) return id
+  const file = join(process.cwd(), 'docs', id)
+  if (!existsSync(file)) return id
+  try {
+    const { data } = parseFrontmatter(readFileSync(file, 'utf-8'))
+    const slug = (data as { slug?: unknown }).slug
+    if (typeof slug === 'string' && slug) return `posts/${slug}.md`
+  } catch {
+    /* 解析失败则保持原路径 */
+  }
+  return id
+}
+
 const allPosts = loadPosts({ includeDrafts: true })
-const postRewrites = Object.fromEntries(
-  allPosts
-    .filter((p) => !p.frontmatter.draft)
-    .map((p) => [`posts/${p.fileBase}.md`, `posts/${p.frontmatter.slug}.md`]),
-)
 const draftExcludes = process.env.XIAO_INCLUDE_DRAFTS === '1'
   ? []
   : allPosts.filter((p) => p.frontmatter.draft).map((p) => `posts/${p.fileBase}.md`)
@@ -76,11 +90,12 @@ export default defineConfig({
   srcExclude: srcExcludes,
   base,
   markdown: {
-    headers: true,
+    // 目录用：提取 h2–h4，并保留嵌套 children 树
+    headers: { level: [2, 3, 4] },
     theme: { light: 'github-light', dark: 'github-dark' },
     defaultHighlightLang: 'bash',
   },
-  rewrites: postRewrites,
+  rewrites: postRewrite,
   themeConfig: { hasDevDocs } as never,
   head: [
     ['link', { rel: 'icon', href: `${site.url}/favicon.svg` }],
@@ -170,6 +185,28 @@ export default defineConfig({
             }
             next()
           })
+        },
+      },
+      {
+        // 新建/删除文章后：VitePress 会刷新 pages，再推一次 full-reload，
+        // 让客户端路由表与 posts.data 列表同步，避免进新文 404、首页不出现。
+        name: 'xiao-posts-reload',
+        configureServer(server) {
+          const postsRoot = resolve(process.cwd(), 'docs', 'posts').replace(/\\/g, '/')
+          const isPostMd = (file: string) => {
+            const f = file.replace(/\\/g, '/')
+            return f.startsWith(postsRoot) && f.endsWith('.md') && !f.includes('/_assets/')
+          }
+          let timer: ReturnType<typeof setTimeout> | undefined
+          const scheduleReload = (file: string) => {
+            if (!isPostMd(file)) return
+            clearTimeout(timer)
+            timer = setTimeout(() => {
+              server.ws.send({ type: 'full-reload' })
+            }, 80)
+          }
+          server.watcher.on('add', scheduleReload)
+          server.watcher.on('unlink', scheduleReload)
         },
       },
     ],
