@@ -19,8 +19,11 @@ import {
   noindexHead,
   blogPostingJsonLd,
 } from './engine/seo/head.ts'
-import { postUrl } from './engine/url.ts'
+import { postUrl, siteBase } from './engine/url.ts'
 import type { HeadEntry } from './engine/seo/head.ts'
+
+/** 部署路径前缀：默认 /；仅 site.config 显式配置 base 时才有子路径 */
+const base = siteBase()
 
 function toHeadEntries(entries: HeadEntry[]): unknown[] {
   return entries.map((e) =>
@@ -71,7 +74,7 @@ export default defineConfig({
   srcDir: 'docs',
   scrollOffset: 72,
   srcExclude: srcExcludes,
-  base: '/XiaoBlog/',
+  base,
   markdown: {
     headers: true,
     theme: { light: 'github-light', dark: 'github-dark' },
@@ -149,14 +152,18 @@ export default defineConfig({
         name: 'xiao-redirects-dev',
         configureServer(server) {
           const redirects = loadRedirects()
-          const base = '/XiaoBlog/'
           server.middlewares.use((req, res, next) => {
             const raw = (req.url ?? '').split('?')[0]
-            const pathname = raw.startsWith(base) ? raw.slice(base.length - 1) : raw
+            // 去掉部署 base 前缀后再匹配 redirects.yml 中的站内路径
+            const pathname =
+              base !== '/' && raw.startsWith(base)
+                ? raw.slice(base.length - 1)
+                : raw
             const rule = findRedirect(redirects, pathname)
             if (rule) {
               res.statusCode = rule.status
-              res.setHeader('Location', `${base.replace(/\/$/, '')}${rule.to}`)
+              const prefix = base === '/' ? '' : base.replace(/\/$/, '')
+              res.setHeader('Location', `${prefix}${rule.to}`)
               res.setHeader('Cache-Control', 'no-store')
               res.end()
               return

@@ -27,11 +27,12 @@ SEO 是「晓」的核心能力：**构建期自动生成、自动校验、失�
 
 ## 唯一 URL 来源
 
-所有 URL（canonical / sitemap / RSS / 内部链接校验 / 重定向 target）都经过 `engine/url.ts`：
+所有 URL（canonical / sitemap / RSS / 内部链接校验 / 重定向 target / 部署 base）都经过 `engine/url.ts`：
 
 - `urlOf(route)`：绝对 URL（site.url + route）
 - `postUrl(slug)`：`/posts/<slug>`
-- 全站禁止手写第二处 URL 拼接，防止三处不一致
+- `siteBase()`：VitePress `base`，读 `site.base`，**默认 `/`**（不从 url 自动推导）
+- 全站禁止在引擎/主题里写死仓库名前缀；子路径仅通过 `site.config` 的可选 `base` 声明
 
 ## 校验门禁（buildEnd，失败即中断构建）
 
@@ -64,10 +65,10 @@ redirects:
 
 ## 上线清单
 
-1. `site.config.ts` 填真实域名（canonical/sitemap/RSS 域名来源）
+1. `site.config.ts` 填真实 `url`；`base` 保持默认 `/`（除非你的站不在域名根路径，才显式配置）
 2. 推送触发 CI：build 内置校验，失败不发包
 3. GitHub Pages 设置部署源为 GitHub Actions
-4. Google Search Console：验证域名 → 提交 `/sitemap.xml`
+4. Google Search Console：验证域名 → 提交 sitemap（一般是 `/sitemap.xml`）
 5. 抽查线上 URL：文章 200、旧 URL（若有登记）301、不存在路径 404
 
 ## Roadmap（未实现）

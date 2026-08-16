@@ -70,7 +70,8 @@ pnpm install
 
 ```ts
 export const site: SiteConfig = {
-  url: 'https://你的域名',        // ← 上线前必填，canonical/sitemap/RSS 都基于它
+  url: 'https://你的域名',  // ← 上线前必填；canonical / sitemap / RSS
+  // base: '/RepoName/',   // 默认 /，一般不用写。仅站点不在域名根路径时才配置
   lang: 'zh-CN',
   title: '晓',
   subtitle: '一句话副标题',
@@ -80,6 +81,9 @@ export const site: SiteConfig = {
   since: 2026,
 }
 ```
+
+- `url`：不要尾斜杠。自定义域名、`xxx.github.io` 根站都直接填根地址即可。
+- `base`：**可选，默认 `/`**。框架不会从 `url` 自动抠路径，也不会写死仓库名。只有站点挂在子路径下（例如官方演示站 `shenyuanor.github.io/XiaoBlog`）才需要显式写 `base: '/XiaoBlog/'`。
 
 `.vitepress/blog.config.ts`：布局变体注册、license 默认值、功能开关（darkMode / vercount）。
 
