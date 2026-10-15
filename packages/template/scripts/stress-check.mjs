@@ -65,7 +65,9 @@ app.whenReady().then(async () => {
           deviceScaleFactor: 1,
           mobile: true,
         });
-        await win.webContents.debugger.sendCommand('Emulation.setScrollbarsHidden', { hidden: true });
+        await win.webContents.debugger.sendCommand('Emulation.setScrollbarsHidden', {
+          hidden: true,
+        });
       }
       if (i % 50 === 0) console.log(`stress-${i}`);
       const issues = await win.webContents.executeJavaScript(`(${inspectPage.toString()})()`);

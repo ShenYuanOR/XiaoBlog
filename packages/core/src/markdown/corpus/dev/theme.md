@@ -34,13 +34,13 @@ reset → tokens → shell → prose → components
 
 `kind()` 按 frontmatter 分发：
 
-| 判定 | 渲染 |
-|---|---|
-| `404.md` | NotFoundView |
+| 判定                        | 渲染                                    |
+| --------------------------- | --------------------------------------- |
+| `404.md`                    | NotFoundView                            |
 | `frontmatter.home === true` | `.x-home` 纯内容（index.md 自定义布局） |
-| `frontmatter.autoPage` | AutoPageView（归档/标签/分类） |
-| `frontmatter.slug` | PostView（文章页，侧栏含 TOC 卡） |
-| 其他 | `.post-prose` 渲染 md（独立页面） |
+| `frontmatter.autoPage`      | AutoPageView（归档/标签/分类）          |
+| `frontmatter.slug`          | PostView（文章页，侧栏含 TOC 卡）       |
+| 其他                        | `.post-prose` 渲染 md（独立页面）       |
 
 文章页与自动页走两栏网格（280px 侧栏 + 主栏），首页由 index.md 自行布局。
 
@@ -55,8 +55,8 @@ reset → tokens → shell → prose → components
 
 ```ts
 // .vitepress/theme/index.ts
-import MyCard from './components/MyCard.vue'
-app.component('MyCard', MyCard)
+import MyCard from './components/MyCard.vue';
+app.component('MyCard', MyCard);
 ```
 
 注册后即可在任意 md 中使用 `<MyCard />`。组件样式写入 `components.css`（components 层）或组件 scoped 样式。
@@ -66,7 +66,7 @@ app.component('MyCard', MyCard)
 `theme/posts.data.ts` 用 `createContentLoader('posts/*.md')` 提供静态文章数组（构建期序列化）：
 
 ```ts
-import { data as posts } from '../posts.data'
+import { data as posts } from '../posts.data';
 ```
 
 字段：title / slug / date / updated / description / tags / category / cover / layout / url。

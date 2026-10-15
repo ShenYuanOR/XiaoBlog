@@ -23,7 +23,8 @@ export function migratePost(source: string, oldPath: string): MigratedFolderPost
   const { data, body } = splitFrontmatter(source);
   const title = data.title || '未命名';
   const fileSlug = oldPath.split('/').pop()?.replace(/\.md$/, '') ?? '';
-  const slug = (data.slug && slugFromFile(data.slug)) || slugFromTitle(title) || slugFromFile(fileSlug);
+  const slug =
+    (data.slug && slugFromFile(data.slug)) || slugFromTitle(title) || slugFromFile(fileSlug);
   const description = data.description || extractDescription(body);
   const date = data.date || '1970-01-01 00:00:00';
   const lines = [

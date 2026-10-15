@@ -2,6 +2,21 @@ import astro from 'eslint-plugin-astro';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
+const rootDir = import.meta.dirname;
+
+function withRoot(configs) {
+  return configs.map((config) => ({
+    ...config,
+    languageOptions: {
+      ...config.languageOptions,
+      parserOptions: {
+        ...config.languageOptions?.parserOptions,
+        tsconfigRootDir: rootDir,
+      },
+    },
+  }));
+}
+
 export default defineConfig(
   globalIgnores([
     'node_modules/**',
@@ -10,6 +25,7 @@ export default defineConfig(
     '**/release/**',
     '**/.astro/**',
     '**/.xiao-loc-order.json',
+    '**/resources/staged/**',
     'docs/**',
     'public/**',
     'scripts/**',
@@ -18,6 +34,6 @@ export default defineConfig(
     '.agents/**',
     'coverage/**',
   ]),
-  tseslint.configs.recommended,
-  astro.configs.recommended,
+  ...withRoot(tseslint.configs.recommended),
+  ...withRoot(astro.configs.recommended),
 );

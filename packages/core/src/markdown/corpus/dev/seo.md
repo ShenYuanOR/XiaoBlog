@@ -17,11 +17,11 @@ SEO 是「晓」的核心能力：**构建期自动生成、自动校验、失�
 
 ## 构建产物
 
-| 文件 | 内容 | 来源 |
-|---|---|---|
+| 文件          | 内容                                                  | 来源                    |
+| ------------- | ----------------------------------------------------- | ----------------------- |
 | `sitemap.xml` | 首页 + 自动页 + 全部已发布文章（含 lastmod/priority） | `engine/seo/sitemap.ts` |
-| `atom.xml` | RSS 订阅（最新文章，标题/链接/摘要/作者） | `engine/seo/rss.ts` |
-| `robots.txt` | Allow 全部 + Sitemap 声明 | `engine/seo/robots.ts` |
+| `atom.xml`    | RSS 订阅（最新文章，标题/链接/摘要/作者）             | `engine/seo/rss.ts`     |
+| `robots.txt`  | Allow 全部 + Sitemap 声明                             | `engine/seo/robots.ts`  |
 
 草稿与 noindex 文章自动排除在 sitemap/RSS 之外。
 
