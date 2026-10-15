@@ -1,0 +1,26 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import { publishedPosts } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+
+export async function getStaticPaths() {
+  const posts = await publishedPosts();
+  const names = new Set(
+    posts.map((post) => post.data.category).filter((name): name is string => Boolean(name)),
+  );
+  return [...names].map((category) => ({ params: { category }, props: { category } }));
+}
+
+const { category } = Astro.props;
+const posts = (await publishedPosts()).filter((post) => post.data.category === category);
+---
+
+<PageLayout title={category}>
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+      </li>
+    ))}
+  </ul>
+</PageLayout>

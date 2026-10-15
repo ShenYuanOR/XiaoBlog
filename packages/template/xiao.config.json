@@ -1,0 +1,53 @@
+{
+  "$schema": "./xiao.config.schema.json",
+  "version": 1,
+  "site": {
+    "url": "https://example.com",
+    "base": "/",
+    "lang": "zh-CN",
+    "title": "晓",
+    "subtitle": "笔记",
+    "description": "一个用 Astro 搭建的笔记站。",
+    "favicon": "/favicon.svg",
+    "ogImage": "",
+    "since": 2026
+  },
+  "author": {
+    "name": "园",
+    "avatar": "",
+    "bio": "在这里写笔记。",
+    "email": ""
+  },
+  "social": [],
+  "nav": [
+    { "label": "归档", "href": "/archives" },
+    { "label": "标签", "href": "/tags" },
+    { "label": "分类", "href": "/categories" },
+    { "label": "关于", "href": "/about" }
+  ],
+  "theme": {
+    "hue": 250,
+    "font": "sans",
+    "contentWidth": "prose",
+    "radius": "md",
+    "colorScheme": "auto"
+  },
+  "seo": {
+    "titleTemplate": "%s | 晓",
+    "twitter": "",
+    "noindex": false
+  },
+  "analytics": { "provider": "none", "id": "" },
+  "posts": {
+    "pageSize": 20,
+    "license": {
+      "enabled": true,
+      "name": "CC BY-NC-SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+    }
+  },
+  "redirects": {
+    "/2026-08-14-hello-xiao": "/posts/hello/"
+  },
+  "deploy": { "provider": "github-pages", "repo": "", "branch": "" }
+}

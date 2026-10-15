@@ -1,0 +1,76 @@
+---
+import '../styles/base.css';
+import '../styles/prose.css';
+import '../styles/xiao.css';
+import '../styles/custom.css';
+import { loadConfig, titleOf } from '../lib/config';
+import { withBase } from '../lib/base';
+import Header from '../components/site/Header.astro';
+import Footer from '../components/site/Footer.astro';
+import type { HeadEntry } from '../lib/seo';
+
+interface Props {
+  title?: string;
+  description?: string;
+  heads?: HeadEntry[];
+}
+const { title, description, heads = [] } = Astro.props;
+const config = loadConfig();
+const pageTitle = titleOf(title, config);
+const desc = description || config.site.description;
+const width =
+  config.theme.contentWidth === 'narrow'
+    ? '560px'
+    : config.theme.contentWidth === 'wide'
+      ? '1200px'
+      : '720px';
+const radius =
+  config.theme.radius === 'none'
+    ? '0'
+    : config.theme.radius === 'sm'
+      ? '6px'
+      : config.theme.radius === 'lg'
+        ? '20px'
+        : '12px';
+---
+
+<!doctype html>
+<html
+  lang={config.site.lang}
+  data-theme={config.theme.colorScheme}
+  data-width={config.theme.contentWidth}
+  data-font={config.theme.font}
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={desc} />
+    <link rel="icon" href={withBase(config.site.favicon)} />
+    <style
+      is:inline
+      set:html={`:root{--hue:${config.theme.hue};--content:${width};--radius:${radius};}`}
+    />
+    <script is:inline>
+      (function () {
+        const saved = localStorage.getItem('xiao-theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      })();
+    </script>
+    {heads.map((entry) =>
+      entry.tag === 'title' ? null : entry.tag === 'script' ? (
+        <script type={entry.attrs?.type} set:html={entry.children} />
+      ) : entry.tag === 'meta' ? (
+        <meta {...entry.attrs} />
+      ) : (
+        <link {...entry.attrs} />
+      ),
+    )}
+    <slot name="head" />
+  </head>
+  <body>
+    <Header />
+    <slot />
+    <Footer />
+  </body>
+</html>

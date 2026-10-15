@@ -1,0 +1,17 @@
+---
+import PostLayout from '../PostLayout.astro';
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  headings: { depth: number; slug: string; text: string }[];
+  prev?: PostEntry;
+  next?: PostEntry;
+}
+const props = Astro.props;
+---
+
+<PostLayout {...props}>
+  <p>自定义布局</p>
+  <slot />
+</PostLayout>

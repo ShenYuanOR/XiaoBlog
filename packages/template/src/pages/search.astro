@@ -1,0 +1,11 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import Search from '../components/site/Search.astro';
+import { publishedPosts } from '../lib/posts';
+
+const posts = (await publishedPosts()).map((post) => ({ slug: post.id, title: post.data.title }));
+---
+
+<PageLayout title="搜索">
+  <Search posts={posts} />
+</PageLayout>

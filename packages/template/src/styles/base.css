@@ -1,0 +1,139 @@
+:root {
+  color-scheme: light;
+  --bg: oklch(0.98 0.01 var(--hue));
+  --fg: oklch(0.28 0.03 var(--hue));
+  --muted: oklch(0.5 0.03 var(--hue));
+  --surface: oklch(0.96 0.02 var(--hue));
+  --primary: oklch(0.45 0.12 var(--hue));
+  --line: oklch(0.88 0.02 var(--hue));
+  --content: 720px;
+  --radius: 12px;
+  font-family: 'Segoe UI', 'PingFang SC', sans-serif;
+}
+
+:root[data-font='serif'] {
+  font-family: 'Palatino Linotype', 'Songti SC', serif;
+}
+
+:root[data-width='narrow'] {
+  --content: 560px;
+}
+:root[data-width='wide'] {
+  --content: 1200px;
+}
+:root[data-width='prose'] {
+  --content: 720px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'] {
+    color-scheme: dark;
+    --bg: oklch(0.22 0.02 var(--hue));
+    --fg: oklch(0.94 0.01 var(--hue));
+    --muted: oklch(0.75 0.02 var(--hue));
+    --surface: oklch(0.28 0.03 var(--hue));
+    --primary: oklch(0.78 0.1 var(--hue));
+    --line: oklch(0.4 0.03 var(--hue));
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: oklch(0.22 0.02 var(--hue));
+  --fg: oklch(0.94 0.01 var(--hue));
+  --muted: oklch(0.75 0.02 var(--hue));
+  --surface: oklch(0.28 0.03 var(--hue));
+  --primary: oklch(0.78 0.1 var(--hue));
+  --line: oklch(0.4 0.03 var(--hue));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  min-width: 0;
+}
+
+img,
+video,
+iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--primary);
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, var(--content)) minmax(160px, 220px);
+  gap: 24px;
+  width: min(100% - 32px, 1280px);
+  margin: 0 auto;
+  padding: 24px 0 64px;
+}
+
+.topbar,
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  width: min(100% - 32px, 1280px);
+  margin: 0 auto;
+  padding: 16px 0;
+}
+
+.topbar {
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar a,
+.topbar button,
+.topbar summary,
+.side a,
+.toc a,
+.toc summary,
+.footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.side,
+.toc,
+.prose,
+.stack {
+  min-width: 0;
+}
+
+.menu {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .toc {
+    order: -1;
+  }
+}
+
+@media (max-width: 767px) {
+  .nav-desktop {
+    display: none;
+  }
+  .menu {
+    display: block;
+  }
+}

@@ -1,0 +1,33 @@
+---
+import { loadConfig } from '../../lib/config';
+import { withBase } from '../../lib/base';
+
+const config = loadConfig();
+---
+
+<header class="topbar">
+  <a href={withBase()}>{config.site.title}</a>
+  <nav class="nav-desktop">
+    {config.nav.map((item) => (
+      <a href={withBase(item.href)}>{item.label}</a>
+    ))}
+  </nav>
+  <details class="menu">
+    <summary>菜单</summary>
+    {config.nav.map((item) => (
+      <a href={withBase(item.href)}>{item.label}</a>
+    ))}
+  </details>
+  <a href={withBase('search/')}>搜索</a>
+  <button type="button" id="theme-toggle">
+    主题
+  </button>
+  <script is:inline>
+    document.getElementById('theme-toggle')?.addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      localStorage.setItem('xiao-theme', next);
+    });
+  </script>
+</header>

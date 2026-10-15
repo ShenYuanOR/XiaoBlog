@@ -1,0 +1,33 @@
+---
+import { withBase } from '../../lib/base';
+
+interface Props {
+  posts: { slug: string; title: string }[];
+}
+const { posts } = Astro.props;
+---
+
+<section>
+  <h1>搜索</h1>
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <a href={withBase(`posts/${post.slug}/`)}>{post.title}</a>
+      </li>
+    ))}
+  </ul>
+  <div id="pagefind" />
+  <script is:inline define:vars={{ base: withBase() }}>
+    const bundle = `${base}pagefind/pagefind-ui.js`;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `${base}pagefind/pagefind-ui.css`;
+    document.head.append(link);
+    import(bundle)
+      .then(() => {
+        const ui = window.PagefindUI;
+        if (ui) new ui({ element: '#pagefind' });
+      })
+      .catch(() => {});
+  </script>
+</section>

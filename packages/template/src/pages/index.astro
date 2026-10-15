@@ -1,0 +1,20 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { publishedPosts } from '../lib/posts';
+import { websiteHeads } from '../lib/seo';
+import { withBase } from '../lib/base';
+
+const posts = await publishedPosts();
+const heads = websiteHeads();
+---
+
+<PageLayout title="晓" description="笔记首页" heads={heads}>
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+        <span>{post.data.date.slice(0, 10)}</span>
+      </li>
+    ))}
+  </ul>
+</PageLayout>
