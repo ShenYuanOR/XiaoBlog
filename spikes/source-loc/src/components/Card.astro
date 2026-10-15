@@ -1,0 +1,8 @@
+---
+const { title, ...rest } = Astro.props;
+---
+
+<article class="card" {...rest}>
+  <h2>{title}</h2>
+  <slot />
+</article>

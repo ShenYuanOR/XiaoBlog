@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./ast": "./src/ast/index.ts"
+    "./ast": "./src/ast/index.ts",
+    "./loc": "./src/loc/index.ts"
   },
   "scripts": {
     "test": "vitest run"
@@ -14,6 +15,7 @@
     "magic-string": "1.4.3"
   },
   "devDependencies": {
+    "@types/node": "26.2.0",
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.1",
     "typescript": "5.9.3",

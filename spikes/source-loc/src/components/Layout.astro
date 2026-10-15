@@ -1,0 +1,11 @@
+---
+const { ...rest } = Astro.props;
+---
+
+<html lang="zh-CN">
+  <body>
+    <div class="shell" {...rest}>
+      <slot />
+    </div>
+  </body>
+</html>
