@@ -1,0 +1,132 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import Section from '../../components/xiao/Section.astro';
+import Container from '../../components/xiao/Container.astro';
+import Stack from '../../components/xiao/Stack.astro';
+import Columns from '../../components/xiao/Columns.astro';
+import Column from '../../components/xiao/Column.astro';
+import Grid from '../../components/xiao/Grid.astro';
+import Spacer from '../../components/xiao/Spacer.astro';
+import Divider from '../../components/xiao/Divider.astro';
+import Heading from '../../components/xiao/Heading.astro';
+import Text from '../../components/xiao/Text.astro';
+import RichText from '../../components/xiao/RichText.astro';
+import Image from '../../components/xiao/Image.astro';
+import Gallery from '../../components/xiao/Gallery.astro';
+import Button from '../../components/xiao/Button.astro';
+import Link from '../../components/xiao/Link.astro';
+import Icon from '../../components/xiao/Icon.astro';
+import Badge from '../../components/xiao/Badge.astro';
+import Quote from '../../components/xiao/Quote.astro';
+import Code from '../../components/xiao/Code.astro';
+import Card from '../../components/xiao/Card.astro';
+import Callout from '../../components/xiao/Callout.astro';
+import Tabs from '../../components/xiao/Tabs.astro';
+import TabPanel from '../../components/xiao/TabPanel.astro';
+import Accordion from '../../components/xiao/Accordion.astro';
+import PostList from '../../components/xiao/PostList.astro';
+import PostCard from '../../components/xiao/PostCard.astro';
+import CategoryTree from '../../components/xiao/CategoryTree.astro';
+import TagCloud from '../../components/xiao/TagCloud.astro';
+import Toc from '../../components/xiao/Toc.astro';
+import Profile from '../../components/xiao/Profile.astro';
+import Pagination from '../../components/xiao/Pagination.astro';
+import Video from '../../components/xiao/Video.astro';
+import Embed from '../../components/xiao/Embed.astro';
+import Html from '../../components/xiao/Html.astro';
+
+const views = {
+  Section,
+  Container,
+  Stack,
+  Columns,
+  Column,
+  Grid,
+  Spacer,
+  Divider,
+  Heading,
+  Text,
+  RichText,
+  Image,
+  Gallery,
+  Button,
+  Link,
+  Icon,
+  Badge,
+  Quote,
+  Code,
+  Card,
+  Callout,
+  Tabs,
+  TabPanel,
+  Accordion,
+  PostList,
+  PostCard,
+  CategoryTree,
+  TagCloud,
+  Toc,
+  Profile,
+  Pagination,
+  Video,
+  Embed,
+  Html,
+};
+
+export function getStaticPaths() {
+  return [
+    'Section',
+    'Container',
+    'Stack',
+    'Columns',
+    'Column',
+    'Grid',
+    'Spacer',
+    'Divider',
+    'Heading',
+    'Text',
+    'RichText',
+    'Image',
+    'Gallery',
+    'Button',
+    'Link',
+    'Icon',
+    'Badge',
+    'Quote',
+    'Code',
+    'Card',
+    'Callout',
+    'Tabs',
+    'TabPanel',
+    'Accordion',
+    'PostList',
+    'PostCard',
+    'CategoryTree',
+    'TagCloud',
+    'Toc',
+    'Profile',
+    'Pagination',
+    'Video',
+    'Embed',
+    'Html',
+  ].map((name) => ({ params: { name } }));
+}
+
+const { name } = Astro.params;
+const View = views[name];
+---
+
+<PageLayout title={name}>
+  <View
+    href="/about"
+    slug="hello-xiao"
+    labels={['一', '二']}
+    title="折叠"
+    code="const n = 1;"
+    alt="图标"
+    src="/favicon.svg"
+    images={[{ src: '/favicon.svg', alt: '图标' }]}
+    headings={[{ depth: 2, slug: 'x', text: '节' }]}
+  >
+    演示文字会自动换行。
+  </View>
+</PageLayout>

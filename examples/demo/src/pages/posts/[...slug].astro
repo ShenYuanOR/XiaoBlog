@@ -1,0 +1,26 @@
+---
+import PostLayout from '../../layouts/PostLayout.astro';
+import { neighbors, publishedPosts } from '../../lib/posts';
+import { render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await publishedPosts();
+  const visible = posts.filter((post) => post.data.noindex !== true);
+  return visible.map((post) => ({
+    params: { slug: post.id },
+    props: { post, posts: visible },
+  }));
+}
+
+const { post, posts } = Astro.props;
+const { Content, headings } = await render(post);
+const { prev, next } = neighbors(posts, post.id);
+const layouts = import.meta.glob('../../layouts/posts/*.astro', { eager: true });
+const custom = layouts[`../../layouts/posts/${post.id}.astro`] as
+  { default: typeof PostLayout } | undefined;
+const Layout = custom?.default ?? PostLayout;
+---
+
+<Layout post={post} headings={headings} prev={prev} next={next}>
+  <Content />
+</Layout>

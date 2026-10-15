@@ -1,0 +1,14 @@
+---
+import { loadConfig } from '../../lib/config';
+
+const config = loadConfig();
+---
+
+<footer class="footer">
+  <span>
+    © {config.site.since} {config.author.name}
+  </span>
+  {config.posts.license.enabled && (
+    <a href={config.posts.license.url}>{config.posts.license.name}</a>
+  )}
+</footer>

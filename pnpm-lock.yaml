@@ -33,8 +33,6 @@ importers:
         specifier: 8.71.2
         version: 8.71.2(eslint@10.12.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
 
-  examples/demo: {}
-
   packages/core:
     dependencies:
       '@astrojs/compiler-rs':
@@ -92,9 +90,6 @@ importers:
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@26.2.0)
-      shiki:
-        specifier: 4.5.0
-        version: 4.5.0
     devDependencies:
       '@astrojs/check':
         specifier: 0.9.10

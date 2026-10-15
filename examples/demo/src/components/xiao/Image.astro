@@ -1,0 +1,14 @@
+---
+const { src = '', alt = '', caption = '', ratio = 'auto', ...rest } = Astro.props;
+---
+
+<figure {...rest}>
+  <img
+    class:list={['x-media', ratio !== 'auto' && `x-ratio-${ratio.replace(':', 'x')}`]}
+    src={src}
+    alt={alt}
+    width="1200"
+    height="675"
+  />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

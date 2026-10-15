@@ -1,0 +1,10 @@
+---
+import { loadConfig } from '../../lib/config';
+const config = loadConfig();
+const { ...rest } = Astro.props;
+---
+
+<section class="x-stack x-dir-row" {...rest}>
+  <strong>{config.author.name}</strong>
+  <span>{config.author.bio}</span>
+</section>

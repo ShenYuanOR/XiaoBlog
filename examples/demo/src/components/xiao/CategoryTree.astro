@@ -1,0 +1,13 @@
+---
+import { categoriesOf, publishedPosts } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+const categories = categoriesOf(await publishedPosts());
+---
+
+<ul>
+  {categories.map((item) => (
+    <li>
+      <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)}>{item.name}</a>
+    </li>
+  ))}
+</ul>

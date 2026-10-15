@@ -1,0 +1,8 @@
+---
+const { level = 2, ...rest } = Astro.props;
+const Tag = `h${level}`;
+---
+
+<Tag {...rest}>
+  <slot />
+</Tag>

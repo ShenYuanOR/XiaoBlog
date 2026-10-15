@@ -1,0 +1,12 @@
+---
+const { labels = [], ...rest } = Astro.props;
+---
+
+<div {...rest}>
+  <ul>
+    {labels.map((label) => (
+      <li>{label}</li>
+    ))}
+  </ul>
+  <slot />
+</div>

@@ -17,3 +17,4 @@ LICENSE
 /.agents
 /coverage
 packages/core/src/markdown/corpus
+examples/demo/src/content

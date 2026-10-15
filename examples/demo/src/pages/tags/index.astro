@@ -1,0 +1,17 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import { publishedPosts, tagsOf } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+
+const tags = tagsOf(await publishedPosts());
+---
+
+<PageLayout title="标签">
+  <ul>
+    {tags.map((tag) => (
+      <li>
+        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a> ({tag.count})
+      </li>
+    ))}
+  </ul>
+</PageLayout>

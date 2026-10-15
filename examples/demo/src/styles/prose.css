@@ -1,0 +1,17 @@
+.prose {
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  line-height: 1.25;
+}
+
+.prose pre {
+  overflow: auto;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+}

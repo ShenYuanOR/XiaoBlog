@@ -1,0 +1,8 @@
+---
+const { cite, ...rest } = Astro.props;
+---
+
+<blockquote class="x-quote" {...rest}>
+  <slot />
+  {cite && <footer>{cite}</footer>}
+</blockquote>

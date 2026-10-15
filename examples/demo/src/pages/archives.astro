@@ -1,0 +1,18 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { publishedPosts } from '../lib/posts';
+import { withBase } from '../lib/base';
+
+const posts = await publishedPosts();
+---
+
+<PageLayout title="归档">
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
+        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+      </li>
+    ))}
+  </ul>
+</PageLayout>

@@ -1,0 +1,24 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import { publishedPosts } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+
+export async function getStaticPaths() {
+  const posts = await publishedPosts();
+  const tags = new Set(posts.flatMap((post) => post.data.tags));
+  return [...tags].map((tag) => ({ params: { tag }, props: { tag } }));
+}
+
+const { tag } = Astro.props;
+const posts = (await publishedPosts()).filter((post) => post.data.tags.includes(tag));
+---
+
+<PageLayout title={tag}>
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+      </li>
+    ))}
+  </ul>
+</PageLayout>

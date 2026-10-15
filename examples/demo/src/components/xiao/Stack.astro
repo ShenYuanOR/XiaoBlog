@@ -1,0 +1,34 @@
+---
+const { pad, bg, hideOn, ...rest } = Astro.props;
+const hide = Array.isArray(hideOn) ? hideOn : hideOn ? [hideOn] : [];
+const classes = [
+  'x-box',
+  pad ? `x-pad-${pad}` : '',
+  bg ? `x-bg-${bg}` : '',
+  ...hide.map((item) => `x-hide-${item}`),
+]
+  .filter(Boolean)
+  .join(' ');
+const {
+  direction = 'column',
+  gap = 'md',
+  align = 'start',
+  justify = 'start',
+  wrap = false,
+} = Astro.props;
+---
+
+<div
+  class:list={[
+    classes,
+    'x-stack',
+    `x-dir-${direction}`,
+    `x-gap-${gap}`,
+    `x-align-${align}`,
+    `x-justify-${justify}`,
+    wrap && 'x-wrap',
+  ]}
+  {...rest}
+>
+  <slot />
+</div>

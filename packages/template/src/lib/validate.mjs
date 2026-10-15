@@ -18,21 +18,34 @@ function routeOf(file, dist) {
   return `/${rel.replace(/\.html$/, '')}`;
 }
 
-function normalizeHref(href) {
-  const bare = decodeURIComponent(href.split('#')[0].split('?')[0]);
+function siteBase() {
+  try {
+    const config = JSON.parse(readFileSync(path.join(process.cwd(), 'xiao.config.json'), 'utf8'));
+    const base = typeof config.site?.base === 'string' ? config.site.base : '/';
+    if (base === '/') return '';
+    return base.endsWith('/') ? base.slice(0, -1) : base;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeHref(href, base) {
+  let bare = decodeURIComponent(href.split('#')[0].split('?')[0]);
+  if (base && (bare === base || bare.startsWith(`${base}/`))) bare = bare.slice(base.length) || '/';
   return bare.replace(/\/+$/, '') || '/';
 }
 
 export function checkBuiltSite(dist) {
   const files = walk(dist).filter((file) => !file.includes(`${path.sep}pagefind${path.sep}`));
   const known = new Set(files.map((file) => routeOf(file, dist)));
+  const base = siteBase();
   const errors = [];
   for (const file of files) {
     const html = readFileSync(file, 'utf8');
     for (const match of html.matchAll(/href="([^"]+)"/g)) {
       const href = match[1];
       if (!href.startsWith('/') || href.startsWith('//')) continue;
-      const normalized = normalizeHref(href);
+      const normalized = normalizeHref(href, base);
       if (/\.[a-z0-9]+$/i.test(normalized)) continue;
       if (!known.has(normalized)) errors.push(`${routeOf(file, dist)} -> ${href}`);
     }

@@ -1,51 +1,23 @@
-name: Deploy
-
+name: Deploy to GitHub Pages
 on:
   push:
     branches: [master]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: pages
-  cancel-in-progress: true
-
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: withastro/action@v6
         with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Generate redirects
-        run: pnpm gen:redirects
-
-      - name: Build
-        run: pnpm build
-
-      - name: Validate
-        run: pnpm validate
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .vitepress/dist
-
+          path: examples/demo
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -54,4 +26,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,18 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import { categoriesOf, publishedPosts } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+
+const categories = categoriesOf(await publishedPosts());
+---
+
+<PageLayout title="分类">
+  <ul>
+    {categories.map((item) => (
+      <li>
+        <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)}>{item.name}</a> (
+        {item.count})
+      </li>
+    ))}
+  </ul>
+</PageLayout>

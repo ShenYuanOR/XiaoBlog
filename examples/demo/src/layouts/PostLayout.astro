@@ -1,0 +1,41 @@
+---
+import Base from './BaseLayout.astro';
+import SideTree from '../components/site/SideTree.astro';
+import Toc from '../components/site/Toc.astro';
+import { withBase } from '../lib/base';
+import { categoriesOf, publishedPosts, type PostEntry } from '../lib/posts';
+import { articleHeads } from '../lib/seo';
+
+interface Props {
+  post: PostEntry;
+  headings: { depth: number; slug: string; text: string }[];
+  prev?: PostEntry;
+  next?: PostEntry;
+}
+const { post, headings, prev, next } = Astro.props;
+const posts = await publishedPosts();
+const heads = articleHeads({
+  slug: post.id,
+  title: post.data.title,
+  description: post.data.description ?? post.data.title,
+  date: post.data.date,
+  updated: post.data.updated,
+  tags: post.data.tags,
+  noindex: post.data.noindex,
+});
+---
+
+<Base title={post.data.title} description={post.data.description} heads={heads}>
+  <div class="shell">
+    <SideTree categories={categoriesOf(posts)} current={post.data.category} />
+    <article class="prose">
+      <h1>{post.data.title}</h1>
+      <slot />
+      <p>
+        {prev && <a href={withBase(`posts/${prev.id}/`)}>上一篇：{prev.data.title}</a>}
+        {next && <a href={withBase(`posts/${next.id}/`)}>下一篇：{next.data.title}</a>}
+      </p>
+    </article>
+    <Toc headings={headings} />
+  </div>
+</Base>

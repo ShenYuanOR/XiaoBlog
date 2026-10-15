@@ -1,0 +1,25 @@
+---
+import { withBase } from '../../lib/base';
+
+interface Props {
+  categories: { name: string; count: number }[];
+  current?: string;
+}
+const { categories, current } = Astro.props;
+---
+
+<aside class="side">
+  <strong>分类</strong>
+  <ul>
+    {categories.map((item) => (
+      <li>
+        <a
+          href={withBase(`categories/${encodeURIComponent(item.name)}/`)}
+          aria-current={item.name === current ? 'page' : undefined}
+        >
+          {item.name} ({item.count})
+        </a>
+      </li>
+    ))}
+  </ul>
+</aside>
