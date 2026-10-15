@@ -1,4 +1,4 @@
-import { acceptWrite, writeBlocks } from './blocks.ts';
+import { acceptWrite, editedGuardLabels, writeBlocks } from './blocks.ts';
 import { patchFrontmatter, splitFrontmatter } from './frontmatter.ts';
 import { fingerprint, parseMarkdown, stringifyMarkdown } from './parse.ts';
 import { sniffStyle, type MarkdownStyle } from './style.ts';
@@ -17,7 +17,8 @@ export interface MarkdownSession {
 export interface SaveResult {
   write: boolean;
   text: string;
-  reason: 'clean' | 'unchanged' | 'identical' | 'edited' | 'rejected';
+  reason: 'clean' | 'unchanged' | 'identical' | 'edited' | 'rejected' | 'GUARDED_BLOCK_EDITED';
+  code?: 'GUARDED_BLOCK_EDITED';
 }
 
 export function openMarkdown(source: string): MarkdownSession {
@@ -46,6 +47,15 @@ export function saveMarkdown(
   if (!session.dirty && !fmPatch) return { write: false, text: session.original, reason: 'clean' };
   if (fingerprint(currentBody, session.style) === session.base && !fmPatch) {
     return { write: false, text: session.original, reason: 'unchanged' };
+  }
+  const editedGuards = editedGuardLabels(session.body, currentBody, session.style);
+  if (editedGuards.length > 0) {
+    return {
+      write: false,
+      text: session.original,
+      reason: 'GUARDED_BLOCK_EDITED',
+      code: 'GUARDED_BLOCK_EDITED',
+    };
   }
   const newBody = writeBlocks(session.body, currentBody, session.style);
   if (!acceptWrite(newBody, currentBody, session.body, session.style)) {

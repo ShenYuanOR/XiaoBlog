@@ -104,7 +104,7 @@ function align(original: readonly Block[], current: readonly Block[]): Edit[] {
     const down = scores[i + 1]?.[j] ?? 0;
     const right = scores[i]?.[j + 1] ?? 0;
     if (down >= right) {
-      edits.push({ kind: original[i]?.guarded ? 'keep' : 'drop', index: i });
+      edits.push({ kind: 'drop', index: i });
       i += 1;
     } else {
       edits.push({ kind: 'insert', index: j });
@@ -112,7 +112,7 @@ function align(original: readonly Block[], current: readonly Block[]): Edit[] {
     }
   }
   while (i < rows) {
-    edits.push({ kind: original[i]?.guarded ? 'keep' : 'drop', index: i });
+    edits.push({ kind: 'drop', index: i });
     i += 1;
   }
   while (j < cols) {
@@ -167,6 +167,18 @@ export function writeBlocks(
   else if (originalBody.endsWith('\n') && !out.endsWith('\n'))
     out += originalBody.endsWith('\r\n') ? '\r\n' : '\n';
   return out;
+}
+
+export function editedGuardLabels(
+  originalBody: string,
+  currentBody: string,
+  style: MarkdownStyle,
+): string[] {
+  const original = readBlocks(originalBody, style).filter((block) => block.guarded);
+  const currentFps = new Set(readBlocks(currentBody, style).map((block) => block.fp));
+  return original
+    .filter((block) => !currentFps.has(block.fp) && !currentBody.includes(block.slice.trim()))
+    .map((block) => block.slice.trim().slice(0, 48));
 }
 
 export function acceptWrite(

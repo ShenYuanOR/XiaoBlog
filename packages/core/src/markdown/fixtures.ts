@@ -1,0 +1,15 @@
+export const fixtures: Record<string, string> = {
+  emphasis: '这是 *星号* 和 _下划线_ 以及 **粗** 与 __粗二__。\n',
+  bullets: '- 甲\n- 乙\n  - 丙\n',
+  ordered: '1. 第一\n1. 第二\n1. 第三\n',
+  rule: '上\n\n---\n\n下\n',
+  'hard-break': '第一行  \n第二行\n',
+  'soft-break': '这是 *跨行\n强调* 文本。\n',
+  'code-meta': '```ts title="a.ts"\nconst n = 1\n```\n',
+  reference: '见 [文档][ref]。\n\n[ref]: https://example.com/docs\n',
+  image: '![测试图片](./cover.png)\n',
+  autolink: '见 <http://example.com/foo\\bar>。\n',
+  container: '::: tip\n容器里的话\n:::\n',
+  html: '<div class="note">原文 HTML</div>\n',
+  table: '| 甲 | 乙 |\n| --- | --- |\n| 1 | 2 |\n',
+};

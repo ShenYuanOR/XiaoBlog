@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { fixtures } from './fixtures.ts';
 import { markDirty, openMarkdown, saveMarkdown, simulateEditor, writeBlocks } from './index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -16,22 +17,6 @@ function listMarkdown(dir: string): string[] {
   }
   return found;
 }
-
-const fixtures: Record<string, string> = {
-  emphasis: '这是 *星号* 和 _下划线_ 以及 **粗** 与 __粗二__。\n',
-  bullets: '- 甲\n- 乙\n  - 丙\n',
-  ordered: '1. 第一\n1. 第二\n1. 第三\n',
-  rule: '上\n\n---\n\n下\n',
-  'hard-break': '第一行  \n第二行\n',
-  'soft-break': '这是 *跨行\n强调* 文本。\n',
-  'code-meta': '```ts title="a.ts"\nconst n = 1\n```\n',
-  reference: '见 [文档][ref]。\n\n[ref]: https://example.com/docs\n',
-  image: '![测试图片](./cover.png)\n',
-  autolink: '见 <http://example.com/foo\\bar>。\n',
-  container: '::: tip\n容器里的话\n:::\n',
-  html: '<div class="note">原文 HTML</div>\n',
-  table: '| 甲 | 乙 |\n| --- | --- |\n| 1 | 2 |\n',
-};
 
 function changedLines(before: string, after: string): string[] {
   const left = before.split(/\r?\n/);
@@ -93,19 +78,31 @@ describe('只改一段', () => {
   });
 });
 
-describe('守卫语法原样', () => {
-  it.each(['code-meta', 'reference', 'image', 'autolink', 'container', 'html'] as const)(
-    '%s 被编辑器打散后仍保留原文',
-    (name) => {
-      const source = fixtures[name] ?? '';
-      const session = markDirty(openMarkdown(source));
-      const current = `${simulateEditor(session.body, session.style)}\n\n额外一段。\n`;
-      const saved = saveMarkdown(session, current);
-      const kept = saved.write ? saved.text : saved.text;
-      expect(kept).toContain(source.trim().split('\n')[0] ?? '');
-      if (saved.write) expect(saved.text).toContain('额外一段');
-    },
-  );
+describe('守卫块被修改', () => {
+  it('改了带 meta 的代码块就拒绝写盘', () => {
+    const source = fixtures['code-meta'] ?? '';
+    const edited = source
+      .replace('title="a.ts"', 'title="b.ts"')
+      .replace('const n = 1', 'const n = 2');
+    const saved = saveMarkdown(markDirty(openMarkdown(source)), edited);
+    expect(saved.write).toBe(false);
+    expect(saved.code).toBe('GUARDED_BLOCK_EDITED');
+    expect(saved.text).toBe(source);
+  });
+
+  it('守卫块没变时，普通段落仍可写回', () => {
+    const source = `普通段落。\n\n${fixtures['code-meta'] ?? ''}`;
+    const session = markDirty(openMarkdown(source));
+    const current = simulateEditor(session.body, session.style).replace(
+      '普通段落。',
+      '普通段落已改。',
+    );
+    const saved = saveMarkdown(session, current);
+    expect(saved.code).toBeUndefined();
+    expect(saved.text).toContain('普通段落已改。');
+    expect(saved.text).toContain('title="a.ts"');
+    expect(saved.text).not.toContain('普通段落。');
+  });
 });
 
 describe('上游缺陷', () => {

@@ -33,7 +33,12 @@ onMounted(async () => {
 function save(): void {
   if (!crepe) return;
   const result = saveMarkdown(session.value, crepe.getMarkdown());
-  status.value = result.write ? '已写回，未改动的块保持原文' : `未写盘：${result.reason}`;
+  status.value =
+    result.code === 'GUARDED_BLOCK_EDITED'
+      ? '有损语法被改动，已拒绝写盘。请切换到源码模式。'
+      : result.write
+        ? '已写回，未改动的块保持原文'
+        : `未写盘：${result.reason}`;
 }
 
 onBeforeUnmount(() => {
