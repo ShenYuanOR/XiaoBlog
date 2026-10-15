@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml"
+    "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml",
+    "stage": "node scripts/stage-pack.mjs",
+    "pack:win": "node scripts/stage-pack.mjs && electron-vite build && electron-builder --win nsis portable -c electron-builder.yml"
   },
   "devDependencies": {
     "@shikijs/monaco": "4.5.0",

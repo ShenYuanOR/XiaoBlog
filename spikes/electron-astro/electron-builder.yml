@@ -10,7 +10,23 @@ asar: true
 extraResources:
   - from: resources/shim
     to: shim
+  - from: resources/staged/template
+    to: template
+  - from: resources/staged/pnpm
+    to: pnpm
+  - from: resources/staged/pnpm-store.tar.zst
+    to: pnpm-store.tar.zst
+  - from: resources/staged/guides
+    to: guides
 win:
   target:
-    - dir
+    - nsis
+    - portable
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+portable:
+  artifactName: ${productName}-Portable-${version}-${arch}.${ext}
 npmRebuild: false
