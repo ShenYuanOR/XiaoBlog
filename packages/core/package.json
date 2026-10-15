@@ -5,14 +5,19 @@
   "type": "module",
   "exports": {
     "./ast": "./src/ast/index.ts",
-    "./loc": "./src/loc/index.ts"
+    "./loc": "./src/loc/index.ts",
+    "./markdown": "./src/markdown/index.ts"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/compiler-rs": "0.5.2",
-    "magic-string": "1.4.3"
+    "magic-string": "1.4.3",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "@types/node": "26.2.0",
