@@ -18,6 +18,7 @@ interface Row {
   reason: SaveResult['reason'];
   code: string;
   same: boolean;
+  rawDiff: boolean;
 }
 
 async function roundtrip(name: string, source: string): Promise<Row> {
@@ -27,10 +28,17 @@ async function roundtrip(name: string, source: string): Promise<Row> {
   const session = markDirty(openMarkdown(source));
   const crepe = new Crepe({ root: host, defaultValue: session.body });
   await crepe.create();
-  const saved = saveMarkdown(session, crepe.getMarkdown());
+  const current = crepe.getMarkdown();
+  const saved = saveMarkdown(session, current);
   await crepe.destroy();
   host.remove();
-  return { name, reason: saved.reason, code: saved.code ?? '', same: saved.text === source };
+  return {
+    name,
+    reason: saved.reason,
+    code: saved.code ?? '',
+    same: saved.text === source,
+    rawDiff: current !== session.body,
+  };
 }
 
 async function keyLatency(): Promise<{ ms: number; changed: boolean }> {
@@ -67,6 +75,7 @@ const failed = rows.filter((row) => !row.same);
 const summary = {
   total: rows.length,
   same: rows.length - failed.length,
+  rawDiff: rows.filter((row) => row.rawDiff).length,
   failed: failed.map((row) => ({ name: row.name, reason: row.reason, code: row.code })),
   latency,
 };

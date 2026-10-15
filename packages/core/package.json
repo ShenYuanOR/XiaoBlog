@@ -6,7 +6,8 @@
   "exports": {
     "./ast": "./src/ast/index.ts",
     "./loc": "./src/loc/index.ts",
-    "./markdown": "./src/markdown/index.ts"
+    "./markdown": "./src/markdown/index.ts",
+    "./responsive": "./src/responsive/inspect.mjs"
   },
   "scripts": {
     "test": "vitest run"
