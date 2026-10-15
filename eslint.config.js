@@ -6,6 +6,10 @@ export default defineConfig(
   globalIgnores([
     'node_modules/**',
     '**/dist/**',
+    '**/out/**',
+    '**/release/**',
+    '**/.astro/**',
+    '**/.xiao-loc-order.json',
     'docs/**',
     'public/**',
     'scripts/**',

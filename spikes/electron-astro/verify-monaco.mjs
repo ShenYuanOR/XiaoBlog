@@ -17,7 +17,9 @@ const browser = await puppeteer.launch({
 
 try {
   const pages = await browser.pages();
-  let page = pages.find((item) => item.url().includes('index.html') || item.url().startsWith('file:'));
+  let page = pages.find(
+    (item) => item.url().includes('index.html') || item.url().startsWith('file:'),
+  );
   const deadline = Date.now() + 20000;
   while (!page && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -35,7 +37,8 @@ try {
   if (!/keyword|storage/.test(types)) throw new Error(`astro 缺少关键字着色：${types}`);
   if (!/tag|entity\.name\.tag/.test(types)) throw new Error(`astro 缺少标签着色：${types}`);
   if (result.markdownTypes.length < 2) throw new Error('markdown 没有着色');
-  if (!result.light || result.light === result.dark) throw new Error(`主题没有切换：${result.light} / ${result.dark}`);
+  if (!result.light || result.light === result.dark)
+    throw new Error(`主题没有切换：${result.light} / ${result.dark}`);
   if (result.typescript < 1) throw new Error('TypeScript 没有补全');
   if (result.css < 1) throw new Error('CSS 没有补全');
   if (result.json < 1) throw new Error('JSON 没有补全');

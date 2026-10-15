@@ -14,7 +14,8 @@ try {
   const summary = await page.evaluate(() => window.__xiaoCrepeSummary);
   console.log(JSON.stringify(summary, null, 2));
   if (!summary || summary.total < 20) throw new Error('语料不足');
-  if (summary.same !== summary.total) throw new Error(`零 diff 未全部通过：${summary.same}/${summary.total}`);
+  if (summary.same !== summary.total)
+    throw new Error(`零 diff 未全部通过：${summary.same}/${summary.total}`);
   if (!summary.latency?.changed) throw new Error('按键没有进入文档');
   console.log('CREPE_OK');
 } finally {

@@ -22,7 +22,11 @@ const tinyJpeg = Buffer.from(
 function run(command, args, options = {}) {
   const line = [command, ...args].join(' ');
   return new Promise((resolve, reject) => {
-    const child = spawn('cmd.exe', ['/d', '/c', line], { stdio: 'inherit', windowsHide: true, ...options });
+    const child = spawn('cmd.exe', ['/d', '/c', line], {
+      stdio: 'inherit',
+      windowsHide: true,
+      ...options,
+    });
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code === 0) resolve();
@@ -60,7 +64,8 @@ await cp(site, templateRoot, {
     const relative = path.relative(site, source);
     if (!relative) return true;
     const parts = relative.split(path.sep);
-    if (parts.includes('node_modules') || parts.includes('dist') || parts[0] === '.astro') return false;
+    if (parts.includes('node_modules') || parts.includes('dist') || parts[0] === '.astro')
+      return false;
     if (relative.replaceAll('\\', '/') === 'src/content/posts/big/cover.jpg') return false;
     return true;
   },
@@ -83,9 +88,17 @@ if (path.resolve(extracted) !== path.resolve(pnpmRoot, 'pnpm.exe')) {
 }
 
 await mkdir(storeRoot, { recursive: true });
-await run(path.join(pnpmRoot, 'pnpm.exe'), ['fetch', '--store-dir', storeRoot], { cwd: templateRoot });
+await run(path.join(pnpmRoot, 'pnpm.exe'), ['fetch', '--store-dir', storeRoot], {
+  cwd: templateRoot,
+});
 await rm(path.join(templateRoot, 'node_modules'), { recursive: true, force: true });
-await run('C:\\Windows\\System32\\tar.exe', ['-cf', path.join(stagedRoot, 'store.tar'), '-C', stagedRoot, 'store']);
+await run('C:\\Windows\\System32\\tar.exe', [
+  '-cf',
+  path.join(stagedRoot, 'store.tar'),
+  '-C',
+  stagedRoot,
+  'store',
+]);
 await run('zstd', ['-T0', '-19', '-f', path.join(stagedRoot, 'store.tar'), '-o', archivePath], {
   env: { ...process.env, MSYS2_ARG_CONV_EXCL: '*' },
 });
@@ -94,7 +107,10 @@ await rm(storeRoot, { recursive: true, force: true });
 await rm(packRoot, { recursive: true, force: true });
 
 await mkdir(guideRoot, { recursive: true });
-await cp(path.join(spikeRoot, 'resources', 'guides', 'smartscreen.txt'), path.join(guideRoot, 'smartscreen.txt'));
+await cp(
+  path.join(spikeRoot, 'resources', 'guides', 'smartscreen.txt'),
+  path.join(guideRoot, 'smartscreen.txt'),
+);
 const lockHash = await sha256(path.join(templateRoot, 'pnpm-lock.yaml'));
 const archiveHash = await sha256(archivePath);
 const archiveSize = (await stat(archivePath)).size;
@@ -103,4 +119,6 @@ await writeFile(
   path.join(guideRoot, 'checksums.txt'),
   `pnpm-lock.yaml ${lockHash}\npnpm-store.tar.zst ${archiveHash}\n`,
 );
-console.log(JSON.stringify({ archiveBytes: archiveSize, pnpmBytes: pnpmSize, lockHash, archiveHash }));
+console.log(
+  JSON.stringify({ archiveBytes: archiveSize, pnpmBytes: pnpmSize, lockHash, archiveHash }),
+);

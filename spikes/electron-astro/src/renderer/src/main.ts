@@ -91,11 +91,18 @@ document.querySelector('#theme')?.addEventListener('click', () => {
 
 function tokenTypes(source: string, language: string): string[] {
   return [
-    ...new Set(monaco.editor.tokenize(source, language).flatMap((line) => line.map((token) => token.type))),
+    ...new Set(
+      monaco.editor.tokenize(source, language).flatMap((line) => line.map((token) => token.type)),
+    ),
   ];
 }
 
-async function completionCount(language: 'typescript' | 'css' | 'json', source: string, line: number, column: number): Promise<number> {
+async function completionCount(
+  language: 'typescript' | 'css' | 'json',
+  source: string,
+  line: number,
+  column: number,
+): Promise<number> {
   const extension = language === 'typescript' ? 'ts' : language;
   const model = monaco.editor.createModel(
     source,
