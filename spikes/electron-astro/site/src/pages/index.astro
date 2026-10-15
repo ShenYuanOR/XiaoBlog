@@ -9,15 +9,22 @@ if (!post) {
   throw new Error('缺少文章');
 }
 const { Content } = await render(post);
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 ---
 
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <title>{post.data.title}</title>
+    <link rel="canonical" href={`https://spike.example${base}`} />
   </head>
   <body>
     <p id="marker">SPIKE_MARKER</p>
+    <p>
+      <a href={`${base}note/`}>笔记</a>
+    </p>
     <Content />
     <Picture src={cover} formats={['avif', 'webp']} alt="大图多格式" layout="constrained" />
   </body>

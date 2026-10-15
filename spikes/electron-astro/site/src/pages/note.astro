@@ -1,0 +1,25 @@
+---
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+---
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>笔记</title>
+    <link rel="canonical" href={`https://spike.example${base}note/`} />
+  </head>
+  <body>
+    <p id="term">青柠检索</p>
+    <a href={base}>回首页</a>
+    <script is:inline type="module" define:vars={{ base }}>
+      const pagefind = await import(`${base}pagefind/pagefind.js`);
+      await pagefind.options({ baseUrl: base });
+      const search = await pagefind.search('青柠检索');
+      const first = search.results[0] ? await search.results[0].data() : null;
+      document.documentElement.dataset.hits = String(search.results.length);
+      document.documentElement.dataset.hit = first?.url ?? '';
+    </script>
+  </body>
+</html>
