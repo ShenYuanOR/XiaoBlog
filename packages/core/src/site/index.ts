@@ -18,3 +18,4 @@ export {
   toPinyinSlug,
 } from './slug.ts';
 export { findDeadLinks, validatePosts, type PostRecord, type ValidationIssue } from './validate.ts';
+export { migratePost, type MigratedFolderPost } from './migrate.ts';
