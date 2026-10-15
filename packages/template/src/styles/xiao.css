@@ -145,7 +145,8 @@
 }
 
 .x-button,
-.x-link {
+.x-link,
+summary {
   min-height: 44px;
   display: inline-flex;
   align-items: center;

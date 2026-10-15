@@ -1,0 +1,9 @@
+---
+const { headings = [] } = Astro.props;
+---
+
+<nav {...Astro.props}>
+  {headings.map((heading) => (
+    <a href={`#${heading.slug}`}>{heading.text}</a>
+  ))}
+</nav>

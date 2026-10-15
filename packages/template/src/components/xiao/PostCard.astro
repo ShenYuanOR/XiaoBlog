@@ -1,0 +1,12 @@
+---
+import { getEntry } from 'astro:content';
+import { withBase } from '../../lib/base';
+const { slug = 'hello' } = Astro.props;
+const post = await getEntry('posts', slug);
+---
+
+{post && (
+  <a class="x-card x-link" href={withBase(`posts/${post.id}/`)}>
+    {post.data.title}
+  </a>
+)}

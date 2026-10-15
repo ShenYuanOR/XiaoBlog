@@ -1,0 +1,10 @@
+---
+const { src = '', ratio = '16:9', ...rest } = Astro.props;
+---
+
+<video
+  class:list={['x-media', `x-ratio-${ratio.replace(':', 'x')}`]}
+  src={src}
+  controls
+  {...rest}
+></video>

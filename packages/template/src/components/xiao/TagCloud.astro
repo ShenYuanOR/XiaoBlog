@@ -1,0 +1,14 @@
+---
+import { publishedPosts, tagsOf } from '../../lib/posts';
+import { withBase } from '../../lib/base';
+const { limit = 20 } = Astro.props;
+const tags = tagsOf(await publishedPosts()).slice(0, limit);
+---
+
+<ul>
+  {tags.map((tag) => (
+    <li>
+      <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a>
+    </li>
+  ))}
+</ul>

@@ -1,0 +1,8 @@
+---
+const { title = '', type = 'info', ...rest } = Astro.props;
+---
+
+<aside class="x-callout" data-type={type} {...rest}>
+  {title && <strong>{title}</strong>}
+  <slot />
+</aside>

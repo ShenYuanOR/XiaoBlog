@@ -1,0 +1,17 @@
+---
+const { pad, bg, hideOn, ...rest } = Astro.props;
+const hide = Array.isArray(hideOn) ? hideOn : hideOn ? [hideOn] : [];
+const classes = [
+  'x-box',
+  pad ? `x-pad-${pad}` : '',
+  bg ? `x-bg-${bg}` : '',
+  ...hide.map((item) => `x-hide-${item}`),
+]
+  .filter(Boolean)
+  .join(' ');
+const { gap = 'md' } = Astro.props;
+---
+
+<div class:list={[classes, 'x-grid', `x-gap-${gap}`]} {...rest}>
+  <slot />
+</div>
