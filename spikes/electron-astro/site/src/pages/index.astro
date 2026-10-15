@@ -1,0 +1,24 @@
+---
+import { Picture } from 'astro:assets';
+import { getCollection, render } from 'astro:content';
+import cover from '../content/posts/big/cover.jpg';
+
+const posts = await getCollection('posts');
+const post = posts[0];
+if (!post) {
+  throw new Error('缺少文章');
+}
+const { Content } = await render(post);
+---
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>{post.data.title}</title>
+  </head>
+  <body>
+    <p id="marker">SPIKE_MARKER</p>
+    <Content />
+    <Picture src={cover} formats={['avif', 'webp']} alt="大图多格式" layout="constrained" />
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "spike-astro-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "probe-node": "node -p \"process.versions.node + ' ' + process.execPath\""
+  },
+  "dependencies": {
+    "astro": "7.3.8",
+    "sharp": "0.35.5"
+  }
+}

@@ -7,3 +7,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  electron: true
+  electron-winstaller: true
+
+minimumReleaseAgeExclude:
+  - electron-vite@6.0.0

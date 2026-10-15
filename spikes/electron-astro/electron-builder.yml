@@ -1,0 +1,16 @@
+appId: site.xiaoblog.spike.electron-astro
+productName: XiaoSpike
+executableName: XiaoSpike
+directories:
+  output: release
+files:
+  - out
+  - package.json
+asar: true
+extraResources:
+  - from: resources/shim
+    to: shim
+win:
+  target:
+    - dir
+npmRebuild: false
