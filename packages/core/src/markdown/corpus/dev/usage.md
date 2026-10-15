@@ -16,19 +16,19 @@ pnpm install
 
 ## 常用命令
 
-| 命令                 | 说明                                                                         |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `pnpm dev`           | 本地预览（草稿默认隐藏），默认开启局域网访问，端口占用自动递增               |
-| `pnpm dev:drafts`    | 本地预览（包含草稿）                                                         |
-| `pnpm new`           | 发文向导                                                                     |
-| `pnpm tidy`          | 手动归位暂存区图片（构建时自动执行，一般用不到）                             |
-| `pnpm build`         | 构建（内置 SEO 生成 + 校验，校验失败不出包）                                 |
-| `pnpm preview`       | 预览构建产物                                                                 |
-| `pnpm validate`      | 单独运行校验器（需先 build）                                                 |
-| `pnpm gen:redirects` | 生成重定向规则（redirects.yml → `_redirects` + nginx）                       |
-| `pnpm migrate`       | 从其他框架迁移（Valaxy/Hexo），详见[迁移指南](migration.md)                  |
-| `pnpm annotate`      | 为已有文章的无语言代码块自动推断语言标记（json/html/css/bash），获得准确高亮 |
-| `pnpm xiao:update`   | 框架更新（`--source <本地框架目录>` 离线更新，详见下文）                     |
+| 命令 | 说明 |
+|---|---|
+| `pnpm dev` | 本地预览（草稿默认隐藏），默认开启局域网访问，端口占用自动递增 |
+| `pnpm dev:drafts` | 本地预览（包含草稿） |
+| `pnpm new` | 发文向导 |
+| `pnpm tidy` | 手动归位暂存区图片（构建时自动执行，一般用不到） |
+| `pnpm build` | 构建（内置 SEO 生成 + 校验，校验失败不出包） |
+| `pnpm preview` | 预览构建产物 |
+| `pnpm validate` | 单独运行校验器（需先 build） |
+| `pnpm gen:redirects` | 生成重定向规则（redirects.yml → `_redirects` + nginx） |
+| `pnpm migrate` | 从其他框架迁移（Valaxy/Hexo），详见[迁移指南](migration.md) |
+| `pnpm annotate` | 为已有文章的无语言代码块自动推断语言标记（json/html/css/bash），获得准确高亮 |
+| `pnpm xiao:update` | 框架更新（`--source <本地框架目录>` 离线更新，详见下文） |
 
 ## 写作流程
 
@@ -41,20 +41,20 @@ pnpm install
 
 ## frontmatter Schema
 
-| 字段          | 必填 | 说明                                                                              |
-| ------------- | ---- | --------------------------------------------------------------------------------- |
-| `title`       | 是   | 文章标题（正文不要再写一级标题，避免与页面 H1 重复）                              |
-| `slug`        | 是   | 稳定 ASCII slug，决定 URL `/posts/<slug>`；发布后不可改，改动需登记 redirects.yml |
-| `date`        | 是   | `YYYY-MM-DD [HH:mm:ss]`，解析后按本地墙钟保留                                     |
-| `description` | 是   | 摘要，用于 meta/OG/sitemap/RSS                                                    |
-| `tags`        | 是   | 标签数组                                                                          |
-| `updated`     | 否   | 更新时间，不得早于 date                                                           |
-| `category`    | 否   | 分类（单值）                                                                      |
-| `cover`       | 否   | 封面，public 内路径（如 `/covers/xxx.png`）                                       |
-| `draft`       | 否   | 草稿：dev 隐藏、build 排除、不进 sitemap/RSS                                      |
-| `noindex`     | 否   | 构建但禁止收录                                                                    |
-| `layout`      | 否   | `essay` / `note` / `page`，默认 essay；未注册名构建报错                           |
-| `license`     | 否   | 覆盖全局版权默认值（blog.config.ts）                                              |
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `title` | 是 | 文章标题（正文不要再写一级标题，避免与页面 H1 重复） |
+| `slug` | 是 | 稳定 ASCII slug，决定 URL `/posts/<slug>`；发布后不可改，改动需登记 redirects.yml |
+| `date` | 是 | `YYYY-MM-DD [HH:mm:ss]`，解析后按本地墙钟保留 |
+| `description` | 是 | 摘要，用于 meta/OG/sitemap/RSS |
+| `tags` | 是 | 标签数组 |
+| `updated` | 否 | 更新时间，不得早于 date |
+| `category` | 否 | 分类（单值） |
+| `cover` | 否 | 封面，public 内路径（如 `/covers/xxx.png`） |
+| `draft` | 否 | 草稿：dev 隐藏、build 排除、不进 sitemap/RSS |
+| `noindex` | 否 | 构建但禁止收录 |
+| `layout` | 否 | `essay` / `note` / `page`，默认 essay；未注册名构建报错 |
+| `license` | 否 | 覆盖全局版权默认值（blog.config.ts） |
 
 ## URL 策略（不可配置底线）
 
@@ -70,7 +70,7 @@ pnpm install
 
 ```ts
 export const site: SiteConfig = {
-  url: 'https://你的域名', // ← 上线前必填；canonical / sitemap / RSS
+  url: 'https://你的域名',  // ← 上线前必填；canonical / sitemap / RSS
   // base: '/RepoName/',   // 默认 /，一般不用写。仅站点不在域名根路径时才配置
   lang: 'zh-CN',
   title: '晓',
@@ -79,7 +79,7 @@ export const site: SiteConfig = {
   author: { name: '你的名字', avatar: '/avatar.png', intro: '一句简介' },
   social: [{ name: 'GitHub', link: 'https://github.com/xxx' }],
   since: 2026,
-};
+}
 ```
 
 - `url`：不要尾斜杠。自定义域名、`xxx.github.io` 根站都直接填根地址即可。
@@ -89,9 +89,9 @@ export const site: SiteConfig = {
 
 ## 时间字段说明
 
-| 字段      | 机制     | 说明                                                                                                                                                                   |
-| --------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `date`    | 自动补齐 | 开关 `feature.autoDate`（默认开）。frontmatter **缺失或为空时**，构建时用文件创建时间自动写入；**已有值不覆盖**。写作时建议用 `pnpm new`（默认填当前时间）或手写       |
+| 字段 | 机制 | 说明 |
+|---|---|---|
+| `date` | 自动补齐 | 开关 `feature.autoDate`（默认开）。frontmatter **缺失或为空时**，构建时用文件创建时间自动写入；**已有值不覆盖**。写作时建议用 `pnpm new`（默认填当前时间）或手写 |
 | `updated` | 自动维护 | 开关 `feature.autoUpdated`（默认开）。文件修改时间晚于已记录的 date/updated 时，构建时自动写入当前时间；**关闭开关或未触发条件时不写**。写回后与文件时间一致，构建幂等 |
 
 自动写入在 `vite buildStart` 钩子执行（`engine/timestamps.ts`），本地 `pnpm build` 会回写源文件并产生可见 diff，属预期行为；CI 构建不回传变更。frontmatter 解析使用 YAML CORE_SCHEMA，时间戳保持字符串，全链路无时区漂移。
@@ -105,11 +105,11 @@ pnpm xiao:update --source <本地框架目录>   # 从本地目录更新（离�
 
 **只更新 core**，其余自行决定是否合并：
 
-| 分区      | 内容                                                   | `xiao:update`                                                      |
-| --------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| **core**  | engine / config / scripts / 数据加载接线等             | 直接覆盖（覆盖前备份到 `.xiao-backup/`）                           |
+| 分区 | 内容 | `xiao:update` |
+|---|---|---|
+| **core** | engine / config / scripts / 数据加载接线等 | 直接覆盖（覆盖前备份到 `.xiao-backup/`） |
 | **theme** | `styles/**`、`Layout.vue`、`views/**`、`components/**` | **不更新**。仓库里是默认参考实现；需要新能力时对照上游自行比对加入 |
-| **user**  | docs / public / redirects / 站点配置                   | **永不触碰**                                                       |
+| **user** | docs / public / redirects / 站点配置 | **永不触碰** |
 
 更新记录在 `.xiao/framework-state.json`。更新后：`pnpm install && pnpm build`（校验通过即成功）。
 

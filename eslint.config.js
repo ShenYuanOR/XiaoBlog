@@ -33,6 +33,7 @@ export default defineConfig(
     '.vitepress/**',
     '.agents/**',
     'coverage/**',
+    'packages/core/src/markdown/corpus/**',
   ]),
   ...withRoot(tseslint.configs.recommended),
   ...withRoot(astro.configs.recommended),

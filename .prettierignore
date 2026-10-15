@@ -16,3 +16,4 @@ LICENSE
 /.vitepress
 /.agents
 /coverage
+packages/core/src/markdown/corpus
