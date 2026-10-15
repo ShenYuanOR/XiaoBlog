@@ -1,25 +1,37 @@
 ---
 import { withBase } from '../../lib/base';
+import type { PostEntry } from '../../lib/posts';
 
 interface Props {
-  categories: { name: string; count: number }[];
+  posts: PostEntry[];
   current?: string;
 }
-const { categories, current } = Astro.props;
+const { posts, current } = Astro.props;
+const groups = new Map<string, PostEntry[]>();
+for (const post of posts) {
+  const name = post.data.category || '未分类';
+  const list = groups.get(name) ?? [];
+  list.push(post);
+  groups.set(name, list);
+}
 ---
 
-<aside class="side">
-  <strong>分类</strong>
-  <ul>
-    {categories.map((item) => (
-      <li>
-        <a
-          href={withBase(`categories/${encodeURIComponent(item.name)}/`)}
-          aria-current={item.name === current ? 'page' : undefined}
-        >
-          {item.name} ({item.count})
-        </a>
-      </li>
-    ))}
-  </ul>
-</aside>
+<nav class="side-tree" aria-label="分类">
+  {[...groups.entries()].map(([name, items]) => (
+    <details class="side-group" open={items.some((post) => post.id === current)}>
+      <summary>{name}</summary>
+      <ul>
+        {items.map((post) => (
+          <li>
+            <a
+              href={withBase(`posts/${post.id}/`)}
+              aria-current={post.id === current ? 'page' : undefined}
+            >
+              {post.data.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  ))}
+</nav>

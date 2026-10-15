@@ -1,19 +1,37 @@
 ---
 import PageLayout from '../layouts/PageLayout.astro';
+import { loadConfig } from '../lib/config';
 import { publishedPosts } from '../lib/posts';
 import { websiteHeads } from '../lib/seo';
 import { withBase } from '../lib/base';
 
+const config = loadConfig();
 const posts = await publishedPosts();
 const heads = websiteHeads();
 ---
 
-<PageLayout title="晓" description="笔记首页" heads={heads}>
-  <ul>
+<PageLayout
+  title={config.site.title}
+  description={config.site.description}
+  heads={heads}
+  showHeading={false}
+>
+  <header class="home-intro">
+    <h1>{config.site.title}</h1>
+    <p class="subtitle">{config.site.subtitle}</p>
+    <p class="bio">{config.author.bio}</p>
+  </header>
+  <h2>最近更新</h2>
+  <ul class="recent">
     {posts.map((post) => (
       <li>
-        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
-        <span>{post.data.date.slice(0, 10)}</span>
+        <div class="recent-row">
+          <a class="recent-title" href={withBase(`posts/${post.id}/`)}>
+            {post.data.title}
+          </a>
+          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
+        </div>
+        {post.data.description && <p>{post.data.description}</p>}
       </li>
     ))}
   </ul>

@@ -1,24 +1,27 @@
 ---
 import Base from './BaseLayout.astro';
 import SideTree from '../components/site/SideTree.astro';
-import { categoriesOf, publishedPosts } from '../lib/posts';
+import { publishedPosts } from '../lib/posts';
 import type { HeadEntry } from '../lib/seo';
 
 interface Props {
-  title: string;
+  title?: string;
   description?: string;
   heads?: HeadEntry[];
+  showHeading?: boolean;
 }
-const { title, description, heads = [] } = Astro.props;
+const { title, description, heads = [], showHeading = true } = Astro.props;
 const posts = await publishedPosts();
 ---
 
 <Base title={title} description={description} heads={heads}>
   <div class="shell">
-    <SideTree categories={categoriesOf(posts)} />
-    <div class="prose">
-      <h1>{title}</h1>
+    <aside class="side side-desktop">
+      <SideTree posts={posts} />
+    </aside>
+    <main class="page-body">
+      {showHeading && title && <h1>{title}</h1>}
       <slot />
-    </div>
+    </main>
   </div>
 </Base>

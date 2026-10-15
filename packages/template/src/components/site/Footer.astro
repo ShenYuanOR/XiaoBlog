@@ -2,13 +2,9 @@
 import { loadConfig } from '../../lib/config';
 
 const config = loadConfig();
+const name = config.author.name.trim() || config.site.title;
 ---
 
 <footer class="footer">
-  <span>
-    © {config.site.since} {config.author.name}
-  </span>
-  {config.posts.license.enabled && (
-    <a href={config.posts.license.url}>{config.posts.license.name}</a>
-  )}
+  © {config.site.since} {name}
 </footer>

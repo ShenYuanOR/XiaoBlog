@@ -40,7 +40,7 @@ export function articleHeads(post: {
         datePublished: post.date,
         ...(post.updated ? { dateModified: post.updated } : {}),
         keywords: (post.tags ?? []).join(', '),
-        author: { '@type': 'Person', name: config.author.name },
+        author: { '@type': 'Person', name: config.author.name.trim() || config.site.title },
       }),
     },
   ];

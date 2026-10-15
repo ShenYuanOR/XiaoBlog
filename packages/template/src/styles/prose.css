@@ -1,17 +1,101 @@
 .prose {
   overflow-wrap: anywhere;
-  line-height: 1.7;
+  font-weight: 400;
+  line-height: 1.8;
 }
 
 .prose h1,
 .prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.prose h1 {
+  margin: 0 0 0.4em;
+  font-size: 30px;
+}
+
+.prose h2 {
+  margin: 2.2em 0 0.6em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--line);
+  font-size: 22px;
+}
+
 .prose h3 {
-  line-height: 1.25;
+  margin: 1.6em 0 0.4em;
+  font-size: 18px;
+}
+
+.prose h4 {
+  margin: 1.4em 0 0.4em;
+  font-size: 16px;
+}
+
+.prose p {
+  margin: 0 0 1em;
+  font-weight: 400;
+}
+
+.prose a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.4em;
+}
+
+.prose li::marker {
+  color: var(--text-3);
+}
+
+.prose :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  font-size: 0.9em;
 }
 
 .prose pre {
   overflow: auto;
-  padding: 12px;
-  background: var(--surface);
-  border-radius: var(--radius);
+  margin: 0 0 1em;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+
+.prose pre,
+.prose code {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+}
+
+.prose blockquote {
+  margin: 0 0 1em;
+  padding-left: 1em;
+  border-left: 3px solid var(--line);
+  color: var(--text-2);
+}
+
+.prose img {
+  display: block;
+  max-width: 100%;
+  margin: 1em auto;
+  border-radius: 8px;
+}
+
+.meta {
+  margin: 0 0 1.2em;
+}
+
+@media (max-width: 767px) {
+  .prose h1,
+  .page-body h1,
+  .home-intro h1 {
+    font-size: 26px;
+  }
 }

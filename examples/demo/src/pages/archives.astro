@@ -4,15 +4,27 @@ import { publishedPosts } from '../lib/posts';
 import { withBase } from '../lib/base';
 
 const posts = await publishedPosts();
+const years = new Map<string, typeof posts>();
+for (const post of posts) {
+  const year = post.data.date.slice(0, 4);
+  const list = years.get(year) ?? [];
+  list.push(post);
+  years.set(year, list);
+}
 ---
 
 <PageLayout title="归档">
-  <ul>
-    {posts.map((post) => (
-      <li>
-        <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
-        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
-      </li>
-    ))}
-  </ul>
+  {[...years.entries()].map(([year, items]) => (
+    <section>
+      <h2 class="year">{year}</h2>
+      <ul class="archive">
+        {items.map((post) => (
+          <li>
+            <time datetime={post.data.date}>{post.data.date.slice(5, 10)}</time>
+            <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
 </PageLayout>

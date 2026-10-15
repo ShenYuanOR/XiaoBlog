@@ -7,11 +7,12 @@ const categories = categoriesOf(await publishedPosts());
 ---
 
 <PageLayout title="分类">
-  <ul>
+  <ul class="pills">
     {categories.map((item) => (
       <li>
-        <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)}>{item.name}</a> (
-        {item.count})
+        <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)}>
+          {item.name} {item.count}
+        </a>
       </li>
     ))}
   </ul>

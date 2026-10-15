@@ -3,7 +3,8 @@ import Base from './BaseLayout.astro';
 import SideTree from '../components/site/SideTree.astro';
 import Toc from '../components/site/Toc.astro';
 import { withBase } from '../lib/base';
-import { categoriesOf, publishedPosts, type PostEntry } from '../lib/posts';
+import { loadConfig } from '../lib/config';
+import { publishedPosts, readingMinutes, type PostEntry } from '../lib/posts';
 import { articleHeads } from '../lib/seo';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 }
 const { post, headings, prev, next } = Astro.props;
 const posts = await publishedPosts();
+const config = loadConfig();
 const heads = articleHeads({
   slug: post.id,
   title: post.data.title,
@@ -23,19 +25,70 @@ const heads = articleHeads({
   tags: post.data.tags,
   noindex: post.data.noindex,
 });
+const source =
+  'body' in post && typeof post.body === 'string' ? post.body : (post.data.description ?? '');
+const minutes = readingMinutes(source);
 ---
 
 <Base title={post.data.title} description={post.data.description} heads={heads}>
   <div class="shell">
-    <SideTree categories={categoriesOf(posts)} current={post.data.category} />
-    <article class="prose">
-      <h1>{post.data.title}</h1>
-      <slot />
-      <p>
-        {prev && <a href={withBase(`posts/${prev.id}/`)}>上一篇：{prev.data.title}</a>}
-        {next && <a href={withBase(`posts/${next.id}/`)}>下一篇：{next.data.title}</a>}
-      </p>
-    </article>
+    <aside class="side side-desktop">
+      <SideTree posts={posts} current={post.id} />
+    </aside>
+    <main>
+      <article class="prose">
+        <h1>{post.data.title}</h1>
+        <p class="meta">
+          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
+          {post.data.category && (
+            <>
+              {' · '}
+              <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
+                {post.data.category}
+              </a>
+            </>
+          )}
+          {' · '}
+          <span>预计阅读 {minutes} 分钟</span>
+        </p>
+        <Toc headings={headings} mobile />
+        <slot />
+        {post.data.tags.length > 0 && (
+          <ul class="pills tag-pills">
+            {post.data.tags.map((tag) => (
+              <li>
+                <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(prev || next) && (
+          <nav class="pager" aria-label="相邻文章">
+            {prev ? (
+              <a href={withBase(`posts/${prev.id}/`)}>
+                <small>上一篇</small>
+                <span>{prev.data.title}</span>
+              </a>
+            ) : (
+              <span></span>
+            )}
+            {next ? (
+              <a href={withBase(`posts/${next.id}/`)}>
+                <small>下一篇</small>
+                <span>{next.data.title}</span>
+              </a>
+            ) : (
+              <span></span>
+            )}
+          </nav>
+        )}
+        {config.posts.license.enabled && (
+          <p class="license">
+            许可协议：<a href={config.posts.license.url}>{config.posts.license.name}</a>
+          </p>
+        )}
+      </article>
+    </main>
     <Toc headings={headings} />
   </div>
 </Base>

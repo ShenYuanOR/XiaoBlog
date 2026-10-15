@@ -7,10 +7,12 @@ const tags = tagsOf(await publishedPosts());
 ---
 
 <PageLayout title="标签">
-  <ul>
+  <ul class="pills">
     {tags.map((tag) => (
       <li>
-        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a> ({tag.count})
+        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>
+          {tag.name} {tag.count}
+        </a>
       </li>
     ))}
   </ul>

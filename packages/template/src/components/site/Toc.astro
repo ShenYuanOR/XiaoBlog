@@ -6,23 +6,37 @@ interface Heading {
 }
 interface Props {
   headings?: Heading[];
+  mobile?: boolean;
 }
-const { headings = [] } = Astro.props;
+const { headings = [], mobile = false } = Astro.props;
+const items = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
 ---
 
-{headings.length > 0 && (
-  <nav class="toc">
-    <details open>
-      <summary>目录</summary>
+{items.length > 0 &&
+  (mobile ? (
+    <details class="toc toc-mobile">
+      <summary class="toc-label">本页目录</summary>
       <ul>
-        {headings
-          .filter((heading) => heading.depth <= 3)
-          .map((heading) => (
-            <li>
-              <a href={`#${heading.slug}`}>{heading.text}</a>
-            </li>
-          ))}
+        {items.map((heading) => (
+          <li>
+            <a href={`#${heading.slug}`} data-depth={heading.depth}>
+              {heading.text}
+            </a>
+          </li>
+        ))}
       </ul>
     </details>
-  </nav>
-)}
+  ) : (
+    <nav class="toc toc-desktop" aria-label="本页目录">
+      <div class="toc-label">本页目录</div>
+      <ul>
+        {items.map((heading) => (
+          <li>
+            <a href={`#${heading.slug}`} data-depth={heading.depth}>
+              {heading.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  ))}

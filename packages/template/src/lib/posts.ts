@@ -27,6 +27,11 @@ export function categoriesOf(posts: PostEntry[]): { name: string; count: number 
   return [...counts.entries()].map(([name, count]) => ({ name, count }));
 }
 
+export function readingMinutes(text: string): number {
+  const count = text.replace(/\s+/g, '').length;
+  return Math.max(1, Math.round(count / 400));
+}
+
 export function tagsOf(posts: PostEntry[]): { name: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const post of posts) {
