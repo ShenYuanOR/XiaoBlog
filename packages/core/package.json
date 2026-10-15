@@ -8,7 +8,8 @@
     "./loc": "./src/loc/index.ts",
     "./markdown": "./src/markdown/index.ts",
     "./responsive": "./src/responsive/inspect.mjs",
-    "./site": "./src/site/index.ts"
+    "./site": "./src/site/index.ts",
+    "./importer": "./src/importer/index.ts"
   },
   "scripts": {
     "test": "vitest run"
