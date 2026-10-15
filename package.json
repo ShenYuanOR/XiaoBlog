@@ -4,34 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev",
-    "dev:drafts": "set XIAO_INCLUDE_DRAFTS=1&& vitepress dev",
-    "build": "vitepress build",
-    "preview": "vitepress preview",
-    "new": "node scripts/new.mjs",
-    "tidy": "node scripts/tidy.mjs",
-    "validate": "node scripts/validate.mjs",
-    "gen:redirects": "node scripts/gen-redirects.mjs",
-    "migrate": "node scripts/migrate.mjs",
-    "xiao:update": "node scripts/xiao-update.mjs",
-    "annotate": "node scripts/annotate.mjs",
     "lint": "eslint .",
-    "format:check": "prettier --check ."
-  },
-  "dependencies": {
-    "@iconify-json/mdi": "^1.2.3",
-    "@iconify/vue": "^4.3.0",
-    "vitepress": "^1.6.3",
-    "vue": "^3.5.13"
+    "format:check": "prettier --check .",
+    "test": "pnpm --filter @xiao/core test"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "26.2.0",
     "eslint": "10.12.0",
     "eslint-plugin-astro": "3.2.1",
-    "gray-matter": "^4.0.3",
-    "js-yaml": "^5.2.3",
-    "pinyin-pro": "^3.29.0",
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.1",
     "puppeteer-core": "25.7.0",

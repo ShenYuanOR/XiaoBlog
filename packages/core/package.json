@@ -7,7 +7,8 @@
     "./ast": "./src/ast/index.ts",
     "./loc": "./src/loc/index.ts",
     "./markdown": "./src/markdown/index.ts",
-    "./responsive": "./src/responsive/inspect.mjs"
+    "./responsive": "./src/responsive/inspect.mjs",
+    "./site": "./src/site/index.ts"
   },
   "scripts": {
     "test": "vitest run"
@@ -15,6 +16,7 @@
   "dependencies": {
     "@astrojs/compiler-rs": "0.5.2",
     "magic-string": "1.4.3",
+    "pinyin-pro": "3.29.0",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
     "remark-stringify": "11.0.0",

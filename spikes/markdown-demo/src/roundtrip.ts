@@ -7,7 +7,7 @@ import {
   type SaveResult,
 } from '../../../packages/core/src/markdown/index.ts';
 
-const docs = import.meta.glob('../../../docs/**/*.md', {
+const docs = import.meta.glob('../../../packages/core/src/markdown/corpus/**/*.md', {
   query: '?raw',
   import: 'default',
   eager: true,

@@ -6,7 +6,7 @@ import { fixtures } from './fixtures.ts';
 import { markDirty, openMarkdown, saveMarkdown, simulateEditor, writeBlocks } from './index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const docsRoot = path.resolve(here, '../../../../docs');
+const docsRoot = path.resolve(here, 'corpus');
 
 function listMarkdown(dir: string): string[] {
   const found: string[] = [];

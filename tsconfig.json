@@ -1,9 +1,8 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM"],
-    "allowImportingTsExtensions": true,
-    "types": ["node", "vitepress/client"]
+    "lib": ["ES2022"],
+    "types": ["node"]
   },
-  "include": [".vitepress/**/*.ts", ".vitepress/**/*.vue"]
+  "include": []
 }
