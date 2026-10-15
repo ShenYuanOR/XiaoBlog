@@ -1,12 +1,12 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
 
 interface SpikeArgs {
   site: string;
-  cmd: 'dev' | 'build' | 'probe' | 'compiler';
+  cmd: 'dev' | 'build' | 'probe' | 'compiler' | 'editor';
   modulePath?: string;
   logFile?: string;
   quitFile?: string;
@@ -29,8 +29,11 @@ function parseArgs(argv: string[]): SpikeArgs {
   }
   const site = map.get('site');
   const cmd = map.get('cmd');
-  if (!site || (cmd !== 'dev' && cmd !== 'build' && cmd !== 'probe' && cmd !== 'compiler')) {
-    throw new Error('用法：--site <站点目录> --cmd dev|build|probe|compiler');
+  if (
+    !site ||
+    (cmd !== 'dev' && cmd !== 'build' && cmd !== 'probe' && cmd !== 'compiler' && cmd !== 'editor')
+  ) {
+    throw new Error('用法：--site <站点目录> --cmd dev|build|probe|compiler|editor');
   }
   const logFile = map.get('log-file');
   const quitFile = map.get('quit-file');
@@ -168,6 +171,32 @@ function runAstro(args: SpikeArgs, shimDir: string, log: (text: string) => void)
   });
 }
 
+async function runEditor(log: (text: string) => void): Promise<number> {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+  win.webContents.on('console-message', (_event, _level, message) => {
+    log(`[renderer] ${message}\n`);
+  });
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (devUrl) {
+    await win.loadURL(devUrl);
+  } else {
+    const html = path.join(path.dirname(fileURLToPath(import.meta.url)), '../renderer/index.html');
+    await win.loadFile(html);
+  }
+  log('[spike] editor ready\n');
+  return new Promise(() => {
+    // 等 --quit-file 关掉窗口。
+  });
+}
+
 async function runCompiler(args: SpikeArgs, log: (text: string) => void): Promise<number> {
   if (!args.modulePath) throw new Error('compiler 命令需要 --module');
   const imported = (await import(pathToFileURL(args.modulePath).href)) as {
@@ -225,7 +254,9 @@ void app.whenReady().then(async () => {
         ? await runProbe(args, shimDir, log)
         : args.cmd === 'compiler'
           ? await runCompiler(args, log)
-          : await runAstro(args, shimDir, log);
+          : args.cmd === 'editor'
+            ? await runEditor(log)
+            : await runAstro(args, shimDir, log);
     if (args.cmd === 'dev') return;
     if (args.exitOnDone) {
       app.exit(exitCode);

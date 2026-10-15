@@ -2,9 +2,16 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; font-src 'self' data:; img-src 'self' data: blob:"
+    />
     <title>XiaoSpike</title>
   </head>
   <body>
-    <p>等待 Astro 预览。</p>
+    <p id="status">正在加载 Monaco。</p>
+    <button id="theme" type="button">切换主题</button>
+    <div id="editor" style="height: 480px"></div>
+    <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

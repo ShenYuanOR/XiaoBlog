@@ -10,7 +10,10 @@
     "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml"
   },
   "devDependencies": {
+    "@shikijs/monaco": "4.5.0",
     "@types/node": "26.2.0",
+    "monaco-editor": "0.57.0",
+    "shiki": "4.5.0",
     "electron": "44.7.2",
     "electron-builder": "26.15.3",
     "electron-vite": "6.0.0",
