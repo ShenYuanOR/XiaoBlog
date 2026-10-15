@@ -1,11 +1,13 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
 
 interface SpikeArgs {
   site: string;
-  cmd: 'dev' | 'build' | 'probe';
+  cmd: 'dev' | 'build' | 'probe' | 'compiler';
+  modulePath?: string;
   logFile?: string;
   quitFile?: string;
   exitOnDone: boolean;
@@ -27,8 +29,8 @@ function parseArgs(argv: string[]): SpikeArgs {
   }
   const site = map.get('site');
   const cmd = map.get('cmd');
-  if (!site || (cmd !== 'dev' && cmd !== 'build' && cmd !== 'probe')) {
-    throw new Error('用法：--site <站点目录> --cmd dev|build|probe');
+  if (!site || (cmd !== 'dev' && cmd !== 'build' && cmd !== 'probe' && cmd !== 'compiler')) {
+    throw new Error('用法：--site <站点目录> --cmd dev|build|probe|compiler');
   }
   const logFile = map.get('log-file');
   const quitFile = map.get('quit-file');
@@ -38,6 +40,7 @@ function parseArgs(argv: string[]): SpikeArgs {
     ...(logFile ? { logFile } : {}),
     ...(quitFile ? { quitFile } : {}),
     exitOnDone: map.get('exit-on-done') === 'true',
+    ...(map.get('module') ? { modulePath: map.get('module') } : {}),
   };
 }
 
@@ -165,6 +168,18 @@ function runAstro(args: SpikeArgs, shimDir: string, log: (text: string) => void)
   });
 }
 
+async function runCompiler(args: SpikeArgs, log: (text: string) => void): Promise<number> {
+  if (!args.modulePath) throw new Error('compiler 命令需要 --module');
+  const imported = (await import(pathToFileURL(args.modulePath).href)) as {
+    parse?: (source: string) => { diagnostics?: unknown[] };
+  };
+  if (!imported.parse) throw new Error('模块没有 parse');
+  const result = imported.parse('---\n---\n<p>中文</p>\n');
+  const errors = result.diagnostics?.length ?? 0;
+  log(`[spike] compiler diagnostics=${errors}\n`);
+  return errors === 0 ? 0 : 1;
+}
+
 function runProbe(args: SpikeArgs, shimDir: string, log: (text: string) => void): Promise<number> {
   child =
     process.platform === 'win32'
@@ -208,7 +223,9 @@ void app.whenReady().then(async () => {
     exitCode =
       args.cmd === 'probe'
         ? await runProbe(args, shimDir, log)
-        : await runAstro(args, shimDir, log);
+        : args.cmd === 'compiler'
+          ? await runCompiler(args, log)
+          : await runAstro(args, shimDir, log);
     if (args.cmd === 'dev') return;
     if (args.exitOnDone) {
       app.exit(exitCode);

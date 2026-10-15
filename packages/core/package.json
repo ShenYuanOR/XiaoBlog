@@ -1,0 +1,22 @@
+{
+  "name": "@xiao/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ast": "./src/ast/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/compiler-rs": "0.5.2",
+    "magic-string": "1.4.3"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "1.1.1",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  }
+}
