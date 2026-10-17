@@ -18,6 +18,19 @@ const api = {
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
   },
+  project: {
+    recent: (): Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>> =>
+      ipcRenderer.invoke('project:recent'),
+    pick: (): Promise<IpcResult<string | null>> => ipcRenderer.invoke('project:pick'),
+    create: (
+      parent: string,
+      title: string,
+      author: string,
+    ): Promise<IpcResult<{ dir: string; title: string }>> =>
+      ipcRenderer.invoke('project:create', parent, title, author),
+    open: (dir?: string): Promise<IpcResult<{ dir: string; title: string } | null>> =>
+      ipcRenderer.invoke('project:open', dir),
+  },
   runtime: {
     start: (kind: RuntimeKind, siteDir: string): Promise<IpcResult<RuntimeStart>> =>
       ipcRenderer.invoke('runtime:start', kind, siteDir),

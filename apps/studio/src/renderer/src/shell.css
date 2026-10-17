@@ -107,6 +107,34 @@ p {
   line-height: 1.6;
 }
 
+.welcome {
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 0 24px;
+}
+
+.welcome section {
+  margin-top: 24px;
+}
+
+.welcome label,
+.welcome li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.welcome input {
+  min-height: 32px;
+  flex: 1;
+}
+
+.welcome ul {
+  padding: 0;
+  list-style: none;
+}
+
 .output {
   margin-top: 16px;
   max-height: 240px;

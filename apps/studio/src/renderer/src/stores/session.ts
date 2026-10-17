@@ -7,6 +7,8 @@ export const useSession = defineStore('session', () => {
   const nav = ref<(typeof copy.nav)[number]>('文章');
   const status = ref('正在连接');
   const logs = ref('');
+  const siteDir = ref('');
+  const siteTitle = ref('');
 
   async function load(): Promise<void> {
     const result = await window.xiao.app.getInfo();
@@ -29,5 +31,10 @@ export const useSession = defineStore('session', () => {
     logs.value = `${logs.value}${text}`.slice(-8000);
   }
 
-  return { mode, nav, status, logs, load, setMode, setNav, pushLog };
+  function setSite(dir: string, title: string): void {
+    siteDir.value = dir;
+    siteTitle.value = title;
+  }
+
+  return { mode, nav, status, logs, siteDir, siteTitle, load, setMode, setNav, pushLog, setSite };
 });

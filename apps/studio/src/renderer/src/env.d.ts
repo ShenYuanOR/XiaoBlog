@@ -11,6 +11,16 @@ export interface XiaoApi {
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
   };
+  project: {
+    recent: () => Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>>;
+    pick: () => Promise<IpcResult<string | null>>;
+    create: (
+      parent: string,
+      title: string,
+      author: string,
+    ) => Promise<IpcResult<{ dir: string; title: string }>>;
+    open: (dir?: string) => Promise<IpcResult<{ dir: string; title: string } | null>>;
+  };
   runtime: {
     start: (kind: RuntimeKind, siteDir: string) => Promise<IpcResult<RuntimeStart>>;
     cancel: (taskId: string) => Promise<IpcResult<null>>;

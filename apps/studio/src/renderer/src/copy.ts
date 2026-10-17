@@ -7,7 +7,9 @@ export const copy = {
   nav: ['文章', '页面', '外观', 'SEO', '设置', '发布'],
   list: '列表',
   editor: '编辑区',
-  empty: '还没有打开站点。新建和打开会在后面的任务里接上。',
+  empty: '从欢迎页新建或打开一个站点后，文章会列在这里。',
+  welcomeTitle: '晓',
+  welcomeLead: '新建一个笔记站，或打开已有的文件夹。',
   sideNote: '这里以后是分类树或页面列表。',
   previewNote: '这里以后是实时预览和属性。',
 } as const;

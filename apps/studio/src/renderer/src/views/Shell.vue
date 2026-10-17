@@ -12,7 +12,7 @@ onMounted(() => {
 <template>
   <div class="shell">
     <header class="top">
-      <strong>{{ copy.appName }}</strong>
+      <strong>{{ session.siteTitle || copy.appName }}</strong>
       <span class="status">{{ session.status }}</span>
       <div class="modes">
         <button type="button" :aria-pressed="session.mode === 'write'" @click="session.setMode('write')">

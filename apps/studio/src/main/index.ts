@@ -1,11 +1,18 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
-
+import {
+  createSite,
+  openPreview,
+  pickDirectory,
+  readRecent,
+  remember,
+  siteTitle,
+} from './project.ts';
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
@@ -99,10 +106,12 @@ const runtime = new RuntimeService({
     ),
   onLog: (event) =>
     BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onLog', event)),
-  onReady: (event) =>
+  onReady: (event) => {
     BrowserWindow.getAllWindows().forEach((item) =>
       item.webContents.send('runtime:onReady', event),
-    ),
+    );
+    openPreview(event.url);
+  },
   onExit: (event) =>
     BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onExit', event)),
 });
@@ -122,6 +131,30 @@ app.whenReady().then(() => {
   ipcMain.handle('runtime:cancel', (_event, taskId: string) => {
     runtime.cancel(taskId);
     return ok(null);
+  });
+  ipcMain.handle('project:recent', () => ok(readRecent()));
+  ipcMain.handle('project:pick', async () => ok(await pickDirectory()));
+  ipcMain.handle(
+    'project:create',
+    async (_event, parent: string, title: string, author: string) => {
+      if (!parent || !title?.trim()) return fail('PROJECT_INPUT', '请选择目录并填写站点名');
+      try {
+        return ok(await createSite(runtime, parent, title.trim(), author ?? ''));
+      } catch (error) {
+        return fail('PROJECT_CREATE', error instanceof Error ? error.message : '新建失败');
+      }
+    },
+  );
+  ipcMain.handle('project:open', async (_event, dir?: string) => {
+    const picked = dir ?? (await pickDirectory());
+    if (!picked) return ok(null);
+    if (!existsSync(join(picked, 'xiao.config.json'))) {
+      return fail('PROJECT_OPEN', '这个文件夹不是晓的站点');
+    }
+    const title = siteTitle(picked);
+    remember(picked, title);
+    await runtime.start('dev', picked);
+    return ok({ dir: picked, title });
   });
   const win = createWindow();
   if (process.argv.includes('--probe')) probe(win);

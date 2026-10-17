@@ -40,7 +40,7 @@ export class RuntimeService {
       : path.join(process.cwd(), 'resources', 'pnpm', 'pnpm.exe');
   }
 
-  async start(kind: RuntimeKind, siteDir: string): Promise<RuntimeStart> {
+  async start(kind: RuntimeKind, siteDir: string): Promise<RuntimeStart & { code?: number }> {
     this.stopAll();
     const taskId = randomUUID();
     const task: LiveTask = { taskId, kind };
@@ -48,8 +48,8 @@ export class RuntimeService {
     const start = { taskId, kind };
     this.hooks.onStart(start);
     if (kind === 'install') {
-      await this.install(task, siteDir);
-      return start;
+      const code = await this.install(task, siteDir);
+      return { ...start, code };
     }
     const port = kind === 'dev' ? await freePort() : undefined;
     this.spawnAstro(task, siteDir, port);
@@ -67,7 +67,7 @@ export class RuntimeService {
     this.live.clear();
   }
 
-  private async install(task: LiveTask, siteDir: string): Promise<void> {
+  private async install(task: LiveTask, siteDir: string): Promise<number> {
     const store = storeDirFor(siteDir);
     const first = await this.spawnPnpm(
       task,
@@ -76,7 +76,7 @@ export class RuntimeService {
     );
     if (first === 0) {
       this.finish(task, 0);
-      return;
+      return 0;
     }
     this.hooks.onLog({
       taskId: task.taskId,
@@ -88,6 +88,7 @@ export class RuntimeService {
       installArgs(false).concat(['--store-dir', store]),
     );
     this.finish(task, second, second === 0 ? undefined : '依赖没有装好');
+    return second;
   }
 
   private spawnPnpm(task: LiveTask, siteDir: string, args: string[]): Promise<number> {
