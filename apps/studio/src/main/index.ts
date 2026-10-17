@@ -13,6 +13,7 @@ import {
   remember,
   siteTitle,
 } from './project.ts';
+import { SiteWatcher } from './watch.ts';
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
@@ -99,6 +100,21 @@ function probe(win: BrowserWindow): void {
   });
 }
 
+let watcher: SiteWatcher | undefined;
+
+function send(channel: string, payload: unknown): void {
+  BrowserWindow.getAllWindows().forEach((item) => item.webContents.send(channel, payload));
+}
+
+function watchSite(dir: string): void {
+  watcher?.stop();
+  watcher = new SiteWatcher(dir, {
+    onReload: (event) => send('project:onReload', event),
+    onConflict: (event) => send('project:onConflict', event),
+  });
+  watcher.start();
+}
+
 const runtime = new RuntimeService({
   onStart: (event) =>
     BrowserWindow.getAllWindows().forEach((item) =>
@@ -139,7 +155,9 @@ app.whenReady().then(() => {
     async (_event, parent: string, title: string, author: string) => {
       if (!parent || !title?.trim()) return fail('PROJECT_INPUT', '请选择目录并填写站点名');
       try {
-        return ok(await createSite(runtime, parent, title.trim(), author ?? ''));
+        const site = await createSite(runtime, parent, title.trim(), author ?? '');
+        watchSite(site.dir);
+        return ok(site);
       } catch (error) {
         return fail('PROJECT_CREATE', error instanceof Error ? error.message : '新建失败');
       }
@@ -153,8 +171,21 @@ app.whenReady().then(() => {
     }
     const title = siteTitle(picked);
     remember(picked, title);
+    watchSite(picked);
     await runtime.start('dev', picked);
     return ok({ dir: picked, title });
+  });
+  ipcMain.handle('project:markDirty', (_event, file: string, content: string) => {
+    watcher?.markDirty(file, content);
+    return ok(null);
+  });
+  ipcMain.handle('project:noteWrite', (_event, file: string, content: string) => {
+    watcher?.noteWrite(file, content);
+    return ok(null);
+  });
+  ipcMain.handle('project:resolve', (_event, file: string, action: 'keep' | 'load') => {
+    const loaded = watcher?.resolve(file, action);
+    return ok(loaded ?? null);
   });
   const win = createWindow();
   if (process.argv.includes('--probe')) probe(win);
@@ -162,6 +193,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   runtime.stopAll();
+  watcher?.stop();
 });
 
 app.on('window-all-closed', () => {

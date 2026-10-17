@@ -9,6 +9,9 @@ export const useSession = defineStore('session', () => {
   const logs = ref('');
   const siteDir = ref('');
   const siteTitle = ref('');
+  const conflict = ref<{ file: string; mine: string; disk: string } | null>(null);
+  const compare = ref(false);
+  const reloaded = ref('');
 
   async function load(): Promise<void> {
     const result = await window.xiao.app.getInfo();
@@ -36,5 +39,26 @@ export const useSession = defineStore('session', () => {
     siteTitle.value = title;
   }
 
-  return { mode, nav, status, logs, siteDir, siteTitle, load, setMode, setNav, pushLog, setSite };
+  function setConflict(next: { file: string; mine: string; disk: string } | null): void {
+    conflict.value = next;
+    compare.value = false;
+  }
+
+  return {
+    mode,
+    nav,
+    status,
+    logs,
+    siteDir,
+    siteTitle,
+    conflict,
+    compare,
+    reloaded,
+    load,
+    setMode,
+    setNav,
+    pushLog,
+    setSite,
+    setConflict,
+  };
 });

@@ -20,3 +20,8 @@ window.xiao.runtime.onReady((event) => session.pushLog(`预览已就绪 ${event.
 window.xiao.runtime.onExit((event) =>
   session.pushLog(event.message ? `${event.message}\n` : `进程结束 ${event.code}\n`),
 );
+window.xiao.project.onReload((event) => {
+  session.reloaded = `${event.file} 已按磁盘刷新`;
+  session.setConflict(null);
+});
+window.xiao.project.onConflict((event) => session.setConflict(event));

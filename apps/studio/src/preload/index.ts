@@ -7,6 +7,7 @@ import type {
   RuntimeLogEvent,
   RuntimeStart,
 } from '@xiao/core/ipc';
+import type { ConflictEvent, ReloadEvent } from './watch.ts';
 
 function listen<T>(channel: string, callback: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => callback(payload);
@@ -30,6 +31,16 @@ const api = {
       ipcRenderer.invoke('project:create', parent, title, author),
     open: (dir?: string): Promise<IpcResult<{ dir: string; title: string } | null>> =>
       ipcRenderer.invoke('project:open', dir),
+    markDirty: (file: string, content: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('project:markDirty', file, content),
+    noteWrite: (file: string, content: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('project:noteWrite', file, content),
+    resolve: (file: string, action: 'keep' | 'load'): Promise<IpcResult<ReloadEvent | null>> =>
+      ipcRenderer.invoke('project:resolve', file, action),
+    onReload: (callback: (payload: ReloadEvent) => void): (() => void) =>
+      listen('project:onReload', callback),
+    onConflict: (callback: (payload: ConflictEvent) => void): (() => void) =>
+      listen('project:onConflict', callback),
   },
   runtime: {
     start: (kind: RuntimeKind, siteDir: string): Promise<IpcResult<RuntimeStart>> =>

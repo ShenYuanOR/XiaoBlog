@@ -20,6 +20,16 @@ export interface XiaoApi {
       author: string,
     ) => Promise<IpcResult<{ dir: string; title: string }>>;
     open: (dir?: string) => Promise<IpcResult<{ dir: string; title: string } | null>>;
+    markDirty: (file: string, content: string) => Promise<IpcResult<null>>;
+    noteWrite: (file: string, content: string) => Promise<IpcResult<null>>;
+    resolve: (
+      file: string,
+      action: 'keep' | 'load',
+    ) => Promise<IpcResult<{ file: string; content: string } | null>>;
+    onReload: (callback: (payload: { file: string; content: string }) => void) => () => void;
+    onConflict: (
+      callback: (payload: { file: string; mine: string; disk: string }) => void,
+    ) => () => void;
   };
   runtime: {
     start: (kind: RuntimeKind, siteDir: string) => Promise<IpcResult<RuntimeStart>>;

@@ -12,4 +12,8 @@ export const copy = {
   welcomeLead: '新建一个笔记站，或打开已有的文件夹。',
   sideNote: '这里以后是分类树或页面列表。',
   previewNote: '这里以后是实时预览和属性。',
+  conflictLead: '文件在外面被改了：',
+  keepMine: '保留我的修改',
+  loadDisk: '载入磁盘版本',
+  compare: '对比',
 } as const;

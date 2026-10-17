@@ -2,11 +2,22 @@
 import { onMounted } from 'vue';
 import { copy } from '../copy.ts';
 import { useSession } from '../stores/session.ts';
+import Conflict from './Conflict.vue';
 
 const session = useSession();
 onMounted(() => {
   void session.load();
 });
+
+async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
+  if (!session.conflict) return;
+  if (action === 'compare') {
+    session.compare = true;
+    return;
+  }
+  await window.xiao.project.resolve(session.conflict.file, action);
+  session.setConflict(null);
+}
 </script>
 
 <template>
@@ -29,6 +40,15 @@ onMounted(() => {
       <span>{{ copy.preview }}</span>
       <button type="button" disabled>{{ copy.publish }}</button>
     </header>
+    <Conflict
+      v-if="session.conflict"
+      :file="session.conflict.file"
+      :mine="session.conflict.mine"
+      :disk="session.conflict.disk"
+      :compare="session.compare"
+      @choose="choose"
+    />
+    <p v-if="session.reloaded">{{ session.reloaded }}</p>
     <div class="body">
       <nav class="nav" aria-label="主导航">
         <button
