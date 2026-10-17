@@ -52,6 +52,14 @@ export interface XiaoApi {
       file: string,
     ) => Promise<IpcResult<null>>;
   };
+  secret: {
+    save: (repo: string, token: string, expires: string) => Promise<IpcResult<null>>;
+    list: () => Promise<IpcResult<{ repo: string; expires: string }[]>>;
+    remove: (repo: string) => Promise<IpcResult<null>>;
+  };
+  github: {
+    repo: (owner: string, name: string) => Promise<IpcResult<{ status: number }>>;
+  };
   dev: {
     files: (siteDir: string) => Promise<IpcResult<string[]>>;
     read: (siteDir: string, file: string) => Promise<IpcResult<string>>;

@@ -36,6 +36,15 @@ const api = {
       file: string,
     ) => ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value, file),
   },
+  secret: {
+    save: (repo: string, token: string, expires: string) =>
+      ipcRenderer.invoke('secret:save', repo, token, expires),
+    list: () => ipcRenderer.invoke('secret:list'),
+    remove: (repo: string) => ipcRenderer.invoke('secret:remove', repo),
+  },
+  github: {
+    repo: (owner: string, name: string) => ipcRenderer.invoke('github:repo', owner, name),
+  },
   dev: {
     files: (siteDir: string) => ipcRenderer.invoke('dev:files', siteDir),
     read: (siteDir: string, file: string) => ipcRenderer.invoke('dev:read', siteDir, file),

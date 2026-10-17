@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { existsSync, writeFileSync } from 'node:fs';
-import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, safeStorage } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
@@ -32,6 +32,8 @@ import {
 } from './canvas.ts';
 import { createPage, listPages, type PageTemplate } from './pages.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
+import { GitHubService } from './github.ts';
+import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
 
 const csp = [
@@ -133,6 +135,27 @@ function probe(win: BrowserWindow): void {
 }
 
 let watcher: SiteWatcher | undefined;
+let secretService: SecretService | undefined;
+
+function secretStore(): SecretService {
+  if (!secretService) {
+    secretService = new SecretService(join(app.getPath('userData'), 'secrets.json'), {
+      encrypt(plain: string): string {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error('这台电脑不能加密 Token');
+        return safeStorage.encryptString(plain).toString('base64');
+      },
+      decrypt(stored: string): string {
+        return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+      },
+    });
+  }
+  return secretService;
+}
+
+const github = new GitHubService(async (url, init) => {
+  const response = await net.fetch(url, { headers: init.headers });
+  return { status: response.status, body: await response.text() };
+});
 
 function send(channel: string, payload: unknown): void {
   BrowserWindow.getAllWindows().forEach((item) => item.webContents.send(channel, payload));
@@ -284,6 +307,30 @@ app.whenReady().then(() => {
       return ok(null);
     } catch (error) {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
+    }
+  });
+  ipcMain.handle('secret:save', (_event, repo: string, token: string, expires: string) => {
+    try {
+      secretStore().save(repo, token, expires);
+      return ok(null);
+    } catch (error) {
+      return fail('SECRET_SAVE', error instanceof Error ? error.message : '存不了 Token');
+    }
+  });
+  ipcMain.handle('secret:list', () => ok(secretStore().list()));
+  ipcMain.handle('secret:remove', (_event, repo: string) => {
+    secretStore().remove(repo);
+    return ok(null);
+  });
+  ipcMain.handle('github:repo', async (_event, owner: string, name: string) => {
+    const token = secretStore().load(`${owner}/${name}`);
+    if (!token) return fail('GITHUB_TOKEN', '还没有 Token');
+    try {
+      const response = await github.repo(owner, name, token);
+      return ok({ status: response.status });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '请求失败';
+      return fail('GITHUB', redactSecrets(message, [token]));
     }
   });
   ipcMain.handle('dev:files', (_event, siteDir: string) => {
