@@ -6,7 +6,13 @@ import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
 import { createSite, pickDirectory, readRecent, remember, siteTitle } from './project.ts';
-import { focusPreview, isPreviewContents, showPreview, type PreviewMode } from './preview.ts';
+import {
+  focusPreview,
+  focusSelector,
+  isPreviewContents,
+  showPreview,
+  type PreviewMode,
+} from './preview.ts';
 import { SiteWatcher } from './watch.ts';
 import {
   createPost,
@@ -221,6 +227,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('preview:focus', (_event, file: string, offset: string) => {
     focusPreview(file, offset);
+    return ok(null);
+  });
+  ipcMain.handle('preview:focusSelector', async (_event, selector: string) => {
+    await focusSelector(selector);
     return ok(null);
   });
   ipcMain.handle('project:recent', () => ok(readRecent()));

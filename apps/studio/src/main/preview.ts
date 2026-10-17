@@ -70,3 +70,8 @@ export function isPreviewContents(contents: WebContents): boolean {
 export function focusPreview(file: string, offset: string): void {
   for (const view of views) view.webContents.send('preview:focus', { file, offset });
 }
+
+export async function focusSelector(selector: string): Promise<void> {
+  const script = `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`;
+  for (const view of views) await view.webContents.executeJavaScript(script);
+}
