@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { existsSync, writeFileSync } from 'node:fs';
 import { app, BrowserWindow, ipcMain, net, protocol, safeStorage } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
@@ -39,6 +40,7 @@ import {
 import { createPage, listPages, type PageTemplate } from './pages.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
+import { groupChanges, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
@@ -194,6 +196,32 @@ const runtime = new RuntimeService({
     BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onExit', event)),
 });
 
+function historyFile(): string {
+  return join(app.getPath('userData'), 'deploy-history.json');
+}
+
+function readDeployHistory(siteDir: string): DeployRecord[] {
+  try {
+    const all = JSON.parse(readFileSync(historyFile(), 'utf8')) as Record<string, DeployRecord[]>;
+    return all[siteDir] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
+  const file = historyFile();
+  mkdirSync(app.getPath('userData'), { recursive: true });
+  let all: Record<string, DeployRecord[]> = {};
+  try {
+    all = JSON.parse(readFileSync(file, 'utf8')) as Record<string, DeployRecord[]>;
+  } catch {
+    all = {};
+  }
+  all[siteDir] = rows;
+  writeFileSync(file, `${JSON.stringify(all)}\n`);
+}
+
 app.whenReady().then(() => {
   registerProtocol();
   ipcMain.handle('app:getInfo', () =>
@@ -319,6 +347,26 @@ app.whenReady().then(() => {
     } catch (error) {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
     }
+  });
+  ipcMain.handle('publish:changes', (_event, siteDir: string) => {
+    try {
+      const text = execFileSync('git', ['status', '--porcelain'], {
+        cwd: siteDir,
+        encoding: 'utf8',
+      });
+      return ok(groupChanges(text.split('\n').filter(Boolean)));
+    } catch {
+      return ok({ posts: [], pages: [], settings: [] });
+    }
+  });
+  ipcMain.handle('publish:history', (_event, siteDir: string) => ok(readDeployHistory(siteDir)));
+  ipcMain.handle('publish:record', (_event, siteDir: string, repo: string) => {
+    const next = rememberDeploy(readDeployHistory(siteDir), {
+      at: new Date().toISOString(),
+      repo,
+    });
+    writeDeployHistory(siteDir, next);
+    return ok(next);
   });
   ipcMain.handle(
     'wizard:write',

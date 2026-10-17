@@ -52,6 +52,13 @@ export interface XiaoApi {
       file: string,
     ) => Promise<IpcResult<null>>;
   };
+  publish: {
+    changes: (
+      siteDir: string,
+    ) => Promise<IpcResult<{ posts: string[]; pages: string[]; settings: string[] }>>;
+    history: (siteDir: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
+    record: (siteDir: string, repo: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
+  };
   wizard: {
     write: (
       siteDir: string,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import repoGuide from '../../../../resources/guides/01-repo.svg';
 import tokenGuide from '../../../../resources/guides/02-token.svg';
 import pagesGuide from '../../../../resources/guides/03-pages.svg';
@@ -13,6 +13,13 @@ const link = ref('');
 const token = ref('');
 const message = ref('这一步只做引导和本地配置，不会推送。');
 const selector = ref('#wide');
+const changes = ref<{ posts: string[]; pages: string[]; settings: string[] }>({
+  posts: [],
+  pages: [],
+  settings: [],
+});
+const history = ref<{ at: string; repo: string }[]>([]);
+const blocked = ref(false);
 const parsed = computed(() => parseRepo(link.value));
 
 async function saveToken(): Promise<void> {
@@ -35,6 +42,16 @@ function planRepublish(): void {
   message.value = '重新发布已准备。现在不会连接 Actions，也不会推送。';
 }
 
+async function loadGate(): Promise<void> {
+  if (!session.siteDir) return;
+  const listed = await window.xiao.publish.changes(session.siteDir);
+  if (listed.ok) changes.value = listed.data;
+  const seo = await window.xiao.seo.check(session.siteDir);
+  blocked.value = seo.ok ? seo.data.some((row) => row.level === 'error') : true;
+  const past = await window.xiao.publish.history(session.siteDir);
+  if (past.ok) history.value = past.data;
+}
+
 async function writeConfig(): Promise<void> {
   const repo = parsed.value;
   if (!session.siteDir || !repo) {
@@ -43,12 +60,31 @@ async function writeConfig(): Promise<void> {
   }
   const result = await window.xiao.wizard.write(session.siteDir, repo.owner, repo.repo, 'master');
   message.value = result.ok ? '已写好本地配置和工作流，还没有推送' : result.message;
+  if (result.ok && parsed.value) {
+    const recorded = await window.xiao.publish.record(
+      session.siteDir,
+      `${parsed.value.owner}/${parsed.value.repo}`,
+    );
+    if (recorded.ok) history.value = recorded.data;
+  }
 }
+
+onMounted(() => void loadGate());
 </script>
 
 <template>
   <section>
     <h1>部署向导</h1>
+    <h2>改动</h2>
+    <p>文章 {{ changes.posts.length }}，页面 {{ changes.pages.length }}，设置 {{ changes.settings.length }}</p>
+    <p v-if="blocked">体检有 error，不能发布。</p>
+    <button type="button" :disabled="blocked" @click="message = '门禁已通过。现在不会推送。'">
+      发布
+    </button>
+    <h2>部署历史</h2>
+    <ul>
+      <li v-for="item in history" :key="item.at">{{ item.at }} {{ item.repo }}</li>
+    </ul>
     <p>{{ message }}</p>
     <article v-for="(guide, index) in guides" :key="guide.id">
       <h2>{{ guide.title }}</h2>

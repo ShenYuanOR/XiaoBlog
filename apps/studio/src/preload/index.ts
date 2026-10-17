@@ -36,6 +36,11 @@ const api = {
       file: string,
     ) => ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value, file),
   },
+  publish: {
+    changes: (siteDir: string) => ipcRenderer.invoke('publish:changes', siteDir),
+    history: (siteDir: string) => ipcRenderer.invoke('publish:history', siteDir),
+    record: (siteDir: string, repo: string) => ipcRenderer.invoke('publish:record', siteDir, repo),
+  },
   wizard: {
     write: (siteDir: string, owner: string, repo: string, branch: string) =>
       ipcRenderer.invoke('wizard:write', siteDir, owner, repo, branch),
