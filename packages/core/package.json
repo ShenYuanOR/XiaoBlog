@@ -11,7 +11,8 @@
     "./site": "./src/site/index.ts",
     "./importer": "./src/importer/index.ts",
     "./ipc": "./src/ipc-types.ts",
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./components": "./src/components/manifest.ts"
   },
   "scripts": {
     "test": "vitest run"
