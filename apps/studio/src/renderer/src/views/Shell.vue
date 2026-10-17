@@ -13,6 +13,11 @@ onMounted(() => {
   void session.load();
 });
 
+async function setPreview(mode: 'phone' | 'tablet' | 'pc' | 'side'): Promise<void> {
+  if (!session.previewUrl) return;
+  await window.xiao.preview.set(mode, session.previewUrl);
+}
+
 async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
   if (!session.conflict) return;
   if (action === 'compare') {
@@ -42,6 +47,10 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
         </button>
       </div>
       <span>{{ copy.preview }}</span>
+      <button type="button" @click="setPreview('phone')">手机</button>
+      <button type="button" @click="setPreview('tablet')">平板</button>
+      <button type="button" @click="setPreview('pc')">电脑</button>
+      <button type="button" @click="setPreview('side')">并排</button>
       <button type="button" disabled>{{ copy.publish }}</button>
     </header>
     <Conflict

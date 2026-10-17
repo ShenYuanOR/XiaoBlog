@@ -43,6 +43,10 @@ const api = {
     ): Promise<IpcResult<string>> =>
       ipcRenderer.invoke('content:saveImage', siteDir, slug, name, base64),
   },
+  preview: {
+    set: (mode: 'phone' | 'tablet' | 'pc' | 'custom' | 'side', url: string, customWidth?: number) =>
+      ipcRenderer.invoke('preview:set', mode, url, customWidth),
+  },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
   },

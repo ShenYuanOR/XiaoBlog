@@ -32,6 +32,13 @@ export interface XiaoApi {
       base64: string,
     ) => Promise<IpcResult<string>>;
   };
+  preview: {
+    set: (
+      mode: 'phone' | 'tablet' | 'pc' | 'custom' | 'side',
+      url: string,
+      customWidth?: number,
+    ) => Promise<IpcResult<number[]>>;
+  };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
   };

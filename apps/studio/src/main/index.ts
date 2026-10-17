@@ -5,14 +5,8 @@ import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
-import {
-  createSite,
-  openPreview,
-  pickDirectory,
-  readRecent,
-  remember,
-  siteTitle,
-} from './project.ts';
+import { createSite, pickDirectory, readRecent, remember, siteTitle } from './project.ts';
+import { showPreview, type PreviewMode } from './preview.ts';
 import { SiteWatcher } from './watch.ts';
 import {
   createPost,
@@ -144,10 +138,10 @@ const runtime = new RuntimeService({
   onLog: (event) =>
     BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onLog', event)),
   onReady: (event) => {
-    BrowserWindow.getAllWindows().forEach((item) =>
-      item.webContents.send('runtime:onReady', event),
-    );
-    openPreview(event.url);
+    BrowserWindow.getAllWindows().forEach((item) => {
+      item.webContents.send('runtime:onReady', event);
+      void showPreview(item, event.url, 'pc');
+    });
   },
   onExit: (event) =>
     BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onExit', event)),
@@ -169,6 +163,15 @@ app.whenReady().then(() => {
     runtime.cancel(taskId);
     return ok(null);
   });
+  ipcMain.handle(
+    'preview:set',
+    async (event, mode: PreviewMode, url: string, customWidth?: number) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || !url) return fail('PREVIEW', '还没有预览地址');
+      const widths = await showPreview(win, url, mode, customWidth);
+      return ok(widths);
+    },
+  );
   ipcMain.handle('project:recent', () => ok(readRecent()));
   ipcMain.handle('project:pick', async () => ok(await pickDirectory()));
   ipcMain.handle(

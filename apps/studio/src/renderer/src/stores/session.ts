@@ -12,6 +12,7 @@ export const useSession = defineStore('session', () => {
   const conflict = ref<{ file: string; mine: string; disk: string } | null>(null);
   const compare = ref(false);
   const reloaded = ref('');
+  const previewUrl = ref('');
 
   async function load(): Promise<void> {
     const result = await window.xiao.app.getInfo();
@@ -54,6 +55,7 @@ export const useSession = defineStore('session', () => {
     conflict,
     compare,
     reloaded,
+    previewUrl,
     load,
     setMode,
     setNav,
