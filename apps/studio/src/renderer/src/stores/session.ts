@@ -14,6 +14,7 @@ export const useSession = defineStore('session', () => {
   const reloaded = ref('');
   const previewUrl = ref('');
   const pageFile = ref('src/pages/index.astro');
+  const devOpen = ref('');
   const drag = ref<{ kind: 'new' | 'move'; name: string; id: string } | null>(null);
 
   async function load(): Promise<void> {
@@ -46,6 +47,10 @@ export const useSession = defineStore('session', () => {
     pageFile.value = file;
   }
 
+  function editCustomCss(): void {
+    devOpen.value = 'src/styles/custom.css';
+  }
+
   function setDrag(next: { kind: 'new' | 'move'; name: string; id: string } | null): void {
     drag.value = next;
   }
@@ -67,6 +72,7 @@ export const useSession = defineStore('session', () => {
     reloaded,
     previewUrl,
     pageFile,
+    devOpen,
     drag,
     load,
     setMode,
@@ -74,6 +80,7 @@ export const useSession = defineStore('session', () => {
     pushLog,
     setSite,
     setPage,
+    editCustomCss,
     setDrag,
     setConflict,
   };

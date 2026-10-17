@@ -9,7 +9,7 @@ import json from 'shiki/langs/json.mjs';
 import markdown from 'shiki/langs/markdown.mjs';
 import typescript from 'shiki/langs/typescript.mjs';
 import githubLight from 'shiki/themes/github-light.mjs';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSession } from '../stores/session.ts';
 
 self.MonacoEnvironment = {
@@ -102,7 +102,15 @@ onMounted(async () => {
   });
   editor.onDidChangeModelContent(schedule);
   await loadFiles();
+  if (session.devOpen) await open(session.devOpen);
 });
+
+watch(
+  () => session.devOpen,
+  (file) => {
+    if (file) void open(file);
+  },
+);
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer);

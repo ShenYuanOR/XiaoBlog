@@ -62,6 +62,9 @@ watch(
     <label>每页篇数 <input v-model.number="form.posts.pageSize" type="number" min="1" /></label>
     <label>许可名称 <input v-model="form.posts.license.name" /></label>
     <label><input v-model="form.posts.license.enabled" type="checkbox" /> 显示许可</label>
+    <button v-if="session.mode === 'develop'" type="button" @click="session.editCustomCss()">
+      编辑 custom.css
+    </button>
     <button type="button" @click="save">保存</button>
     <p>{{ message }}</p>
   </section>
