@@ -32,6 +32,7 @@ import {
 } from './canvas.ts';
 import { createPage, listPages, type PageTemplate } from './pages.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
+import { writeDeployFiles } from './deploy-files.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
@@ -309,6 +310,21 @@ app.whenReady().then(() => {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
     }
   });
+  ipcMain.handle(
+    'wizard:write',
+    (_event, siteDir: string, owner: string, repo: string, branch: string) => {
+      try {
+        const url =
+          repo.toLowerCase() === `${owner.toLowerCase()}.github.io`
+            ? `https://${owner}.github.io`
+            : `https://${owner}.github.io/${repo}`;
+        writeDeployFiles(siteDir, { owner, repo, branch, url });
+        return ok(null);
+      } catch (error) {
+        return fail('WIZARD_WRITE', error instanceof Error ? error.message : '写不了配置');
+      }
+    },
+  );
   ipcMain.handle('secret:save', (_event, repo: string, token: string, expires: string) => {
     try {
       secretStore().save(repo, token, expires);

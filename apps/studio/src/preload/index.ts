@@ -36,6 +36,10 @@ const api = {
       file: string,
     ) => ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value, file),
   },
+  wizard: {
+    write: (siteDir: string, owner: string, repo: string, branch: string) =>
+      ipcRenderer.invoke('wizard:write', siteDir, owner, repo, branch),
+  },
   secret: {
     save: (repo: string, token: string, expires: string) =>
       ipcRenderer.invoke('secret:save', repo, token, expires),

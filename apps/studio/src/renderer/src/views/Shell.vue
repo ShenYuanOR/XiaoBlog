@@ -10,6 +10,7 @@ import Seo from './Seo.vue';
 import Canvas from './Canvas.vue';
 import Pages from './Pages.vue';
 import Develop from './Develop.vue';
+import Publish from './Publish.vue';
 import { ref } from 'vue';
 
 const session = useSession();
@@ -83,7 +84,7 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
       <button type="button" @click="setPreview('tablet')">平板</button>
       <button type="button" @click="setPreview('pc')">电脑</button>
       <button type="button" @click="setPreview('side')">并排</button>
-      <button type="button" disabled>{{ copy.publish }}</button>
+      <button type="button" @click="session.setNav('发布')">{{ copy.publish }}</button>
     </header>
     <Conflict
       v-if="session.conflict"
@@ -117,6 +118,7 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
         <Canvas v-if="session.nav === '页面'" />
         <Seo v-else-if="session.nav === 'SEO'" />
         <Settings v-else-if="session.nav === '设置' || session.nav === '外观'" />
+        <Publish v-else-if="session.nav === '发布'" />
         <Editor v-else-if="slug && session.siteDir" :site-dir="session.siteDir" :slug="slug" />
         <h1 v-else>{{ copy.editor }}</h1>
         <p v-if="!slug">{{ copy.empty }}</p>
