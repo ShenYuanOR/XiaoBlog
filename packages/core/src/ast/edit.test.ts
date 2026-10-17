@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   assertDiskUnchanged,
@@ -265,6 +268,34 @@ describe('拼首页', () => {
     expect(source).toContain('<Section pad="lg">');
     expect(source).toContain('<Text>');
     expect(() => parseAstro(source)).not.toThrow();
+  });
+});
+
+describe('拖拽产物', () => {
+  it('插入、移动后通过 ESLint，非法嵌套不写进去', () => {
+    let source = '---\n---\n<main>\n  <p></p>\n</main>\n';
+    let doc = parseAstro(source);
+    const main = root(doc);
+    expect(() => insertNode(doc, main.children[0]!.id, 0, '<Section></Section>')).toThrow(
+      /不能包含/,
+    );
+    source = insertNode(doc, main.id, 0, '<Section></Section>');
+    doc = parseAstro(source);
+    const section = root(doc).children.find((child) => child.name === 'Section');
+    source = insertNode(doc, section!.id, 0, '<Text></Text>');
+    doc = parseAstro(source);
+    const again = root(doc).children.find((child) => child.name === 'Section');
+    const text = again?.children.find((child) => child.name === 'Text');
+    source = moveNode(doc, text!.id, again!.id, again!.children.length);
+    expect(source).toContain('<Text>');
+    const template = fileURLToPath(new URL('../../../../packages/template/', import.meta.url));
+    const eslint = path.join(template, 'node_modules/eslint/bin/eslint.js');
+    const report = execFileSync(
+      process.execPath,
+      [eslint, '--stdin', '--stdin-filename', 'src/pages/_drag.astro'],
+      { cwd: template, input: source, encoding: 'utf8' },
+    );
+    expect(report).not.toMatch(/error/i);
   });
 });
 

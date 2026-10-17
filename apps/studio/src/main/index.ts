@@ -19,7 +19,13 @@ import {
 } from './content.ts';
 import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
 import { seoRows } from './seo.ts';
-import { insertComponent, readOutline, setComponentProp } from './canvas.ts';
+import {
+  insertComponent,
+  moveComponent,
+  nestingAllowed,
+  readOutline,
+  setComponentProp,
+} from './canvas.ts';
 import { manifest } from '@xiao/core/components';
 
 const csp = [
@@ -223,14 +229,31 @@ app.whenReady().then(() => {
       return fail('CANVAS_READ', error instanceof Error ? error.message : '读不到页面');
     }
   });
-  ipcMain.handle('canvas:insert', (_event, siteDir: string, parentId: string, name: string) => {
-    try {
-      insertComponent(siteDir, parentId, 0, name);
-      return ok(null);
-    } catch (error) {
-      return fail('CANVAS_INSERT', error instanceof Error ? error.message : '放不进去');
-    }
-  });
+  ipcMain.handle(
+    'canvas:insert',
+    (_event, siteDir: string, parentId: string, index: number, name: string) => {
+      try {
+        insertComponent(siteDir, parentId, index, name);
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_INSERT', error instanceof Error ? error.message : '放不进去');
+      }
+    },
+  );
+  ipcMain.handle(
+    'canvas:move',
+    (_event, siteDir: string, nodeId: string, parentId: string, index: number) => {
+      try {
+        moveComponent(siteDir, nodeId, parentId, index);
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_MOVE', error instanceof Error ? error.message : '移不动');
+      }
+    },
+  );
+  ipcMain.handle('canvas:canNest', (_event, parentName: string, childName: string) =>
+    ok(nestingAllowed(parentName, childName)),
+  );
   ipcMain.handle('canvas:props', (_event, name: string) =>
     ok(manifest.find((item) => item.name === name)?.props ?? []),
   );

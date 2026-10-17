@@ -26,7 +26,19 @@ export interface XiaoApi {
   canvas: {
     components: () => Promise<IpcResult<string[]>>;
     outline: (siteDir: string) => Promise<IpcResult<CanvasNode[]>>;
-    insert: (siteDir: string, parentId: string, name: string) => Promise<IpcResult<null>>;
+    insert: (
+      siteDir: string,
+      parentId: string,
+      index: number,
+      name: string,
+    ) => Promise<IpcResult<null>>;
+    move: (
+      siteDir: string,
+      nodeId: string,
+      parentId: string,
+      index: number,
+    ) => Promise<IpcResult<null>>;
+    canNest: (parentName: string, childName: string) => Promise<IpcResult<boolean>>;
     props: (name: string) => Promise<IpcResult<CanvasField[]>>;
     setProp: (
       siteDir: string,

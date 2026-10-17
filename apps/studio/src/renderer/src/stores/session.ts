@@ -13,6 +13,7 @@ export const useSession = defineStore('session', () => {
   const compare = ref(false);
   const reloaded = ref('');
   const previewUrl = ref('');
+  const drag = ref<{ kind: 'new' | 'move'; name: string; id: string } | null>(null);
 
   async function load(): Promise<void> {
     const result = await window.xiao.app.getInfo();
@@ -40,6 +41,10 @@ export const useSession = defineStore('session', () => {
     siteTitle.value = title;
   }
 
+  function setDrag(next: { kind: 'new' | 'move'; name: string; id: string } | null): void {
+    drag.value = next;
+  }
+
   function setConflict(next: { file: string; mine: string; disk: string } | null): void {
     conflict.value = next;
     compare.value = false;
@@ -56,11 +61,13 @@ export const useSession = defineStore('session', () => {
     compare,
     reloaded,
     previewUrl,
+    drag,
     load,
     setMode,
     setNav,
     pushLog,
     setSite,
+    setDrag,
     setConflict,
   };
 });

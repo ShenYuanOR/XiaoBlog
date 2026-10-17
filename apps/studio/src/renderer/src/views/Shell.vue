@@ -16,6 +16,32 @@ onMounted(() => {
   void session.load();
 });
 
+function allowPreviewDrop(event: DragEvent): void {
+  if (session.nav === '页面' && session.drag?.kind === 'new') event.preventDefault();
+}
+
+async function dropPreview(event: DragEvent): Promise<void> {
+  const name = session.drag?.kind === 'new' ? session.drag.name : '';
+  session.setDrag(null);
+  if (!name || !session.siteDir || session.nav !== '页面') return;
+  event.preventDefault();
+  const outline = await window.xiao.canvas.outline(session.siteDir);
+  const root = outline.ok ? outline.data[0] : undefined;
+  if (!root || root.locked) {
+    window.dispatchEvent(new CustomEvent('xiao-canvas', { detail: '预览里没有可放置的位置' }));
+    return;
+  }
+  const result = await window.xiao.canvas.insert(
+    session.siteDir,
+    root.id,
+    root.children.length,
+    name,
+  );
+  window.dispatchEvent(
+    new CustomEvent('xiao-canvas', { detail: result.ok ? `已放到预览 ${name}` : result.message }),
+  );
+}
+
 async function setPreview(mode: 'phone' | 'tablet' | 'pc' | 'side'): Promise<void> {
   if (!session.previewUrl) return;
   await window.xiao.preview.set(mode, session.previewUrl);
@@ -91,7 +117,7 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
         <p v-if="!slug">{{ copy.empty }}</p>
         <p v-if="session.mode === 'develop'">开发者模式的文件树和输出面板还没接上。</p>
       </main>
-      <aside class="preview">
+      <aside class="preview" @dragover="allowPreviewDrop" @drop="dropPreview">
         <h1>{{ copy.preview }}</h1>
         <p>{{ copy.previewNote }}</p>
         <pre v-if="session.mode === 'develop'" class="output">{{ session.logs || '输出是空的。' }}</pre>

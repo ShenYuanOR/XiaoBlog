@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { CanvasField, CanvasNode } from '../env.d.ts';
 import { useSession } from '../stores/session.ts';
+
+interface Row {
+  id: string;
+  name: string;
+  locked: boolean;
+  depth: number;
+  parentId: string | null;
+  parentName: string;
+  index: number;
+  childCount: number;
+}
 
 const session = useSession();
 const names = ref<string[]>([]);
@@ -10,12 +21,39 @@ const selected = ref('');
 const fields = ref<CanvasField[]>([]);
 const values = ref<Record<string, string>>({});
 const message = ref('');
+const mark = ref<{ id: string; place: 'before' | 'after' | 'inside' } | null>(null);
+const nestCache = new Map<string, boolean>();
 
-function flatten(nodes: CanvasNode[], depth = 0): { id: string; label: string }[] {
-  return nodes.flatMap((node) => [
-    { id: node.id, label: `${'  '.repeat(depth)}${node.locked ? '锁定 ' : ''}${node.name}` },
-    ...flatten(node.children, depth + 1),
+function rowsOf(
+  nodes: CanvasNode[],
+  depth = 0,
+  parentId: string | null = null,
+  parentName = '',
+): Row[] {
+  return nodes.flatMap((node, index) => [
+    {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      depth,
+      parentId,
+      parentName,
+      index,
+      childCount: node.children.length,
+    },
+    ...rowsOf(node.children, depth + 1, node.id, node.name),
   ]);
+}
+
+const rows = computed(() => rowsOf(tree.value));
+
+function nestKnown(parent: string, child: string): boolean | null {
+  const key = `${parent}>${child}`;
+  if (nestCache.has(key)) return nestCache.get(key) ?? false;
+  void window.xiao.canvas.canNest(parent, child).then((result) => {
+    nestCache.set(key, result.ok ? result.data : false);
+  });
+  return null;
 }
 
 function pathOf(nodes: CanvasNode[], id: string, acc: number[] = []): number[] | null {
@@ -71,7 +109,7 @@ async function add(name: string): Promise<void> {
   const parent = selected.value || tree.value[0]?.id;
   if (!session.siteDir || !parent) return;
   const keep = pathOf(tree.value, parent);
-  const result = await window.xiao.canvas.insert(session.siteDir, parent, name);
+  const result = await window.xiao.canvas.insert(session.siteDir, parent, 0, name);
   message.value = result.ok ? `已放入 ${name}` : result.message;
   if (!result.ok || !keep) {
     await load(keep);
@@ -103,20 +141,113 @@ async function write(field: CanvasField, event: Event): Promise<void> {
   await load(keep);
 }
 
-onMounted(() => void load());
+function startNew(name: string, event: DragEvent): void {
+  session.setDrag({ kind: 'new', name, id: '' });
+  event.dataTransfer?.setData('text/plain', name);
+}
+
+function startMove(row: Row, event: DragEvent): void {
+  session.setDrag({ kind: 'move', name: row.name, id: row.id });
+  event.dataTransfer?.setData('text/plain', row.id);
+}
+
+function targetOf(row: Row, place: 'before' | 'after' | 'inside'): { parentId: string; index: number; parentName: string } | null {
+  if (place === 'inside') {
+    if (row.locked) return null;
+    return { parentId: row.id, index: row.childCount, parentName: row.name };
+  }
+  if (!row.parentId) return null;
+  return {
+    parentId: row.parentId,
+    index: place === 'before' ? row.index : row.index + 1,
+    parentName: row.parentName,
+  };
+}
+
+function over(row: Row, event: DragEvent): void {
+  const drag = session.drag;
+  if (!drag) return;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const ratio = rect.height === 0 ? 0.5 : (event.clientY - rect.top) / rect.height;
+  const place = !row.parentId ? 'inside' : ratio < 0.28 ? 'before' : ratio > 0.72 ? 'after' : 'inside';
+  const target = targetOf(row, place);
+  if (!target || (drag.kind === 'move' && drag.id === target.parentId)) {
+    mark.value = null;
+    return;
+  }
+  const allowed = nestKnown(target.parentName, drag.name);
+  if (allowed === false) {
+    mark.value = null;
+    return;
+  }
+  event.preventDefault();
+  mark.value = { id: row.id, place };
+}
+
+async function drop(row: Row, event: DragEvent): Promise<void> {
+  const drag = session.drag;
+  const place = mark.value?.id === row.id ? mark.value.place : null;
+  mark.value = null;
+  session.setDrag(null);
+  if (!drag || !place || !session.siteDir) return;
+  event.preventDefault();
+  const target = targetOf(row, place);
+  if (!target) return;
+  const result =
+    drag.kind === 'new'
+      ? await window.xiao.canvas.insert(session.siteDir, target.parentId, target.index, drag.name)
+      : await window.xiao.canvas.move(session.siteDir, drag.id, target.parentId, target.index);
+  message.value = result.ok ? (drag.kind === 'new' ? `已放入 ${drag.name}` : '已移动') : result.message;
+  await load();
+}
+
+function onRefresh(event: Event): void {
+  const detail = (event as CustomEvent<string>).detail;
+  if (detail) message.value = detail;
+  void load();
+}
+
+onMounted(() => {
+  window.addEventListener('xiao-canvas', onRefresh);
+  void load();
+});
+onUnmounted(() => window.removeEventListener('xiao-canvas', onRefresh));
 </script>
 
 <template>
   <div class="canvas">
     <aside>
-      <button v-for="name in names" :key="name" type="button" @click="add(name)">{{ name }}</button>
+      <button
+        v-for="name in names"
+        :key="name"
+        type="button"
+        draggable="true"
+        @dragstart="startNew(name, $event)"
+        @dragend="session.setDrag(null)"
+        @click="add(name)"
+      >
+        {{ name }}
+      </button>
     </aside>
     <div>
       <p v-if="message">{{ message }}</p>
       <ul>
-        <li v-for="item in flatten(tree)" :key="item.id">
-          <button type="button" :aria-pressed="selected === item.id" @click="select(item.id)">
-            {{ item.label }}
+        <li
+          v-for="row in rows"
+          :key="row.id"
+          :class="mark?.id === row.id ? mark.place : ''"
+          @dragover="over(row, $event)"
+          @drop="drop(row, $event)"
+        >
+          <button
+            type="button"
+            draggable="true"
+            :aria-pressed="selected === row.id"
+            @dragstart="startMove(row, $event)"
+            @dragend="session.setDrag(null)"
+            @click="select(row.id)"
+          >
+            {{ '  '.repeat(row.depth) }}{{ row.locked ? '锁定 ' : '' }}{{ row.name }}
           </button>
         </li>
       </ul>
@@ -180,5 +311,17 @@ ul {
 button {
   text-align: left;
   white-space: pre;
+}
+
+.before {
+  box-shadow: inset 0 2px 0 #1d4ed8;
+}
+
+.after {
+  box-shadow: inset 0 -2px 0 #1d4ed8;
+}
+
+.inside {
+  outline: 1px solid #1d4ed8;
 }
 </style>

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { insertNode, parseAstro, setProp } from '@xiao/core/ast';
+import { assertCanNest, insertNode, moveNode, parseAstro, setProp } from '@xiao/core/ast';
 import { manifest } from '@xiao/core/components';
 
 export interface OutlineNode {
@@ -47,6 +47,29 @@ export function insertComponent(
   const next = insertNode(doc, parentId, index, spec.snippet);
   writeFileSync(full, next);
   return next;
+}
+
+export function moveComponent(
+  siteDir: string,
+  nodeId: string,
+  parentId: string,
+  index: number,
+  file = 'src/pages/index.astro',
+): string {
+  const full = pagePath(siteDir, file);
+  const doc = parseAstro(readFileSync(full, 'utf8'));
+  const next = moveNode(doc, nodeId, parentId, index);
+  writeFileSync(full, next);
+  return next;
+}
+
+export function nestingAllowed(parentName: string, childName: string): boolean {
+  try {
+    assertCanNest(parentName, `<${childName}></${childName}>`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function setComponentProp(
