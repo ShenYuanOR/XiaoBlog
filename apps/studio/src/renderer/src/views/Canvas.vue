@@ -96,7 +96,11 @@ async function load(keep?: number[] | null): Promise<void> {
   const outline = await window.xiao.canvas.outline(session.siteDir, session.pageFile);
   names.value = listed.ok ? listed.data : [];
   tree.value = outline.ok ? outline.data : [];
-  message.value = outline.ok ? message.value : outline.message;
+  message.value = outline.ok
+    ? message.value
+    : outline.message.includes('解析')
+      ? '源码有错误，修复后恢复'
+      : outline.message;
   if (keep) await show(at(tree.value, keep));
 }
 

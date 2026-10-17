@@ -36,6 +36,13 @@ const api = {
       file: string,
     ) => ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value, file),
   },
+  dev: {
+    files: (siteDir: string) => ipcRenderer.invoke('dev:files', siteDir),
+    read: (siteDir: string, file: string) => ipcRenderer.invoke('dev:read', siteDir, file),
+    write: (siteDir: string, file: string, content: string) =>
+      ipcRenderer.invoke('dev:write', siteDir, file, content),
+    lint: (siteDir: string, file: string) => ipcRenderer.invoke('dev:lint', siteDir, file),
+  },
   page: {
     list: (siteDir: string) => ipcRenderer.invoke('page:list', siteDir),
     create: (siteDir: string, template: 'blank' | 'landing' | 'about', slug: string) =>

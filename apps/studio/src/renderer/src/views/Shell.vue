@@ -9,6 +9,7 @@ import Settings from './Settings.vue';
 import Seo from './Seo.vue';
 import Canvas from './Canvas.vue';
 import Pages from './Pages.vue';
+import Develop from './Develop.vue';
 import { ref } from 'vue';
 
 const session = useSession();
@@ -112,13 +113,13 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
         <p v-else>{{ copy.sideNote }}</p>
       </aside>
       <main class="editor">
+        <Develop v-if="session.mode === 'develop'" />
         <Canvas v-if="session.nav === '页面'" />
         <Seo v-else-if="session.nav === 'SEO'" />
         <Settings v-else-if="session.nav === '设置' || session.nav === '外观'" />
         <Editor v-else-if="slug && session.siteDir" :site-dir="session.siteDir" :slug="slug" />
         <h1 v-else>{{ copy.editor }}</h1>
         <p v-if="!slug">{{ copy.empty }}</p>
-        <p v-if="session.mode === 'develop'">开发者模式的文件树和输出面板还没接上。</p>
       </main>
       <aside class="preview" @dragover="allowPreviewDrop" @drop="dropPreview">
         <h1>{{ copy.preview }}</h1>

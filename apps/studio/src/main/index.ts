@@ -31,6 +31,7 @@ import {
   undoPage,
 } from './canvas.ts';
 import { createPage, listPages, type PageTemplate } from './pages.ts';
+import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { manifest } from '@xiao/core/components';
 
 const csp = [
@@ -283,6 +284,36 @@ app.whenReady().then(() => {
       return ok(null);
     } catch (error) {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
+    }
+  });
+  ipcMain.handle('dev:files', (_event, siteDir: string) => {
+    try {
+      return ok(listSourceFiles(siteDir));
+    } catch (error) {
+      return fail('DEV_FILES', error instanceof Error ? error.message : '读不到文件');
+    }
+  });
+  ipcMain.handle('dev:read', (_event, siteDir: string, file: string) => {
+    try {
+      return ok(readSource(siteDir, file));
+    } catch (error) {
+      return fail('DEV_READ', error instanceof Error ? error.message : '读不到文件');
+    }
+  });
+  ipcMain.handle('dev:write', (_event, siteDir: string, file: string, content: string) => {
+    try {
+      const full = writeSource(siteDir, file, content);
+      watcher?.noteWrite(full, content);
+      return ok(null);
+    } catch (error) {
+      return fail('DEV_WRITE', error instanceof Error ? error.message : '写不了文件');
+    }
+  });
+  ipcMain.handle('dev:lint', (_event, siteDir: string, file: string) => {
+    try {
+      return ok(lintSource(siteDir, file));
+    } catch (error) {
+      return fail('DEV_LINT', error instanceof Error ? error.message : '检查失败');
     }
   });
   ipcMain.handle('page:list', (_event, siteDir: string) => {

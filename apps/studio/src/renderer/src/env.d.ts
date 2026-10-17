@@ -52,6 +52,15 @@ export interface XiaoApi {
       file: string,
     ) => Promise<IpcResult<null>>;
   };
+  dev: {
+    files: (siteDir: string) => Promise<IpcResult<string[]>>;
+    read: (siteDir: string, file: string) => Promise<IpcResult<string>>;
+    write: (siteDir: string, file: string, content: string) => Promise<IpcResult<null>>;
+    lint: (
+      siteDir: string,
+      file: string,
+    ) => Promise<IpcResult<{ line: number; message: string }[]>>;
+  };
   page: {
     list: (siteDir: string) => Promise<IpcResult<string[]>>;
     create: (
