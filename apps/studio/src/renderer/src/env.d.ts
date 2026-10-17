@@ -39,6 +39,8 @@ export interface XiaoApi {
       index: number,
     ) => Promise<IpcResult<null>>;
     canNest: (parentName: string, childName: string) => Promise<IpcResult<boolean>>;
+    undo: (siteDir: string) => Promise<IpcResult<null>>;
+    redo: (siteDir: string) => Promise<IpcResult<null>>;
     props: (name: string) => Promise<IpcResult<CanvasField[]>>;
     setProp: (
       siteDir: string,

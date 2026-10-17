@@ -25,6 +25,8 @@ const api = {
       ipcRenderer.invoke('canvas:move', siteDir, nodeId, parentId, index),
     canNest: (parentName: string, childName: string) =>
       ipcRenderer.invoke('canvas:canNest', parentName, childName),
+    undo: (siteDir: string) => ipcRenderer.invoke('canvas:undo', siteDir),
+    redo: (siteDir: string) => ipcRenderer.invoke('canvas:redo', siteDir),
     props: (name: string) => ipcRenderer.invoke('canvas:props', name),
     setProp: (siteDir: string, nodeId: string, name: string, value: string | number | boolean) =>
       ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value),

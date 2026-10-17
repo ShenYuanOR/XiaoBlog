@@ -1,6 +1,16 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { assertCanNest, insertNode, moveNode, parseAstro, setProp } from '@xiao/core/ast';
+import {
+  assertCanNest,
+  insertNode,
+  moveNode,
+  parseAstro,
+  recordEdit,
+  redoEdit,
+  setProp,
+  undoEdit,
+  type FileHistory,
+} from '@xiao/core/ast';
 import { manifest } from '@xiao/core/components';
 
 export interface OutlineNode {
@@ -14,6 +24,15 @@ export interface OutlineNode {
 
 function pagePath(siteDir: string, file = 'src/pages/index.astro'): string {
   return path.join(siteDir, file);
+}
+
+const histories = new Map<string, FileHistory>();
+
+function writeEdit(full: string, before: string, after: string): string {
+  const history = histories.get(full) ?? { past: [], future: [] };
+  histories.set(full, recordEdit(history, before));
+  writeFileSync(full, after);
+  return after;
 }
 
 export function readOutline(siteDir: string, file = 'src/pages/index.astro'): OutlineNode[] {
@@ -43,10 +62,9 @@ export function insertComponent(
   const spec = manifest.find((item) => item.name === component);
   if (!spec) throw new Error(`没有组件 ${component}`);
   const full = pagePath(siteDir, file);
-  const doc = parseAstro(readFileSync(full, 'utf8'));
-  const next = insertNode(doc, parentId, index, spec.snippet);
-  writeFileSync(full, next);
-  return next;
+  const before = readFileSync(full, 'utf8');
+  const next = insertNode(parseAstro(before), parentId, index, spec.snippet);
+  return writeEdit(full, before, next);
 }
 
 export function moveComponent(
@@ -57,10 +75,9 @@ export function moveComponent(
   file = 'src/pages/index.astro',
 ): string {
   const full = pagePath(siteDir, file);
-  const doc = parseAstro(readFileSync(full, 'utf8'));
-  const next = moveNode(doc, nodeId, parentId, index);
-  writeFileSync(full, next);
-  return next;
+  const before = readFileSync(full, 'utf8');
+  const next = moveNode(parseAstro(before), nodeId, parentId, index);
+  return writeEdit(full, before, next);
 }
 
 export function nestingAllowed(parentName: string, childName: string): boolean {
@@ -80,8 +97,25 @@ export function setComponentProp(
   file = 'src/pages/index.astro',
 ): string {
   const full = pagePath(siteDir, file);
-  const doc = parseAstro(readFileSync(full, 'utf8'));
-  const next = setProp(doc, nodeId, name, value);
-  writeFileSync(full, next);
-  return next;
+  const before = readFileSync(full, 'utf8');
+  const next = setProp(parseAstro(before), nodeId, name, value);
+  return writeEdit(full, before, next);
+}
+
+export function undoPage(siteDir: string, file = 'src/pages/index.astro'): string {
+  const full = pagePath(siteDir, file);
+  const current = readFileSync(full, 'utf8');
+  const step = undoEdit(histories.get(full) ?? { past: [], future: [] }, current);
+  histories.set(full, step.history);
+  writeFileSync(full, step.text);
+  return step.text;
+}
+
+export function redoPage(siteDir: string, file = 'src/pages/index.astro'): string {
+  const full = pagePath(siteDir, file);
+  const current = readFileSync(full, 'utf8');
+  const step = redoEdit(histories.get(full) ?? { past: [], future: [] }, current);
+  histories.set(full, step.history);
+  writeFileSync(full, step.text);
+  return step.text;
 }

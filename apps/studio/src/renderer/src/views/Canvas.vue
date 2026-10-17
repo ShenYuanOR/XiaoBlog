@@ -106,6 +106,16 @@ async function select(id: string, fromPreview = false): Promise<void> {
   if (!fromPreview) await window.xiao.preview.focus('src/pages/index.astro', id);
 }
 
+async function history(kind: 'undo' | 'redo'): Promise<void> {
+  if (!session.siteDir) return;
+  const result =
+    kind === 'undo'
+      ? await window.xiao.canvas.undo(session.siteDir)
+      : await window.xiao.canvas.redo(session.siteDir);
+  message.value = result.ok ? (kind === 'undo' ? '已撤销' : '已重做') : result.message;
+  await load();
+}
+
 async function add(name: string): Promise<void> {
   const parent = selected.value || tree.value[0]?.id;
   if (!session.siteDir || !parent) return;
@@ -239,6 +249,10 @@ onUnmounted(() => {
       </button>
     </aside>
     <div>
+      <p>
+        <button type="button" @click="history('undo')">撤销</button>
+        <button type="button" @click="history('redo')">重做</button>
+      </p>
       <p v-if="message">{{ message }}</p>
       <ul>
         <li

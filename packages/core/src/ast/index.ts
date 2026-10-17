@@ -19,6 +19,8 @@ export {
   setText,
   wrapNode,
 } from './edit';
+export { recordEdit, redoEdit, undoEdit } from './history';
+export type { FileHistory } from './history';
 
 export function parseAstro(source: string): AstroDoc {
   const parsed = parseSource(source);

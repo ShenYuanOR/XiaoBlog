@@ -24,7 +24,9 @@ import {
   moveComponent,
   nestingAllowed,
   readOutline,
+  redoPage,
   setComponentProp,
+  undoPage,
 } from './canvas.ts';
 import { manifest } from '@xiao/core/components';
 
@@ -264,6 +266,22 @@ app.whenReady().then(() => {
   ipcMain.handle('canvas:canNest', (_event, parentName: string, childName: string) =>
     ok(nestingAllowed(parentName, childName)),
   );
+  ipcMain.handle('canvas:undo', (_event, siteDir: string) => {
+    try {
+      undoPage(siteDir);
+      return ok(null);
+    } catch (error) {
+      return fail('CANVAS_UNDO', error instanceof Error ? error.message : '撤销失败');
+    }
+  });
+  ipcMain.handle('canvas:redo', (_event, siteDir: string) => {
+    try {
+      redoPage(siteDir);
+      return ok(null);
+    } catch (error) {
+      return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
+    }
+  });
   ipcMain.handle('canvas:props', (_event, name: string) =>
     ok(manifest.find((item) => item.name === name)?.props ?? []),
   );
