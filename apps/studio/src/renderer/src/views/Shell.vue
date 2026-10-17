@@ -53,6 +53,7 @@ onMounted(() => {
       <aside class="preview">
         <h1>{{ copy.preview }}</h1>
         <p>{{ copy.previewNote }}</p>
+        <pre v-if="session.mode === 'develop'" class="output">{{ session.logs || '输出是空的。' }}</pre>
       </aside>
     </div>
   </div>

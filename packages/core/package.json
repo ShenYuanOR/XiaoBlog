@@ -10,7 +10,8 @@
     "./responsive": "./src/responsive/inspect.mjs",
     "./site": "./src/site/index.ts",
     "./importer": "./src/importer/index.ts",
-    "./ipc": "./src/ipc-types.ts"
+    "./ipc": "./src/ipc-types.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
     "test": "vitest run"

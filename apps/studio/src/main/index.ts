@@ -2,8 +2,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
-import { ok } from '@xiao/core/ipc';
-import type { AppInfo } from '@xiao/core/ipc';
+import { fail, ok } from '@xiao/core/ipc';
+import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
+import { RuntimeService } from './runtime.ts';
 
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -91,13 +92,43 @@ function probe(win: BrowserWindow): void {
   });
 }
 
+const runtime = new RuntimeService({
+  onStart: (event) =>
+    BrowserWindow.getAllWindows().forEach((item) =>
+      item.webContents.send('runtime:onStart', event),
+    ),
+  onLog: (event) =>
+    BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onLog', event)),
+  onReady: (event) =>
+    BrowserWindow.getAllWindows().forEach((item) =>
+      item.webContents.send('runtime:onReady', event),
+    ),
+  onExit: (event) =>
+    BrowserWindow.getAllWindows().forEach((item) => item.webContents.send('runtime:onExit', event)),
+});
+
 app.whenReady().then(() => {
   registerProtocol();
   ipcMain.handle('app:getInfo', () =>
     ok<AppInfo>({ name: '晓', version: app.getVersion(), packaged: app.isPackaged }),
   );
+  ipcMain.handle('runtime:start', (_event, kind: RuntimeKind, siteDir: string) => {
+    if (kind !== 'install' && kind !== 'dev' && kind !== 'build') {
+      return fail('RUNTIME_KIND', '不认识的运行命令');
+    }
+    if (!siteDir) return fail('RUNTIME_SITE', '还没有选择站点');
+    return runtime.start(kind, siteDir).then((task) => ok(task));
+  });
+  ipcMain.handle('runtime:cancel', (_event, taskId: string) => {
+    runtime.cancel(taskId);
+    return ok(null);
+  });
   const win = createWindow();
   if (process.argv.includes('--probe')) probe(win);
+});
+
+app.on('before-quit', () => {
+  runtime.stopAll();
 });
 
 app.on('window-all-closed', () => {

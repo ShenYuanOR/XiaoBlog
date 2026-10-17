@@ -18,6 +18,24 @@ export interface AppInfo {
   packaged: boolean;
 }
 
+export type RuntimeKind = 'install' | 'dev' | 'build';
+
+export interface RuntimeStart {
+  taskId: string;
+  kind: RuntimeKind;
+}
+
+export interface RuntimeLogEvent {
+  taskId: string;
+  text: string;
+}
+
+export interface RuntimeExitEvent {
+  taskId: string;
+  code: number;
+  message?: string;
+}
+
 export function ok<T>(data: T): IpcOk<T> {
   return { ok: true, data };
 }

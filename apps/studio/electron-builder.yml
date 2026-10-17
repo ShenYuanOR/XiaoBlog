@@ -7,6 +7,10 @@ files:
   - package.json
 npmRebuild: false
 electronDist: node_modules/electron/dist
+asarUnpack:
+  - "**/*.node"
+electronFuses:
+  runAsNode: true
 win:
   target:
     - dir

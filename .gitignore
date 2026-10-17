@@ -13,6 +13,7 @@ redirects/redirects.nginx.conf
 
 apps/studio/release*/
 apps/studio/out/
+apps/studio/resources/pnpm/
 # 框架更新备份
 .xiao-backup/
 .xiao/

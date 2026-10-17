@@ -106,3 +106,14 @@ p {
   color: #667085;
   line-height: 1.6;
 }
+
+.output {
+  margin-top: 16px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 8px;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
