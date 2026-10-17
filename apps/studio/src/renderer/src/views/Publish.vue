@@ -24,6 +24,10 @@ async function saveToken(): Promise<void> {
   message.value = result.ok ? 'Token 已加密保存' : result.message;
 }
 
+function planRepublish(): void {
+  message.value = '重新发布已准备。现在不会连接 Actions，也不会推送。';
+}
+
 async function writeConfig(): Promise<void> {
   const repo = parsed.value;
   if (!session.siteDir || !repo) {
@@ -64,5 +68,8 @@ async function writeConfig(): Promise<void> {
       <a :href="tokenUrl">生成 Token</a>
     </p>
     <button type="button" @click="writeConfig">写入本地配置</button>
+    <h2>Actions</h2>
+    <p>失败时显示作业日志最后 50 行。重新发布会做一次空提交再推送。</p>
+    <button type="button" @click="planRepublish">重新发布</button>
   </section>
 </template>
