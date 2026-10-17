@@ -3,6 +3,7 @@ import { onMounted } from 'vue';
 import { copy } from '../copy.ts';
 import { useSession } from '../stores/session.ts';
 import Conflict from './Conflict.vue';
+import Posts from './Posts.vue';
 
 const session = useSession();
 onMounted(() => {
@@ -63,7 +64,8 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
       </nav>
       <aside class="list">
         <h1>{{ session.nav }}</h1>
-        <p>{{ copy.sideNote }}</p>
+        <Posts v-if="session.nav === '文章' && session.siteDir" />
+        <p v-else>{{ copy.sideNote }}</p>
       </aside>
       <main class="editor">
         <h1>{{ copy.editor }}</h1>

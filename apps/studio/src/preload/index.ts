@@ -16,6 +16,22 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 }
 
 const api = {
+  content: {
+    list: (
+      siteDir: string,
+    ): Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }[]>> =>
+      ipcRenderer.invoke('content:list', siteDir),
+    create: (siteDir: string, title: string, category: string) =>
+      ipcRenderer.invoke('content:create', siteDir, title, category),
+    remove: (siteDir: string, slug: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('content:delete', siteDir, slug),
+    rename: (
+      siteDir: string,
+      from: string,
+      to: string,
+    ): Promise<IpcResult<{ from: string; to: string }>> =>
+      ipcRenderer.invoke('content:rename', siteDir, from, to),
+  },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
   },

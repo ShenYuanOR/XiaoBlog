@@ -8,6 +8,22 @@ import type {
 } from '@xiao/core/ipc';
 
 export interface XiaoApi {
+  content: {
+    list: (
+      siteDir: string,
+    ) => Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }[]>>;
+    create: (
+      siteDir: string,
+      title: string,
+      category: string,
+    ) => Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }>>;
+    remove: (siteDir: string, slug: string) => Promise<IpcResult<null>>;
+    rename: (
+      siteDir: string,
+      from: string,
+      to: string,
+    ) => Promise<IpcResult<{ from: string; to: string }>>;
+  };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
   };

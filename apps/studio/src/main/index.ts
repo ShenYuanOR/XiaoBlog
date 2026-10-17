@@ -14,6 +14,7 @@ import {
   siteTitle,
 } from './project.ts';
 import { SiteWatcher } from './watch.ts';
+import { createPost, deletePost, listPosts, renamePost } from './content.ts';
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
@@ -174,6 +175,26 @@ app.whenReady().then(() => {
     watchSite(picked);
     await runtime.start('dev', picked);
     return ok({ dir: picked, title });
+  });
+  ipcMain.handle('content:list', (_event, siteDir: string) => ok(listPosts(siteDir)));
+  ipcMain.handle('content:create', (_event, siteDir: string, title: string, category: string) => {
+    try {
+      const post = createPost(siteDir, title, category);
+      return ok(post);
+    } catch (error) {
+      return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');
+    }
+  });
+  ipcMain.handle('content:delete', (_event, siteDir: string, slug: string) => {
+    deletePost(siteDir, slug);
+    return ok(null);
+  });
+  ipcMain.handle('content:rename', (_event, siteDir: string, from: string, to: string) => {
+    try {
+      return ok(renamePost(siteDir, from, to));
+    } catch (error) {
+      return fail('CONTENT_RENAME', error instanceof Error ? error.message : '重命名失败');
+    }
   });
   ipcMain.handle('project:markDirty', (_event, file: string, content: string) => {
     watcher?.markDirty(file, content);
