@@ -9,11 +9,15 @@ export {
   assertDiskUnchanged,
   findNode,
   hashSource,
+  assertCanNest,
+  duplicateNode,
   insertNode,
   moveNode,
   removeNode,
   removeProp,
   setProp,
+  setText,
+  wrapNode,
 } from './edit';
 
 export function parseAstro(source: string): AstroDoc {

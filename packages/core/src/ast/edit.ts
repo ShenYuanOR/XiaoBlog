@@ -153,9 +153,30 @@ export function insertNode(
 ): string {
   const parent = requireNode(doc, parentId);
   assertStructurallyEditable(parent);
+  assertCanNest(parent.name, snippet);
   const at = insertAt(doc, parent, index);
   const text = `${doc.eol}${childIndent(doc, parent)}${snippet.trim()}`;
-  return applyEdits(doc.source, [{ start: at, end: at, text }]);
+  return applyEdits(doc.source, [...importEdits(doc, snippet), { start: at, end: at, text }]);
+}
+
+export function duplicateNode(doc: AstroDoc, nodeId: string): string {
+  const node = requireNode(doc, nodeId);
+  const slice = doc.source.slice(node.start, node.end).trim();
+  const text = `${doc.eol}${doc.indentUnit}${slice}`;
+  return applyEdits(doc.source, [{ start: node.end, end: node.end, text }]);
+}
+
+export function wrapNode(doc: AstroDoc, nodeId: string, wrapperSnippet: string): string {
+  const node = requireNode(doc, nodeId);
+  const name = wrapperSnippet.trim().match(/^<([A-Za-z][\w.]*)/)?.[1];
+  if (!name) throw new AstEditError('包裹片段缺少标签名');
+  assertCanNest(name, doc.source.slice(node.start, node.end));
+  const inner = doc.source.slice(node.start, node.end).trim();
+  const text = `${wrapperSnippet.trim()}${doc.eol}${doc.indentUnit}${inner}${doc.eol}</${name}>`;
+  return applyEdits(doc.source, [
+    ...importEdits(doc, wrapperSnippet),
+    { start: node.start, end: node.end, text },
+  ]);
 }
 
 function lineBounds(
@@ -174,12 +195,76 @@ function lineBounds(
   return { start, end };
 }
 
+const nestDeny: Record<string, readonly string[]> = {
+  p: ['div', 'section', 'main', 'Card', 'Columns', 'Section'],
+  span: ['div', 'section', 'p'],
+  Text: ['Section', 'Columns', 'Card', 'div'],
+};
+
+export function assertCanNest(parentName: string | undefined, snippet: string): void {
+  const child = snippet.trim().match(/^<([A-Za-z][\w.]*)/)?.[1];
+  if (!parentName || !child) return;
+  if ((nestDeny[parentName] ?? []).includes(child)) {
+    throw new AstEditError(`${parentName} 不能包含 ${child}`);
+  }
+}
+
+function escapeText(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('{', '&#123;')
+    .replaceAll('}', '&#125;');
+}
+
+export function setText(doc: AstroDoc, nodeId: string, text: string): string {
+  const node = requireNode(doc, nodeId);
+  if (node.kind !== 'text') throw new AstEditError('只能改纯文本节点');
+  return applyEdits(doc.source, [{ start: node.start, end: node.end, text: escapeText(text) }]);
+}
+
+function componentNames(snippet: string): string[] {
+  return [...snippet.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)].map((match) => match[1] ?? '');
+}
+
+function frontmatterEnd(source: string): number {
+  if (!source.startsWith('---')) return 0;
+  const close = source.indexOf('\n---', 3);
+  if (close < 0) return 0;
+  return close + 1;
+}
+
+function importEdits(
+  doc: AstroDoc,
+  snippet: string,
+): { start: number; end: number; text: string }[] {
+  const missing = componentNames(snippet).filter(
+    (name, index, all) =>
+      all.indexOf(name) === index && !doc.imports.some((item) => item.name === name),
+  );
+  if (missing.length === 0) return [];
+  const at = frontmatterEnd(doc.source);
+  const lines = missing
+    .map((name) => `import ${name} from '../components/xiao/${name}.astro';`)
+    .join(doc.eol);
+  return [{ start: at, end: at, text: `${doc.eol}${lines}` }];
+}
+
 export function removeNode(doc: AstroDoc, nodeId: string): string {
   const node = requireNode(doc, nodeId);
   const line = lineBounds(doc.source, node);
   const start = line?.start ?? node.start;
   const end = line?.end ?? node.end;
-  return applyEdits(doc.source, [{ start, end, text: '' }]);
+  const edits = [{ start, end, text: '' }];
+  if (node.name && node.name[0] === node.name[0]?.toUpperCase()) {
+    const outside = doc.source.slice(0, node.start) + doc.source.slice(node.end);
+    if (!outside.includes(`<${node.name}`)) {
+      const imported = doc.imports.find((item) => item.name === node.name);
+      if (imported) edits.push({ start: imported.start, end: imported.end, text: '' });
+    }
+  }
+  return applyEdits(doc.source, edits);
 }
 
 export function moveNode(
@@ -191,6 +276,7 @@ export function moveNode(
   const node = requireNode(doc, nodeId);
   const parent = requireNode(doc, newParentId);
   assertStructurallyEditable(parent);
+  assertCanNest(parent.name, doc.source.slice(node.start, node.end));
   if (parent.start >= node.start && parent.end <= node.end) {
     throw new AstEditError('不能把节点移到自己内部');
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertDiskUnchanged,
   detectPrettierClean,
+  duplicateNode,
   findNode,
   formatAstro,
   hashSource,
@@ -11,6 +12,8 @@ import {
   removeNode,
   removeProp,
   setProp,
+  setText,
+  wrapNode,
 } from './index';
 import type { AstroDoc, EditableNode } from './types';
 
@@ -192,6 +195,75 @@ describe('锁定块', () => {
     const next = removeNode(doc, script!.id);
     expect(next).toContain(rawText);
     expect(next).not.toContain('<script>');
+  });
+});
+
+describe('补齐的三种操作', () => {
+  const samples = ['甲', '乙', '丙', '丁', '戊'];
+
+  it('setText 转义五个文本节点', () => {
+    for (const sample of samples) {
+      const source = `<p>${sample}</p>\n`;
+      const doc = parseAstro(source);
+      const text = root(doc).children[0];
+      const next = setText(doc, text!.id, `${sample}<&>`);
+      expect(next).toContain(`${sample}&lt;&amp;&gt;`);
+      expect(() => parseAstro(next)).not.toThrow();
+    }
+  });
+
+  it('duplicateNode 复制五个节点且原文还在', () => {
+    for (const sample of samples) {
+      const source = `<div>\n  <p>${sample}</p>\n</div>\n`;
+      const doc = parseAstro(source);
+      const next = duplicateNode(doc, root(doc).children[0]!.id);
+      expect(next.split(`<p>${sample}</p>`).length - 1).toBe(2);
+      expect(() => parseAstro(next)).not.toThrow();
+    }
+  });
+
+  it('wrapNode 用容器包住五个节点', () => {
+    for (const sample of samples) {
+      const source = `<main>\n  <p>${sample}</p>\n</main>\n`;
+      const doc = parseAstro(source);
+      const next = wrapNode(doc, root(doc).children[0]!.id, '<section>');
+      expect(next).toContain('<section>');
+      expect(next).toContain(`<p>${sample}</p>`);
+      expect(next).toContain('</section>');
+      expect(() => parseAstro(next)).not.toThrow();
+    }
+  });
+
+  it('非法嵌套被拒绝', () => {
+    const doc = parseAstro('<p></p>\n');
+    expect(() => insertNode(doc, root(doc).id, 0, '<div></div>')).toThrow(/不能包含/);
+  });
+
+  it('插入组件时补上 import，删光后去掉 import', () => {
+    const source = '---\n---\n<main></main>\n';
+    const doc = parseAstro(source);
+    const inserted = insertNode(doc, root(doc).id, 0, '<Card />');
+    expect(inserted).toContain("import Card from '../components/xiao/Card.astro';");
+    const again = parseAstro(inserted);
+    const card = root(again).children.find((child) => child.name === 'Card');
+    const removed = removeNode(again, card!.id);
+    expect(removed).not.toContain('import Card');
+  });
+});
+
+describe('随机互操作', () => {
+  it('50 轮操作加人工编辑仍能解析', () => {
+    let source = '<main>\n  <p>正文</p>\n</main>\n';
+    for (let round = 0; round < 50; round += 1) {
+      const doc = parseAstro(source);
+      const paragraph = root(doc).children[0];
+      if (paragraph?.kind === 'text' || paragraph?.name === 'p') {
+        const target = paragraph.kind === 'text' ? paragraph : paragraph.children[0];
+        if (target?.kind === 'text') source = setText(doc, target.id, `第${round}轮`);
+      }
+      source = `${source}<!-- hand ${round} -->\n`;
+      expect(() => parseAstro(source)).not.toThrow();
+    }
   });
 });
 
