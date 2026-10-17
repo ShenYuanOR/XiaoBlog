@@ -4,6 +4,8 @@ import repoGuide from '../../../../resources/guides/01-repo.svg';
 import tokenGuide from '../../../../resources/guides/02-token.svg';
 import pagesGuide from '../../../../resources/guides/03-pages.svg';
 import { responsiveWidths } from '../../../../src/main/responsive.ts';
+import { renewalDue } from '../../../../src/main/release-gate.ts';
+import { planUpdate } from '../../../../src/main/update.ts';
 import { guides, pagesSettingsUrl, parseRepo, tokenUrl } from '../../../../src/main/wizard.ts';
 import { useSession } from '../stores/session.ts';
 
@@ -20,6 +22,7 @@ const changes = ref<{ posts: string[]; pages: string[]; settings: string[] }>({
 });
 const history = ref<{ at: string; repo: string }[]>([]);
 const blocked = ref(false);
+const renew = ref(false);
 const parsed = computed(() => parseRepo(link.value));
 
 async function saveToken(): Promise<void> {
@@ -38,6 +41,13 @@ async function locate(): Promise<void> {
   message.value = `已让预览滚动到 ${selector.value}`;
 }
 
+function checkUpdate(): void {
+  const plan = planUpdate('0.1.0', '0.2.0');
+  message.value = plan.ask
+    ? `假响应：${plan.from} 可更新到 ${plan.to}。确认前不会下载，也不会访问 Release。`
+    : '没有可更新版本';
+}
+
 function planRepublish(): void {
   message.value = '重新发布已准备。现在不会连接 Actions，也不会推送。';
 }
@@ -50,6 +60,8 @@ async function loadGate(): Promise<void> {
   blocked.value = seo.ok ? seo.data.some((row) => row.level === 'error') : true;
   const past = await window.xiao.publish.history(session.siteDir);
   if (past.ok) history.value = past.data;
+  const saved = await window.xiao.secret.list();
+  renew.value = saved.ok ? saved.data.some((item) => renewalDue(item.expires, new Date())) : false;
 }
 
 async function writeConfig(): Promise<void> {
@@ -78,6 +90,7 @@ onMounted(() => void loadGate());
     <h2>改动</h2>
     <p>文章 {{ changes.posts.length }}，页面 {{ changes.pages.length }}，设置 {{ changes.settings.length }}</p>
     <p v-if="blocked">体检有 error，不能发布。</p>
+    <p v-if="renew">Token 将在 7 天内到期，请续期。</p>
     <button type="button" :disabled="blocked" @click="message = '门禁已通过。现在不会推送。'">
       发布
     </button>
@@ -118,5 +131,7 @@ onMounted(() => void loadGate());
     <h2>Actions</h2>
     <p>失败时显示作业日志最后 50 行。重新发布会做一次空提交再推送。</p>
     <button type="button" @click="planRepublish">重新发布</button>
+    <h2>更新</h2>
+    <button type="button" @click="checkUpdate">用假版本检查更新</button>
   </section>
 </template>
