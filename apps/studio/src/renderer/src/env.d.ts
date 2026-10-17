@@ -86,6 +86,8 @@ export interface XiaoApi {
       url: string,
       customWidth?: number,
     ) => Promise<IpcResult<number[]>>;
+    focus: (file: string, offset: string) => Promise<IpcResult<null>>;
+    onPick: (callback: (payload: { file: string; offset: string }) => void) => () => void;
   };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;

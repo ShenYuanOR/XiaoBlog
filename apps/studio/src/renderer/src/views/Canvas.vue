@@ -100,9 +100,10 @@ async function load(keep?: number[] | null): Promise<void> {
   if (keep) await show(at(tree.value, keep));
 }
 
-async function select(id: string): Promise<void> {
+async function select(id: string, fromPreview = false): Promise<void> {
   selected.value = id;
   await show(at(tree.value, pathOf(tree.value, id) ?? []));
+  if (!fromPreview) await window.xiao.preview.focus('src/pages/index.astro', id);
 }
 
 async function add(name: string): Promise<void> {
@@ -207,11 +208,19 @@ function onRefresh(event: Event): void {
   void load();
 }
 
+let stopPick = (): void => undefined;
 onMounted(() => {
   window.addEventListener('xiao-canvas', onRefresh);
+  stopPick = window.xiao.preview.onPick((payload) => {
+    if (payload.file.replaceAll('\\', '/') !== 'src/pages/index.astro') return;
+    void select(payload.offset, true);
+  });
   void load();
 });
-onUnmounted(() => window.removeEventListener('xiao-canvas', onRefresh));
+onUnmounted(() => {
+  window.removeEventListener('xiao-canvas', onRefresh);
+  stopPick();
+});
 </script>
 
 <template>

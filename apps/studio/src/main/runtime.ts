@@ -98,19 +98,21 @@ export class RuntimeService {
   private spawnAstro(task: LiveTask, siteDir: string, port?: number): void {
     const entry = path.join(siteDir, 'node_modules', 'astro', 'bin', 'astro.mjs');
     const shim = this.shimDir();
-    void this.spawn(
-      task,
-      process.execPath,
-      [entry, ...astroCommand(task.kind, port)],
-      siteDir,
-      task.kind === 'dev',
-      {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        ASTRO_TELEMETRY_DISABLED: '1',
-        PATH: `${shim}${path.delimiter}${process.env.PATH ?? ''}`,
-      },
-    ).then((code) => this.finish(task, code));
+    const args = [...astroCommand(task.kind, port)];
+    const dev = task.kind === 'dev';
+    if (dev) {
+      const config = app.isPackaged
+        ? path.join(process.resourcesPath, 'preview.config.mjs')
+        : path.join(process.cwd(), 'resources', 'preview.config.mjs');
+      args.push('--config', config);
+    }
+    void this.spawn(task, process.execPath, [entry, ...args], siteDir, dev, {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      ASTRO_TELEMETRY_DISABLED: '1',
+      PATH: `${shim}${path.delimiter}${process.env.PATH ?? ''}`,
+      ...(dev ? { XIAO_SITE_DIR: siteDir } : {}),
+    }).then((code) => this.finish(task, code));
   }
 
   private spawn(

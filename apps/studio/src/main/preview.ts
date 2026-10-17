@@ -1,4 +1,5 @@
-import { BrowserWindow, session, WebContentsView } from 'electron';
+import { join } from 'node:path';
+import { BrowserWindow, session, WebContentsView, type WebContents } from 'electron';
 
 export const previewWidths = { phone: 390, tablet: 820, pc: 1280 } as const;
 export type PreviewMode = keyof typeof previewWidths | 'custom' | 'side';
@@ -30,6 +31,7 @@ export async function showPreview(
     const view = new WebContentsView({
       webPreferences: {
         session: session.fromPartition('preview'),
+        preload: join(import.meta.dirname, '../preload/preview.js'),
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
@@ -59,4 +61,12 @@ export async function showPreview(
     shown.push(width);
   }
   return shown;
+}
+
+export function isPreviewContents(contents: WebContents): boolean {
+  return views.some((view) => view.webContents === contents);
+}
+
+export function focusPreview(file: string, offset: string): void {
+  for (const view of views) view.webContents.send('preview:focus', { file, offset });
 }

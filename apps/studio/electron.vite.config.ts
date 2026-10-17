@@ -10,9 +10,13 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ['@xiao/core'] })],
     build: {
       rollupOptions: {
+        input: {
+          index: resolve('src/preload/index.ts'),
+          preview: resolve('src/preload/preview.ts'),
+        },
         output: {
           format: 'cjs',
-          entryFileNames: 'index.js',
+          entryFileNames: '[name].js',
         },
       },
     },

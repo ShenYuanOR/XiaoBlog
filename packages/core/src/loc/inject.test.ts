@@ -1,7 +1,19 @@
+import { parse } from '@astrojs/compiler-rs';
 import { describe, expect, it } from 'vitest';
+import { parseAstro } from '../ast/index';
 import { injectLoc } from './inject';
+import { injectLoc as studioInject } from '../../../../apps/studio/resources/xiao-loc.mjs';
 
 describe('injectLoc', () => {
+  it('包装插件与核心注入一致，偏移就是大纲节点 id', () => {
+    const source = '---\n---\n<main><p>文</p></main>\n';
+    const file = 'src/pages/index.astro';
+    expect(studioInject(source, file, parse)).toBe(injectLoc(source, file));
+    const doc = parseAstro(source);
+    const paragraph = doc.tree[0]?.children.find((node) => node.name === 'p');
+    expect(injectLoc(source, file)).toContain(`data-xiao-loc="${file}:${paragraph?.id}"`);
+  });
+
   it('带 spread 的元素不注入，避免盖住调用处标记', () => {
     const source = ['<article class="card" {...rest}>', '  <h2>标题</h2>', '</article>', ''].join(
       '\n',

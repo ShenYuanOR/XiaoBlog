@@ -67,6 +67,9 @@ const api = {
   preview: {
     set: (mode: 'phone' | 'tablet' | 'pc' | 'custom' | 'side', url: string, customWidth?: number) =>
       ipcRenderer.invoke('preview:set', mode, url, customWidth),
+    focus: (file: string, offset: string) => ipcRenderer.invoke('preview:focus', file, offset),
+    onPick: (callback: (payload: { file: string; offset: string }) => void): (() => void) =>
+      listen('preview:onPick', callback),
   },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),

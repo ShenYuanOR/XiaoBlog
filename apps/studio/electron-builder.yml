@@ -9,6 +9,11 @@ npmRebuild: false
 electronDist: node_modules/electron/dist
 asarUnpack:
   - "**/*.node"
+extraResources:
+  - from: resources/preview.config.mjs
+    to: preview.config.mjs
+  - from: resources/xiao-loc.mjs
+    to: xiao-loc.mjs
 electronFuses:
   runAsNode: true
 win:
