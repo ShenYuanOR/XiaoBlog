@@ -6,6 +6,8 @@ export interface PostItem {
   slug: string;
   title: string;
   category: string;
+  description: string;
+  tags: string[];
   draft: boolean;
 }
 
@@ -16,9 +18,11 @@ function postsRoot(siteDir: string): string {
 function readPost(siteDir: string, slug: string): PostItem {
   const raw = readFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), 'utf8');
   const title = raw.match(/^title:\s*"?([^"\n]+)"?/m)?.[1] ?? slug;
-  const category = raw.match(/^category:\s*"?([^"\n]+)"?/m)?.[1] ?? '未分类';
+  const category = raw.match(/^category:\s*"?([^"\n]+)"?/m)?.[1] ?? '';
+  const description = raw.match(/^description:\s*"?([^"\n]+)"?/m)?.[1] ?? '';
+  const tags = [...raw.matchAll(/^ {2}- "?([^"\n]+)"?/gm)].map((item) => item[1] ?? '');
   const draft = /^draft:\s*true/m.test(raw);
-  return { slug, title, category, draft };
+  return { slug, title, category, description, tags, draft };
 }
 
 export function readPostFile(siteDir: string, slug: string): string {

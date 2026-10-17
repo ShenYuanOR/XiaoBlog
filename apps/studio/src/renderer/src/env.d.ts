@@ -8,6 +8,11 @@ import type {
 } from '@xiao/core/ipc';
 
 export interface XiaoApi {
+  seo: {
+    check: (
+      siteDir: string,
+    ) => Promise<IpcResult<{ level: string; rule: string; detail: string }[]>>;
+  };
   settings: {
     read: (siteDir: string) => Promise<IpcResult<Record<string, unknown>>>;
     write: (siteDir: string, config: unknown) => Promise<IpcResult<string[]>>;

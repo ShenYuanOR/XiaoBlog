@@ -16,6 +16,9 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 }
 
 const api = {
+  seo: {
+    check: (siteDir: string) => ipcRenderer.invoke('seo:check', siteDir),
+  },
   settings: {
     read: (siteDir: string) => ipcRenderer.invoke('settings:read', siteDir),
     write: (siteDir: string, config: unknown) =>

@@ -18,6 +18,7 @@ import {
   writePostFile,
 } from './content.ts';
 import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
+import { seoRows } from './seo.ts';
 
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -211,6 +212,13 @@ app.whenReady().then(() => {
   ipcMain.handle('settings:write', (_event, siteDir: string, config: SiteConfig) => {
     const errors = writeConfig(siteDir, config);
     return ok(errors);
+  });
+  ipcMain.handle('seo:check', (_event, siteDir: string) => {
+    try {
+      return ok(seoRows(readConfig(siteDir), listPosts(siteDir)));
+    } catch (error) {
+      return fail('SEO_CHECK', error instanceof Error ? error.message : '体检失败');
+    }
   });
   ipcMain.handle('content:list', (_event, siteDir: string) => ok(listPosts(siteDir)));
   ipcMain.handle('content:create', (_event, siteDir: string, title: string, category: string) => {
