@@ -14,6 +14,10 @@ extraResources:
     to: preview.config.mjs
   - from: resources/xiao-loc.mjs
     to: xiao-loc.mjs
+  - from: resources/guides
+    to: guides
+  - from: resources/site-lock
+    to: site-lock
 electronFuses:
   runAsNode: true
 win:
