@@ -299,6 +299,25 @@ describe('拖拽产物', () => {
   });
 });
 
+describe('交替修改', () => {
+  it('可视化和源码交替 50 轮，未触碰标记还在', () => {
+    let source = '<!-- keep -->\n<main>\n  <p>正文</p>\n</main>\n';
+    for (let round = 0; round < 50; round += 1) {
+      const doc = parseAstro(source);
+      const target = root(doc).children[0]?.children[0];
+      expect(target?.kind).toBe('text');
+      source = setText(doc, target!.id, `第${round}轮`);
+      expect(source.startsWith('<!-- keep -->\n')).toBe(true);
+      source = `${source}<!-- hand ${round} -->\n`;
+      expect(() => parseAstro(source)).not.toThrow();
+    }
+    expect(source.startsWith('<!-- keep -->\n')).toBe(true);
+    expect(source).toContain('第49轮');
+    expect(source).toContain('<!-- hand 49 -->');
+    expect(source).not.toContain('第0轮');
+  });
+});
+
 describe('随机互操作', () => {
   it('50 轮操作加人工编辑仍能解析', () => {
     let source = '<main>\n  <p>正文</p>\n</main>\n';
