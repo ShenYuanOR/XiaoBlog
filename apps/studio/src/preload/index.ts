@@ -16,6 +16,11 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 }
 
 const api = {
+  settings: {
+    read: (siteDir: string) => ipcRenderer.invoke('settings:read', siteDir),
+    write: (siteDir: string, config: unknown) =>
+      ipcRenderer.invoke('settings:write', siteDir, config),
+  },
   content: {
     list: (
       siteDir: string,

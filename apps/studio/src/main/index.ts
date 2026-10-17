@@ -17,6 +17,8 @@ import {
   saveImage,
   writePostFile,
 } from './content.ts';
+import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
+
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
@@ -198,6 +200,17 @@ app.whenReady().then(() => {
     watchSite(picked);
     await runtime.start('dev', picked);
     return ok({ dir: picked, title });
+  });
+  ipcMain.handle('settings:read', (_event, siteDir: string) => {
+    try {
+      return ok(readConfig(siteDir));
+    } catch (error) {
+      return fail('SETTINGS_READ', error instanceof Error ? error.message : '读不到配置');
+    }
+  });
+  ipcMain.handle('settings:write', (_event, siteDir: string, config: SiteConfig) => {
+    const errors = writeConfig(siteDir, config);
+    return ok(errors);
   });
   ipcMain.handle('content:list', (_event, siteDir: string) => ok(listPosts(siteDir)));
   ipcMain.handle('content:create', (_event, siteDir: string, title: string, category: string) => {
