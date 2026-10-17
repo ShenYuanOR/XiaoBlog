@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { CanvasField, CanvasNode } from '../env.d.ts';
 import { useSession } from '../stores/session.ts';
 
@@ -93,7 +93,7 @@ async function show(node: CanvasNode | undefined): Promise<void> {
 async function load(keep?: number[] | null): Promise<void> {
   if (!session.siteDir) return;
   const listed = await window.xiao.canvas.components();
-  const outline = await window.xiao.canvas.outline(session.siteDir);
+  const outline = await window.xiao.canvas.outline(session.siteDir, session.pageFile);
   names.value = listed.ok ? listed.data : [];
   tree.value = outline.ok ? outline.data : [];
   message.value = outline.ok ? message.value : outline.message;
@@ -103,15 +103,15 @@ async function load(keep?: number[] | null): Promise<void> {
 async function select(id: string, fromPreview = false): Promise<void> {
   selected.value = id;
   await show(at(tree.value, pathOf(tree.value, id) ?? []));
-  if (!fromPreview) await window.xiao.preview.focus('src/pages/index.astro', id);
+  if (!fromPreview) await window.xiao.preview.focus(session.pageFile, id);
 }
 
 async function history(kind: 'undo' | 'redo'): Promise<void> {
   if (!session.siteDir) return;
   const result =
     kind === 'undo'
-      ? await window.xiao.canvas.undo(session.siteDir)
-      : await window.xiao.canvas.redo(session.siteDir);
+      ? await window.xiao.canvas.undo(session.siteDir, session.pageFile)
+      : await window.xiao.canvas.redo(session.siteDir, session.pageFile);
   message.value = result.ok ? (kind === 'undo' ? '已撤销' : '已重做') : result.message;
   await load();
 }
@@ -120,7 +120,7 @@ async function add(name: string): Promise<void> {
   const parent = selected.value || tree.value[0]?.id;
   if (!session.siteDir || !parent) return;
   const keep = pathOf(tree.value, parent);
-  const result = await window.xiao.canvas.insert(session.siteDir, parent, 0, name);
+  const result = await window.xiao.canvas.insert(session.siteDir, parent, 0, name, session.pageFile);
   message.value = result.ok ? `已放入 ${name}` : result.message;
   if (!result.ok || !keep) {
     await load(keep);
@@ -146,7 +146,13 @@ async function write(field: CanvasField, event: Event): Promise<void> {
   const keep = pathOf(tree.value, selected.value);
   const raw = fieldValue(event);
   const value = field.type === 'boolean' ? raw === 'true' : field.type === 'number' ? Number(raw) : raw;
-  const result = await window.xiao.canvas.setProp(session.siteDir, selected.value, field.name, value);
+  const result = await window.xiao.canvas.setProp(
+    session.siteDir,
+    selected.value,
+    field.name,
+    value,
+    session.pageFile,
+  );
   message.value = result.ok ? `已改 ${field.label}` : result.message;
   values.value = { ...values.value, [field.name]: raw };
   await load(keep);
@@ -206,8 +212,20 @@ async function drop(row: Row, event: DragEvent): Promise<void> {
   if (!target) return;
   const result =
     drag.kind === 'new'
-      ? await window.xiao.canvas.insert(session.siteDir, target.parentId, target.index, drag.name)
-      : await window.xiao.canvas.move(session.siteDir, drag.id, target.parentId, target.index);
+      ? await window.xiao.canvas.insert(
+          session.siteDir,
+          target.parentId,
+          target.index,
+          drag.name,
+          session.pageFile,
+        )
+      : await window.xiao.canvas.move(
+          session.siteDir,
+          drag.id,
+          target.parentId,
+          target.index,
+          session.pageFile,
+        );
   message.value = result.ok ? (drag.kind === 'new' ? `已放入 ${drag.name}` : '已移动') : result.message;
   await load();
 }
@@ -218,11 +236,16 @@ function onRefresh(event: Event): void {
   void load();
 }
 
+watch(
+  () => session.pageFile,
+  () => void load(),
+);
+
 let stopPick = (): void => undefined;
 onMounted(() => {
   window.addEventListener('xiao-canvas', onRefresh);
   stopPick = window.xiao.preview.onPick((payload) => {
-    if (payload.file.replaceAll('\\', '/') !== 'src/pages/index.astro') return;
+    if (payload.file.replaceAll('\\', '/') !== session.pageFile) return;
     void select(payload.offset, true);
   });
   void load();

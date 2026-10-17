@@ -25,29 +25,40 @@ export interface CanvasField {
 export interface XiaoApi {
   canvas: {
     components: () => Promise<IpcResult<string[]>>;
-    outline: (siteDir: string) => Promise<IpcResult<CanvasNode[]>>;
+    outline: (siteDir: string, file: string) => Promise<IpcResult<CanvasNode[]>>;
     insert: (
       siteDir: string,
       parentId: string,
       index: number,
       name: string,
+      file: string,
     ) => Promise<IpcResult<null>>;
     move: (
       siteDir: string,
       nodeId: string,
       parentId: string,
       index: number,
+      file: string,
     ) => Promise<IpcResult<null>>;
     canNest: (parentName: string, childName: string) => Promise<IpcResult<boolean>>;
-    undo: (siteDir: string) => Promise<IpcResult<null>>;
-    redo: (siteDir: string) => Promise<IpcResult<null>>;
+    undo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
+    redo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
     props: (name: string) => Promise<IpcResult<CanvasField[]>>;
     setProp: (
       siteDir: string,
       nodeId: string,
       name: string,
       value: string | number | boolean,
+      file: string,
     ) => Promise<IpcResult<null>>;
+  };
+  page: {
+    list: (siteDir: string) => Promise<IpcResult<string[]>>;
+    create: (
+      siteDir: string,
+      template: 'blank' | 'landing' | 'about',
+      slug: string,
+    ) => Promise<IpcResult<string>>;
   };
   seo: {
     check: (
@@ -67,6 +78,7 @@ export interface XiaoApi {
       title: string,
       category: string,
     ) => Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }>>;
+    customize: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
     remove: (siteDir: string, slug: string) => Promise<IpcResult<null>>;
     rename: (
       siteDir: string,

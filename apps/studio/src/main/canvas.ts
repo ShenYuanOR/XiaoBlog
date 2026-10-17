@@ -22,8 +22,15 @@ export interface OutlineNode {
   children: OutlineNode[];
 }
 
+export function safePage(file?: string): string {
+  if (!file || file.includes('..') || !/^src\/pages\/[\w./[\]-]+\.astro$/.test(file)) {
+    return 'src/pages/index.astro';
+  }
+  return file;
+}
+
 function pagePath(siteDir: string, file = 'src/pages/index.astro'): string {
-  return path.join(siteDir, file);
+  return path.join(siteDir, safePage(file));
 }
 
 const histories = new Map<string, FileHistory>();

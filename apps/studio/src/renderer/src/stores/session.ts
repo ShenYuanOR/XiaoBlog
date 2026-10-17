@@ -13,6 +13,7 @@ export const useSession = defineStore('session', () => {
   const compare = ref(false);
   const reloaded = ref('');
   const previewUrl = ref('');
+  const pageFile = ref('src/pages/index.astro');
   const drag = ref<{ kind: 'new' | 'move'; name: string; id: string } | null>(null);
 
   async function load(): Promise<void> {
@@ -41,6 +42,10 @@ export const useSession = defineStore('session', () => {
     siteTitle.value = title;
   }
 
+  function setPage(file: string): void {
+    pageFile.value = file;
+  }
+
   function setDrag(next: { kind: 'new' | 'move'; name: string; id: string } | null): void {
     drag.value = next;
   }
@@ -61,12 +66,14 @@ export const useSession = defineStore('session', () => {
     compare,
     reloaded,
     previewUrl,
+    pageFile,
     drag,
     load,
     setMode,
     setNav,
     pushLog,
     setSite,
+    setPage,
     setDrag,
     setConflict,
   };

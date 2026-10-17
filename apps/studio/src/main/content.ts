@@ -1,4 +1,12 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { isValidSlug, slugFromTitle } from '@xiao/core/site';
 
@@ -90,6 +98,16 @@ export function createPost(siteDir: string, title: string, category: string): Po
     .join('\n');
   writeFileSync(path.join(dir, 'index.md'), markdown);
   return readPost(siteDir, safe);
+}
+
+export function customizePost(siteDir: string, slug: string): string {
+  if (!isValidSlug(slug)) throw new Error('slug 只允许小写字母、数字和连字符');
+  const dest = path.join(siteDir, 'src', 'layouts', 'posts', `${slug}.astro`);
+  if (!existsSync(dest)) {
+    mkdirSync(path.dirname(dest), { recursive: true });
+    copyFileSync(path.join(siteDir, 'src', 'layouts', 'PostLayout.astro'), dest);
+  }
+  return path.join('src', 'layouts', 'posts', `${slug}.astro`);
 }
 
 export function deletePost(siteDir: string, slug: string): void {

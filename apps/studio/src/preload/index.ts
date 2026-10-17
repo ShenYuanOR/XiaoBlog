@@ -18,18 +18,28 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 const api = {
   canvas: {
     components: () => ipcRenderer.invoke('canvas:components'),
-    outline: (siteDir: string) => ipcRenderer.invoke('canvas:outline', siteDir),
-    insert: (siteDir: string, parentId: string, index: number, name: string) =>
-      ipcRenderer.invoke('canvas:insert', siteDir, parentId, index, name),
-    move: (siteDir: string, nodeId: string, parentId: string, index: number) =>
-      ipcRenderer.invoke('canvas:move', siteDir, nodeId, parentId, index),
+    outline: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:outline', siteDir, file),
+    insert: (siteDir: string, parentId: string, index: number, name: string, file: string) =>
+      ipcRenderer.invoke('canvas:insert', siteDir, parentId, index, name, file),
+    move: (siteDir: string, nodeId: string, parentId: string, index: number, file: string) =>
+      ipcRenderer.invoke('canvas:move', siteDir, nodeId, parentId, index, file),
     canNest: (parentName: string, childName: string) =>
       ipcRenderer.invoke('canvas:canNest', parentName, childName),
-    undo: (siteDir: string) => ipcRenderer.invoke('canvas:undo', siteDir),
-    redo: (siteDir: string) => ipcRenderer.invoke('canvas:redo', siteDir),
+    undo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:undo', siteDir, file),
+    redo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:redo', siteDir, file),
     props: (name: string) => ipcRenderer.invoke('canvas:props', name),
-    setProp: (siteDir: string, nodeId: string, name: string, value: string | number | boolean) =>
-      ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value),
+    setProp: (
+      siteDir: string,
+      nodeId: string,
+      name: string,
+      value: string | number | boolean,
+      file: string,
+    ) => ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value, file),
+  },
+  page: {
+    list: (siteDir: string) => ipcRenderer.invoke('page:list', siteDir),
+    create: (siteDir: string, template: 'blank' | 'landing' | 'about', slug: string) =>
+      ipcRenderer.invoke('page:create', siteDir, template, slug),
   },
   seo: {
     check: (siteDir: string) => ipcRenderer.invoke('seo:check', siteDir),
@@ -46,6 +56,8 @@ const api = {
       ipcRenderer.invoke('content:list', siteDir),
     create: (siteDir: string, title: string, category: string) =>
       ipcRenderer.invoke('content:create', siteDir, title, category),
+    customize: (siteDir: string, slug: string) =>
+      ipcRenderer.invoke('content:customize', siteDir, slug),
     remove: (siteDir: string, slug: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('content:delete', siteDir, slug),
     rename: (

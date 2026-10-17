@@ -8,6 +8,7 @@ import Editor from './Editor.vue';
 import Settings from './Settings.vue';
 import Seo from './Seo.vue';
 import Canvas from './Canvas.vue';
+import Pages from './Pages.vue';
 import { ref } from 'vue';
 
 const session = useSession();
@@ -25,7 +26,7 @@ async function dropPreview(event: DragEvent): Promise<void> {
   session.setDrag(null);
   if (!name || !session.siteDir || session.nav !== '页面') return;
   event.preventDefault();
-  const outline = await window.xiao.canvas.outline(session.siteDir);
+  const outline = await window.xiao.canvas.outline(session.siteDir, session.pageFile);
   const root = outline.ok ? outline.data[0] : undefined;
   if (!root || root.locked) {
     window.dispatchEvent(new CustomEvent('xiao-canvas', { detail: '预览里没有可放置的位置' }));
@@ -36,6 +37,7 @@ async function dropPreview(event: DragEvent): Promise<void> {
     root.id,
     root.children.length,
     name,
+    session.pageFile,
   );
   window.dispatchEvent(
     new CustomEvent('xiao-canvas', { detail: result.ok ? `已放到预览 ${name}` : result.message }),
@@ -106,6 +108,7 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
       <aside class="list">
         <h1>{{ session.nav }}</h1>
         <Posts v-if="session.nav === '文章' && session.siteDir" @select="slug = $event" />
+        <Pages v-else-if="session.nav === '页面' && session.siteDir" />
         <p v-else>{{ copy.sideNote }}</p>
       </aside>
       <main class="editor">

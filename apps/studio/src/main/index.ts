@@ -10,6 +10,7 @@ import { focusPreview, isPreviewContents, showPreview, type PreviewMode } from '
 import { SiteWatcher } from './watch.ts';
 import {
   createPost,
+  customizePost,
   deletePost,
   listPosts,
   readPostFile,
@@ -25,9 +26,11 @@ import {
   nestingAllowed,
   readOutline,
   redoPage,
+  safePage,
   setComponentProp,
   undoPage,
 } from './canvas.ts';
+import { createPage, listPages, type PageTemplate } from './pages.ts';
 import { manifest } from '@xiao/core/components';
 
 const csp = [
@@ -234,18 +237,18 @@ app.whenReady().then(() => {
     return ok(errors);
   });
   ipcMain.handle('canvas:components', () => ok(manifest.map((item) => item.name)));
-  ipcMain.handle('canvas:outline', (_event, siteDir: string) => {
+  ipcMain.handle('canvas:outline', (_event, siteDir: string, file?: string) => {
     try {
-      return ok(readOutline(siteDir));
+      return ok(readOutline(siteDir, safePage(file)));
     } catch (error) {
       return fail('CANVAS_READ', error instanceof Error ? error.message : '读不到页面');
     }
   });
   ipcMain.handle(
     'canvas:insert',
-    (_event, siteDir: string, parentId: string, index: number, name: string) => {
+    (_event, siteDir: string, parentId: string, index: number, name: string, file?: string) => {
       try {
-        insertComponent(siteDir, parentId, index, name);
+        insertComponent(siteDir, parentId, index, name, safePage(file));
         return ok(null);
       } catch (error) {
         return fail('CANVAS_INSERT', error instanceof Error ? error.message : '放不进去');
@@ -254,9 +257,9 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     'canvas:move',
-    (_event, siteDir: string, nodeId: string, parentId: string, index: number) => {
+    (_event, siteDir: string, nodeId: string, parentId: string, index: number, file?: string) => {
       try {
-        moveComponent(siteDir, nodeId, parentId, index);
+        moveComponent(siteDir, nodeId, parentId, index, safePage(file));
         return ok(null);
       } catch (error) {
         return fail('CANVAS_MOVE', error instanceof Error ? error.message : '移不动');
@@ -266,20 +269,34 @@ app.whenReady().then(() => {
   ipcMain.handle('canvas:canNest', (_event, parentName: string, childName: string) =>
     ok(nestingAllowed(parentName, childName)),
   );
-  ipcMain.handle('canvas:undo', (_event, siteDir: string) => {
+  ipcMain.handle('canvas:undo', (_event, siteDir: string, file?: string) => {
     try {
-      undoPage(siteDir);
+      undoPage(siteDir, safePage(file));
       return ok(null);
     } catch (error) {
       return fail('CANVAS_UNDO', error instanceof Error ? error.message : '撤销失败');
     }
   });
-  ipcMain.handle('canvas:redo', (_event, siteDir: string) => {
+  ipcMain.handle('canvas:redo', (_event, siteDir: string, file?: string) => {
     try {
-      redoPage(siteDir);
+      redoPage(siteDir, safePage(file));
       return ok(null);
     } catch (error) {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
+    }
+  });
+  ipcMain.handle('page:list', (_event, siteDir: string) => {
+    try {
+      return ok(listPages(siteDir));
+    } catch (error) {
+      return fail('PAGE_LIST', error instanceof Error ? error.message : '读不到页面');
+    }
+  });
+  ipcMain.handle('page:create', (_event, siteDir: string, template: PageTemplate, slug: string) => {
+    try {
+      return ok(createPage(siteDir, template, slug));
+    } catch (error) {
+      return fail('PAGE_CREATE', error instanceof Error ? error.message : '建不了页面');
     }
   });
   ipcMain.handle('canvas:props', (_event, name: string) =>
@@ -287,9 +304,16 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     'canvas:setProp',
-    (_event, siteDir: string, nodeId: string, name: string, value: string | number | boolean) => {
+    (
+      _event,
+      siteDir: string,
+      nodeId: string,
+      name: string,
+      value: string | number | boolean,
+      file?: string,
+    ) => {
       try {
-        setComponentProp(siteDir, nodeId, name, value);
+        setComponentProp(siteDir, nodeId, name, value, safePage(file));
         return ok(null);
       } catch (error) {
         return fail('CANVAS_PROP', error instanceof Error ? error.message : '改不了属性');
@@ -310,6 +334,13 @@ app.whenReady().then(() => {
       return ok(post);
     } catch (error) {
       return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');
+    }
+  });
+  ipcMain.handle('content:customize', (_event, siteDir: string, slug: string) => {
+    try {
+      return ok(customizePost(siteDir, slug));
+    } catch (error) {
+      return fail('CONTENT_CUSTOM', error instanceof Error ? error.message : '自定义失败');
     }
   });
   ipcMain.handle('content:delete', (_event, siteDir: string, slug: string) => {

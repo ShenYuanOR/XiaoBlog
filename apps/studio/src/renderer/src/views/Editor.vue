@@ -130,6 +130,11 @@ async function open(): Promise<void> {
   });
 }
 
+async function customize(): Promise<void> {
+  const result = await window.xiao.content.customize(props.siteDir, props.slug);
+  message.value = result.ok ? `只改这一篇：${result.data}` : result.message;
+}
+
 watch(() => props.slug, () => void open(), { immediate: true });
 onBeforeUnmount(() => {
   window.clearTimeout(timer);
@@ -144,6 +149,7 @@ onBeforeUnmount(() => {
       <label>标题 <input v-model="title" @change="persist" /></label>
       <label>分类 <input v-model="category" @change="persist" /></label>
       <label><input v-model="draft" type="checkbox" @change="persist" /> 草稿</label>
+      <button type="button" @click="customize">自定义此页</button>
       <button type="button" @click="sourceMode ? showVisual() : showSource()">
         {{ sourceMode ? '所见即所得' : '源码' }}
       </button>
