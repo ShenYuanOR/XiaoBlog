@@ -251,6 +251,23 @@ describe('补齐的三种操作', () => {
   });
 });
 
+describe('拼首页', () => {
+  it('能把 Section 和 Text 放进 main', () => {
+    let source = '---\n---\n<main></main>\n';
+    let doc = parseAstro(source);
+    source = insertNode(doc, root(doc).id, 0, '<Section></Section>');
+    doc = parseAstro(source);
+    const section = root(doc).children.find((child) => child.name === 'Section');
+    source = insertNode(doc, section!.id, 0, '<Text></Text>');
+    doc = parseAstro(source);
+    const placed = root(doc).children.find((child) => child.name === 'Section');
+    source = setProp(doc, placed!.id, 'pad', 'lg');
+    expect(source).toContain('<Section pad="lg">');
+    expect(source).toContain('<Text>');
+    expect(() => parseAstro(source)).not.toThrow();
+  });
+});
+
 describe('随机互操作', () => {
   it('50 轮操作加人工编辑仍能解析', () => {
     let source = '<main>\n  <p>正文</p>\n</main>\n';

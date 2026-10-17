@@ -19,6 +19,8 @@ import {
 } from './content.ts';
 import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
 import { seoRows } from './seo.ts';
+import { insertComponent, readOutline, setComponentProp } from './canvas.ts';
+import { manifest } from '@xiao/core/components';
 
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -213,6 +215,36 @@ app.whenReady().then(() => {
     const errors = writeConfig(siteDir, config);
     return ok(errors);
   });
+  ipcMain.handle('canvas:components', () => ok(manifest.map((item) => item.name)));
+  ipcMain.handle('canvas:outline', (_event, siteDir: string) => {
+    try {
+      return ok(readOutline(siteDir));
+    } catch (error) {
+      return fail('CANVAS_READ', error instanceof Error ? error.message : '读不到页面');
+    }
+  });
+  ipcMain.handle('canvas:insert', (_event, siteDir: string, parentId: string, name: string) => {
+    try {
+      insertComponent(siteDir, parentId, 0, name);
+      return ok(null);
+    } catch (error) {
+      return fail('CANVAS_INSERT', error instanceof Error ? error.message : '放不进去');
+    }
+  });
+  ipcMain.handle('canvas:props', (_event, name: string) =>
+    ok(manifest.find((item) => item.name === name)?.props ?? []),
+  );
+  ipcMain.handle(
+    'canvas:setProp',
+    (_event, siteDir: string, nodeId: string, name: string, value: string | number | boolean) => {
+      try {
+        setComponentProp(siteDir, nodeId, name, value);
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_PROP', error instanceof Error ? error.message : '改不了属性');
+      }
+    },
+  );
   ipcMain.handle('seo:check', (_event, siteDir: string) => {
     try {
       return ok(seoRows(readConfig(siteDir), listPosts(siteDir)));

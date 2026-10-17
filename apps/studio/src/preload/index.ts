@@ -16,6 +16,15 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 }
 
 const api = {
+  canvas: {
+    components: () => ipcRenderer.invoke('canvas:components'),
+    outline: (siteDir: string) => ipcRenderer.invoke('canvas:outline', siteDir),
+    insert: (siteDir: string, parentId: string, name: string) =>
+      ipcRenderer.invoke('canvas:insert', siteDir, parentId, name),
+    props: (name: string) => ipcRenderer.invoke('canvas:props', name),
+    setProp: (siteDir: string, nodeId: string, name: string, value: string | number | boolean) =>
+      ipcRenderer.invoke('canvas:setProp', siteDir, nodeId, name, value),
+  },
   seo: {
     check: (siteDir: string) => ipcRenderer.invoke('seo:check', siteDir),
   },

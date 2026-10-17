@@ -7,6 +7,7 @@ import Posts from './Posts.vue';
 import Editor from './Editor.vue';
 import Settings from './Settings.vue';
 import Seo from './Seo.vue';
+import Canvas from './Canvas.vue';
 import { ref } from 'vue';
 
 const session = useSession();
@@ -82,7 +83,8 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
         <p v-else>{{ copy.sideNote }}</p>
       </aside>
       <main class="editor">
-        <Seo v-if="session.nav === 'SEO'" />
+        <Canvas v-if="session.nav === '页面'" />
+        <Seo v-else-if="session.nav === 'SEO'" />
         <Settings v-else-if="session.nav === '设置' || session.nav === '外观'" />
         <Editor v-else-if="slug && session.siteDir" :site-dir="session.siteDir" :slug="slug" />
         <h1 v-else>{{ copy.editor }}</h1>

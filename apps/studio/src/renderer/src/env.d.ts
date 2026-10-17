@@ -7,7 +7,34 @@ import type {
   RuntimeStart,
 } from '@xiao/core/ipc';
 
+export interface CanvasNode {
+  id: string;
+  name: string;
+  locked: boolean;
+  props: { name: string; value: string }[];
+  children: CanvasNode[];
+}
+
+export interface CanvasField {
+  name: string;
+  label: string;
+  type: string;
+  options?: string[];
+}
+
 export interface XiaoApi {
+  canvas: {
+    components: () => Promise<IpcResult<string[]>>;
+    outline: (siteDir: string) => Promise<IpcResult<CanvasNode[]>>;
+    insert: (siteDir: string, parentId: string, name: string) => Promise<IpcResult<null>>;
+    props: (name: string) => Promise<IpcResult<CanvasField[]>>;
+    setProp: (
+      siteDir: string,
+      nodeId: string,
+      name: string,
+      value: string | number | boolean,
+    ) => Promise<IpcResult<null>>;
+  };
   seo: {
     check: (
       siteDir: string,
