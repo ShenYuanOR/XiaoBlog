@@ -14,7 +14,15 @@ import {
   siteTitle,
 } from './project.ts';
 import { SiteWatcher } from './watch.ts';
-import { createPost, deletePost, listPosts, renamePost } from './content.ts';
+import {
+  createPost,
+  deletePost,
+  listPosts,
+  readPostFile,
+  renamePost,
+  saveImage,
+  writePostFile,
+} from './content.ts';
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
@@ -22,6 +30,10 @@ const csp = [
 ].join('; ');
 
 protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'xiao-asset',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
   {
     scheme: 'app',
     privileges: {
@@ -40,6 +52,14 @@ function rendererFile(pathname: string): string {
 }
 
 function registerProtocol(): void {
+  protocol.handle('xiao-asset', (request) => {
+    const url = new URL(request.url);
+    const siteDir = url.searchParams.get('site') ?? '';
+    const slug = url.searchParams.get('slug') ?? '';
+    const name = url.pathname.split('/').pop() ?? '';
+    const file = join(siteDir, 'src', 'content', 'posts', slug, name);
+    return net.fetch(pathToFileURL(file).href);
+  });
   protocol.handle('app', (request) => {
     const url = new URL(request.url);
     return net.fetch(pathToFileURL(rendererFile(url.pathname)).href).then((response) => {
@@ -189,6 +209,25 @@ app.whenReady().then(() => {
     deletePost(siteDir, slug);
     return ok(null);
   });
+  ipcMain.handle('content:read', (_event, siteDir: string, slug: string) => {
+    try {
+      return ok(readPostFile(siteDir, slug));
+    } catch (error) {
+      return fail('CONTENT_READ', error instanceof Error ? error.message : '读不到文章');
+    }
+  });
+  ipcMain.handle('content:write', (_event, siteDir: string, slug: string, markdown: string) => {
+    writePostFile(siteDir, slug, markdown);
+    watcher?.noteWrite(join(siteDir, 'src', 'content', 'posts', slug, 'index.md'), markdown);
+    return ok(null);
+  });
+  ipcMain.handle(
+    'content:saveImage',
+    (_event, siteDir: string, slug: string, name: string, base64: string) => {
+      const relative = saveImage(siteDir, slug, name, Buffer.from(base64, 'base64'));
+      return ok(relative);
+    },
+  );
   ipcMain.handle('content:rename', (_event, siteDir: string, from: string, to: string) => {
     try {
       return ok(renamePost(siteDir, from, to));

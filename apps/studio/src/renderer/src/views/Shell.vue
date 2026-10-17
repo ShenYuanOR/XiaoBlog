@@ -4,8 +4,11 @@ import { copy } from '../copy.ts';
 import { useSession } from '../stores/session.ts';
 import Conflict from './Conflict.vue';
 import Posts from './Posts.vue';
+import Editor from './Editor.vue';
+import { ref } from 'vue';
 
 const session = useSession();
+const slug = ref('');
 onMounted(() => {
   void session.load();
 });
@@ -64,12 +67,13 @@ async function choose(action: 'keep' | 'load' | 'compare'): Promise<void> {
       </nav>
       <aside class="list">
         <h1>{{ session.nav }}</h1>
-        <Posts v-if="session.nav === '文章' && session.siteDir" />
+        <Posts v-if="session.nav === '文章' && session.siteDir" @select="slug = $event" />
         <p v-else>{{ copy.sideNote }}</p>
       </aside>
       <main class="editor">
-        <h1>{{ copy.editor }}</h1>
-        <p>{{ copy.empty }}</p>
+        <Editor v-if="slug && session.siteDir" :site-dir="session.siteDir" :slug="slug" />
+        <h1 v-else>{{ copy.editor }}</h1>
+        <p v-if="!slug">{{ copy.empty }}</p>
         <p v-if="session.mode === 'develop'">开发者模式的文件树和输出面板还没接上。</p>
       </main>
       <aside class="preview">

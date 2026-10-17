@@ -23,6 +23,14 @@ export interface XiaoApi {
       from: string,
       to: string,
     ) => Promise<IpcResult<{ from: string; to: string }>>;
+    read: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
+    write: (siteDir: string, slug: string, markdown: string) => Promise<IpcResult<null>>;
+    saveImage: (
+      siteDir: string,
+      slug: string,
+      name: string,
+      base64: string,
+    ) => Promise<IpcResult<string>>;
   };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;

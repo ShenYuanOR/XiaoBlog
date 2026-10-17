@@ -35,6 +35,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@milkdown/crepe':
+        specifier: 7.22.3
+        version: 7.22.3(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)(supports-color@7.2.0)(typescript@5.9.3)
       '@xiao/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -8422,7 +8425,7 @@ snapshots:
   micromark-factory-space@2.1.0:
     dependencies:
       micromark-util-character: 2.1.1
-      micromark-util-types: 2.0.2
+      micromark-util-types: 2.0.3
 
   micromark-factory-title@2.0.1:
     dependencies:

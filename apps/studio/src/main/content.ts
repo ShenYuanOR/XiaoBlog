@@ -21,6 +21,36 @@ function readPost(siteDir: string, slug: string): PostItem {
   return { slug, title, category, draft };
 }
 
+export function readPostFile(siteDir: string, slug: string): string {
+  return readFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), 'utf8');
+}
+
+export function writePostFile(siteDir: string, slug: string, markdown: string): void {
+  writeFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), markdown);
+}
+
+export function saveImage(siteDir: string, slug: string, name: string, bytes: Uint8Array): string {
+  const dir = path.join(postsRoot(siteDir), slug);
+  const ext = path.extname(name) || '.png';
+  const base = path.basename(name, ext).replace(/[^\w.-]+/g, '-') || 'image';
+  let file = `${base}${ext}`;
+  let n = 2;
+  while (existsSync(path.join(dir, file))) {
+    file = `${base}-${n}${ext}`;
+    n += 1;
+  }
+  writeFileSync(path.join(dir, file), bytes);
+  return `./${file}`;
+}
+
+function existsSync(file: string): boolean {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 export function listPosts(siteDir: string): PostItem[] {
   const root = postsRoot(siteDir);
   let names: string[] = [];

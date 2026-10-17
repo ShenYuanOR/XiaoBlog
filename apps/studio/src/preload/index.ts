@@ -31,6 +31,17 @@ const api = {
       to: string,
     ): Promise<IpcResult<{ from: string; to: string }>> =>
       ipcRenderer.invoke('content:rename', siteDir, from, to),
+    read: (siteDir: string, slug: string): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('content:read', siteDir, slug),
+    write: (siteDir: string, slug: string, markdown: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('content:write', siteDir, slug, markdown),
+    saveImage: (
+      siteDir: string,
+      slug: string,
+      name: string,
+      base64: string,
+    ): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('content:saveImage', siteDir, slug, name, base64),
   },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),

@@ -10,6 +10,7 @@
     "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml"
   },
   "dependencies": {
+    "@milkdown/crepe": "7.22.3",
     "@xiao/core": "workspace:*",
     "isomorphic-git": "1.44.2",
     "pinia": "3.0.4",

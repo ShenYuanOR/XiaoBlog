@@ -7,6 +7,7 @@ const posts = ref<{ slug: string; title: string; category: string; draft: boolea
 const title = ref('');
 const category = ref('生活');
 const message = ref('');
+const emit = defineEmits<{ select: [slug: string] }>();
 const grouped = computed(() => {
   const groups = new Map<string, typeof posts.value>();
   for (const post of posts.value) {
@@ -66,7 +67,7 @@ watch(
       <h2>{{ group.name }}</h2>
       <ul>
         <li v-for="post in group.posts" :key="post.slug">
-          <span>{{ post.title }}</span>
+          <button type="button" @click="emit('select', post.slug)">{{ post.title }}</button>
           <button type="button" @click="rename(post.slug)">重命名</button>
           <button type="button" @click="remove(post.slug)">删除</button>
         </li>
