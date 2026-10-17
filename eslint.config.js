@@ -34,6 +34,7 @@ export default defineConfig(
     '.agents/**',
     'coverage/**',
     'packages/core/src/markdown/corpus/**',
+    '**/*.vue',
   ]),
   ...withRoot(tseslint.configs.recommended),
   ...withRoot(astro.configs.recommended),

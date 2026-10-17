@@ -11,6 +11,7 @@ docs/.vitepress/
 public/_redirects
 redirects/redirects.nginx.conf
 
+apps/studio/release*/
 # 框架更新备份
 .xiao-backup/
 .xiao/

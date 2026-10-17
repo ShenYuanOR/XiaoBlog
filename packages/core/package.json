@@ -9,7 +9,8 @@
     "./markdown": "./src/markdown/index.ts",
     "./responsive": "./src/responsive/inspect.mjs",
     "./site": "./src/site/index.ts",
-    "./importer": "./src/importer/index.ts"
+    "./importer": "./src/importer/index.ts",
+    "./ipc": "./src/ipc-types.ts"
   },
   "scripts": {
     "test": "vitest run"

@@ -1,0 +1,12 @@
+appId: app.xiao.studio
+productName: 晓
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+npmRebuild: false
+electronDist: node_modules/electron/dist
+win:
+  target:
+    - dir
