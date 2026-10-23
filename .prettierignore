@@ -20,3 +20,4 @@ packages/core/src/markdown/corpus
 examples/demo/src/content
 apps/studio/**/*.vue
 apps/studio/release*
+blog/

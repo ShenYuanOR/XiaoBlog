@@ -17,3 +17,8 @@ apps/studio/resources/pnpm/
 # 框架更新备份
 .xiao-backup/
 .xiao/
+.grok/
+blog/
+.gitea.env
+*.env
+apps/studio/.shim/
