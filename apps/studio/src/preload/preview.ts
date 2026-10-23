@@ -52,16 +52,25 @@ function paint(target: EventTarget | null): void {
   frame.style.height = `${rect.height}px`;
 }
 
+function asHtml(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof HTMLElement)) return null;
+  return target.closest<HTMLElement>('[data-xiao-loc]');
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  document.addEventListener('mouseover', (event) => paint(event.target));
+  document.addEventListener('mouseover', (event) => {
+    paint(event.target);
+  });
   document.addEventListener(
     'click',
     (event) => {
+      const element = asHtml(event.target);
       const loc = locOf(event.target);
-      if (!loc) return;
+      if (!element || !loc) return;
       event.preventDefault();
+      event.stopPropagation();
       ipcRenderer.send('preview:pick', loc);
-      paint(event.target);
+      paint(element);
     },
     true,
   );

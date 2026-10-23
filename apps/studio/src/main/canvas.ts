@@ -2,12 +2,14 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   assertCanNest,
+  findNode,
   insertNode,
   moveNode,
   parseAstro,
   recordEdit,
   redoEdit,
   setProp,
+  setText,
   undoEdit,
   type FileHistory,
 } from '@xiao/core/ast';
@@ -18,6 +20,8 @@ export interface OutlineNode {
   name: string;
   kind: string;
   locked: boolean;
+  kind: string;
+  text: string;
   props: { name: string; value: string }[];
   children: OutlineNode[];
 }
@@ -45,17 +49,22 @@ function writeEdit(full: string, before: string, after: string): string {
 export function readOutline(siteDir: string, file = 'src/pages/index.astro'): OutlineNode[] {
   const doc = parseAstro(readFileSync(pagePath(siteDir, file), 'utf8'));
   const walk = (nodes: typeof doc.tree): OutlineNode[] =>
-    nodes.map((node) => ({
-      id: node.id,
-      name: node.name ?? node.kind,
-      kind: node.kind,
-      locked: node.kind === 'locked',
-      props: (node.props ?? []).map((prop) => ({
-        name: prop.name,
-        value: prop.value.parsed === undefined ? prop.value.raw : String(prop.value.parsed),
-      })),
-      children: walk(node.children),
-    }));
+    nodes.map((node) => {
+      const text = node.kind === 'text' ? doc.source.slice(node.start, node.end).trim() : '';
+      const preview = text.length > 24 ? `${text.slice(0, 24)}…` : text;
+      return {
+        id: node.id,
+        name: node.kind === 'text' ? preview || '文本' : (node.name ?? node.kind),
+        kind: node.kind,
+        text,
+        locked: node.kind === 'locked',
+        props: (node.props ?? []).map((prop) => ({
+          name: prop.name,
+          value: prop.value.parsed === undefined ? prop.value.raw : String(prop.value.parsed),
+        })),
+        children: walk(node.children),
+      };
+    });
   return walk(doc.tree);
 }
 
@@ -106,6 +115,37 @@ export function setComponentProp(
   const full = pagePath(siteDir, file);
   const before = readFileSync(full, 'utf8');
   const next = setProp(parseAstro(before), nodeId, name, value);
+  return writeEdit(full, before, next);
+}
+
+export function setVisualText(
+  siteDir: string,
+  elementId: string,
+  text: string,
+  file = 'src/pages/index.astro',
+): string {
+  const full = pagePath(siteDir, file);
+  const before = readFileSync(full, 'utf8');
+  const doc = parseAstro(before);
+  const node = findNode(doc.tree, elementId);
+  if (!node) throw new Error('画面上的这块对不上源码');
+  const texts =
+    node.kind === 'text' ? [node] : node.children.filter((child) => child.kind === 'text');
+  const target = texts.length === 1 ? texts[0] : undefined;
+  if (!target) throw new Error('这段是模板代码，不能在画面上改');
+  const next = setText(doc, target.id, text);
+  return writeEdit(full, before, next);
+}
+
+export function setPageText(
+  siteDir: string,
+  nodeId: string,
+  text: string,
+  file = 'src/pages/index.astro',
+): string {
+  const full = pagePath(siteDir, file);
+  const before = readFileSync(full, 'utf8');
+  const next = setText(parseAstro(before), nodeId, text);
   return writeEdit(full, before, next);
 }
 

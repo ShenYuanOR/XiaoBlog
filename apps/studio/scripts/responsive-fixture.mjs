@@ -55,7 +55,9 @@ app.whenReady().then(async () => {
           deviceScaleFactor: 1,
           mobile: width < 768,
         });
-        await win.webContents.debugger.sendCommand('Emulation.setScrollbarsHidden', { hidden: true });
+        await win.webContents.debugger.sendCommand('Emulation.setScrollbarsHidden', {
+          hidden: true,
+        });
         const issues = await win.webContents.executeJavaScript(`(${inspectPage.toString()})()`);
         for (const issue of issues) found.push({ page, viewport: width, ...issue });
       }

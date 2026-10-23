@@ -21,4 +21,7 @@ const config =
       }
     : { ...user, vite: append(user.vite) };
 
-export default config;
+export default {
+  ...config,
+  devToolbar: { enabled: false },
+};

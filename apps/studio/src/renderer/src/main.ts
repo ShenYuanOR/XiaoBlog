@@ -2,8 +2,15 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import { router } from './router.ts';
+import { notify } from './notice.ts';
 import { useSession } from './stores/session.ts';
-import './shell.css';
+import { bootTheme } from './theme.ts';
+import '../../../node_modules/monaco-editor/min/vs/editor/editor.main.css';
+import './ui/tokens.css';
+import './ui/base.css';
+
+// 先落主题再挂载，避免首帧闪白。
+bootTheme();
 
 window.__csp = [];
 window.addEventListener('securitypolicyviolation', (event) => {
@@ -20,11 +27,20 @@ window.xiao.runtime.onReady((event) => {
   session.previewUrl = event.url;
   session.pushLog(`预览已就绪 ${event.url}\n`);
 });
-window.xiao.runtime.onExit((event) =>
-  session.pushLog(event.message ? `${event.message}\n` : `进程结束 ${event.code}\n`),
-);
-window.xiao.project.onReload((event) => {
-  session.reloaded = `${event.file} 已按磁盘刷新`;
+window.xiao.runtime.onExit((event) => {
+  session.building = false;
+  session.pushLog(event.message ? `${event.message}\n` : `进程结束 ${event.code}\n`);
+});
+let reloadCount = 0;
+let reloadTimer = 0;
+window.xiao.project.onReload(() => {
   session.setConflict(null);
+  reloadCount += 1;
+  window.clearTimeout(reloadTimer);
+  reloadTimer = window.setTimeout(() => {
+    const count = reloadCount;
+    reloadCount = 0;
+    notify(count > 1 ? `${count} 个文件已按磁盘刷新` : '文件已按磁盘刷新', 'info', 'reload');
+  }, 500);
 });
 window.xiao.project.onConflict((event) => session.setConflict(event));

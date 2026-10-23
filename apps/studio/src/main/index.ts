@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, ipcMain, net, protocol, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
@@ -11,10 +11,26 @@ import {
   focusPreview,
   focusSelector,
   isPreviewContents,
+  applyPreviewMode,
+  destroyDock,
+  hideDock,
+  hidePageEditor,
+  showDock,
+  showPageEditor,
   showPreview,
   type PreviewMode,
+  type DockInput,
 } from './preview.ts';
 import { SiteWatcher } from './watch.ts';
+import {
+  createDeployStore,
+  createNetHttpClient,
+  probeRemote,
+  pushSite,
+  remoteDefaultBranch,
+  type DeployTarget,
+} from './publish.ts';
+import { readPageStyle, resetPageStyle, writePageStyle } from './page-style.ts';
 import {
   createPost,
   customizePost,
@@ -35,9 +51,11 @@ import {
   redoPage,
   safePage,
   setComponentProp,
+  setPageText,
+  setVisualText,
   undoPage,
 } from './canvas.ts';
-import { createPage, listPages, type PageTemplate } from './pages.ts';
+import { createPage, listPages, pageHref, type PageTemplate } from './pages.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
 import { groupChanges, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -106,6 +124,11 @@ function createWindow(): BrowserWindow {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  if (!app.isPackaged && !process.argv.includes('--probe')) {
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.openDevTools({ mode: 'detach' });
+    });
+  }
   if (app.isPackaged) {
     void win.loadURL('app://bundle/index.html');
   } else {
@@ -166,6 +189,25 @@ const github = new GitHubService(async (url, init) => {
   return { status: response.status, body: await response.text() };
 });
 
+// 发布走 net.fetch → 系统代理，再交给 isomorphic-git；用户不需要另装 git。
+const publishHttp = createNetHttpClient(async (url, init) => {
+  const response = await net.fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    ...(init.body ? { body: init.body as unknown as BodyInit } : {}),
+  });
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    url: response.url,
+    body: new Uint8Array(await response.arrayBuffer()),
+  };
+});
+
+function deployStore(): ReturnType<typeof createDeployStore> {
+  return createDeployStore(join(app.getPath('userData'), 'deploy-targets.json'));
+}
+
 function send(channel: string, payload: unknown): void {
   BrowserWindow.getAllWindows().forEach((item) => item.webContents.send(channel, payload));
 }
@@ -189,7 +231,6 @@ const runtime = new RuntimeService({
   onReady: (event) => {
     BrowserWindow.getAllWindows().forEach((item) => {
       item.webContents.send('runtime:onReady', event);
-      void showPreview(item, event.url, 'pc');
     });
   },
   onExit: (event) =>
@@ -222,11 +263,26 @@ function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
   writeFileSync(file, `${JSON.stringify(all)}\n`);
 }
 
+if (!app.isPackaged) {
+  const port = process.env.XIAO_CDP_PORT || '9222';
+  app.commandLine.appendSwitch('remote-debugging-port', port);
+  app.commandLine.appendSwitch('remote-allow-origins', '*');
+}
+
 app.whenReady().then(() => {
   registerProtocol();
   ipcMain.handle('app:getInfo', () =>
     ok<AppInfo>({ name: '晓', version: app.getVersion(), packaged: app.isPackaged }),
   );
+  ipcMain.handle('app:openExternal', async (_event, url: string) => {
+    if (!/^https?:\/\//i.test(url)) return fail('OPEN_URL', '只允许打开 http(s) 链接');
+    try {
+      await shell.openExternal(url);
+      return ok(null);
+    } catch (error) {
+      return fail('OPEN_URL', error instanceof Error ? error.message : '打不开链接');
+    }
+  });
   ipcMain.handle('runtime:start', (_event, kind: RuntimeKind, siteDir: string) => {
     if (kind !== 'install' && kind !== 'dev' && kind !== 'build') {
       return fail('RUNTIME_KIND', '不认识的运行命令');
@@ -238,15 +294,61 @@ app.whenReady().then(() => {
     runtime.cancel(taskId);
     return ok(null);
   });
+  ipcMain.on('preview:chrome-mode', (_event, mode: PreviewMode) => {
+    if (
+      mode !== 'phone' &&
+      mode !== 'tablet' &&
+      mode !== 'pc' &&
+      mode !== 'side' &&
+      mode !== 'custom'
+    ) {
+      return;
+    }
+    void applyPreviewMode(mode);
+  });
   ipcMain.handle(
     'preview:set',
     async (event, mode: PreviewMode, url: string, customWidth?: number) => {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      if (!win || !url) return fail('PREVIEW', '还没有预览地址');
-      const widths = await showPreview(win, url, mode, customWidth);
+      if (!url) return fail('PREVIEW', '还没有预览地址');
+      const widths = await showPreview(url, mode, customWidth);
       return ok(widths);
     },
   );
+  ipcMain.handle(
+    'preview:editor',
+    (
+      event,
+      url: string,
+      bounds: { x: number; y: number; width: number; height: number } | null,
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || !url || !bounds) {
+        hidePageEditor();
+        return ok(null);
+      }
+      showPageEditor(win, url, bounds);
+      return ok(null);
+    },
+  );
+  ipcMain.handle('preview:dock', async (event, input: DockInput) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return fail('PREVIEW', '找不到主窗口');
+    await showDock(win, input);
+    return ok(null);
+  });
+  ipcMain.handle('preview:hideDock', () => {
+    hideDock();
+    return ok(null);
+  });
+  ipcMain.handle('page:href', (_event, siteDir: string, file: string) =>
+    ok(pageHref(siteDir, file)),
+  );
+  ipcMain.on('preview:text', (event, payload: { file: string; offset: string; text: string }) => {
+    if (!isPreviewContents(event.sender)) return;
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.webContents !== event.sender) win.webContents.send('preview:onText', payload);
+    }
+  });
   ipcMain.on('preview:pick', (event, payload: { file: string; offset: string }) => {
     if (!isPreviewContents(event.sender)) return;
     for (const win of BrowserWindow.getAllWindows()) {
@@ -360,6 +462,68 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('publish:history', (_event, siteDir: string) => ok(readDeployHistory(siteDir)));
+  ipcMain.handle('publish:target', (_event, siteDir: string) => {
+    const target = deployStore().read()[siteDir] ?? null;
+    return ok(target);
+  });
+  ipcMain.handle(
+    'publish:connect',
+    async (
+      _event,
+      siteDir: string,
+      provider: 'gitea' | 'github',
+      remoteUrl: string,
+      login: string,
+      token: string,
+    ) => {
+      const url = remoteUrl.trim().replace(/\/$/, '');
+      if (!/^https?:\/\//.test(url)) {
+        return fail('PUBLISH_URL', '仓库地址要以 http:// 或 https:// 开头');
+      }
+      if (!token.trim()) return fail('PUBLISH_TOKEN', '先填访问令牌');
+      const probe = await probeRemote(url, login.trim(), token.trim(), publishHttp);
+      if (!probe.ok) return fail('PUBLISH_PROBE', probe.message);
+      const branch = await remoteDefaultBranch(url, login.trim(), token.trim(), publishHttp);
+      const target: DeployTarget = {
+        provider,
+        remoteUrl: url,
+        branch,
+        ...(login.trim() ? { login: login.trim() } : {}),
+      };
+      secretStore().save(siteDir, token.trim(), '');
+      const all = deployStore().read();
+      all[siteDir] = target;
+      deployStore().write(all);
+      return ok(target);
+    },
+  );
+  ipcMain.handle('publish:push', async (_event, siteDir: string, force?: boolean) => {
+    const target = deployStore().read()[siteDir];
+    if (!target) return fail('PUBLISH_TARGET', '还没有连接仓库，先填地址和令牌');
+    const token = secretStore().load(siteDir);
+    if (!token) return fail('PUBLISH_TOKEN', '令牌丢了，重新填一次');
+    try {
+      const result = await pushSite({
+        siteDir,
+        target,
+        token,
+        login: target.login,
+        http: publishHttp,
+        force: Boolean(force),
+      });
+      return ok(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '推送失败';
+      return fail('PUBLISH_PUSH', redactSecrets(message, [token]));
+    }
+  });
+  ipcMain.handle('publish:disconnect', (_event, siteDir: string) => {
+    const all = deployStore().read();
+    delete all[siteDir];
+    deployStore().write(all);
+    secretStore().remove(siteDir);
+    return ok(null);
+  });
   ipcMain.handle('publish:record', (_event, siteDir: string, repo: string) => {
     const next = rememberDeploy(readDeployHistory(siteDir), {
       at: new Date().toISOString(),
@@ -451,6 +615,52 @@ app.whenReady().then(() => {
       return fail('PAGE_CREATE', error instanceof Error ? error.message : '建不了页面');
     }
   });
+  ipcMain.handle('page:styleRead', (_event, siteDir: string, slug: string) => {
+    try {
+      return ok(readPageStyle(siteDir, slug));
+    } catch (error) {
+      return fail('PAGE_STYLE', error instanceof Error ? error.message : '读不到页面样式');
+    }
+  });
+  ipcMain.handle('page:styleWrite', (_event, siteDir: string, slug: string, css: string) => {
+    try {
+      writePageStyle(siteDir, slug, css);
+      watcher?.noteWrite(join(siteDir, 'src', 'styles', 'pages', `${slug}.css`), css);
+      return ok(null);
+    } catch (error) {
+      return fail('PAGE_STYLE', error instanceof Error ? error.message : '写不了页面样式');
+    }
+  });
+  ipcMain.handle('page:styleReset', (_event, siteDir: string, slug: string) => {
+    try {
+      resetPageStyle(siteDir, slug);
+      return ok(null);
+    } catch (error) {
+      return fail('PAGE_STYLE', error instanceof Error ? error.message : '恢复不了默认样式');
+    }
+  });
+  ipcMain.handle(
+    'canvas:setVisual',
+    (_event, siteDir: string, elementId: string, text: string, file?: string) => {
+      try {
+        setVisualText(siteDir, elementId, text, safePage(file));
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_VISUAL', error instanceof Error ? error.message : '画面上改不了');
+      }
+    },
+  );
+  ipcMain.handle(
+    'canvas:setText',
+    (_event, siteDir: string, nodeId: string, text: string, file?: string) => {
+      try {
+        setPageText(siteDir, nodeId, text, safePage(file));
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_TEXT', error instanceof Error ? error.message : '改不了文字');
+      }
+    },
+  );
   ipcMain.handle('canvas:props', (_event, name: string) =>
     ok(manifest.find((item) => item.name === name)?.props ?? []),
   );
@@ -543,6 +753,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   runtime.stopAll();
+  destroyDock();
   watcher?.stop();
 });
 

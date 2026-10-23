@@ -1,0 +1,121 @@
+/* Studio v2 设计令牌
+ * 规格：.agents/specs/studio-ui-v2.md §3
+ *
+ * 约定：
+ * - 默认深色；由 theme.ts 把 data-theme 写成 'dark' | 'light'（system 已在 script 里解析）。
+ * - 组件样式只允许引用这里的 --ui-* 变量，禁止裸色值。
+ * - §3 表格之外的「派生令牌」也放在本文件，组件可以放心使用。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 画布与层次 */
+  --ui-bg: #0d1017;
+  --ui-panel: #131822;
+  --ui-raise: #1a212d;
+  --ui-hover: #212a39;
+  --ui-active: #24304a;
+  --ui-line: #222b3a;
+  --ui-line-2: #2e3a4f;
+
+  /* 文字 */
+  --ui-text: #e8ecf4;
+  --ui-text-2: #9aa7bd;
+  --ui-text-3: #6c7889;
+
+  /* 语义色 */
+  --ui-accent: #6d9bff;
+  --ui-accent-weak: rgba(109, 155, 255, 0.14);
+  --ui-danger: #ff7b72;
+  --ui-warn: #e3b341;
+  --ui-ok: #5fbf8f;
+
+  /* 派生：hover、反色文字、语义弱底（表格外补充，样式统一走这些） */
+  --ui-accent-hover: #8bb0ff;
+  --ui-on-accent: #0d1017;
+  --ui-danger-hover: #ff948d;
+  --ui-on-danger: #0d1017;
+  --ui-danger-weak: rgba(255, 123, 114, 0.14);
+  --ui-warn-weak: rgba(227, 179, 65, 0.14);
+  --ui-ok-weak: rgba(95, 191, 143, 0.14);
+
+  /* 圆角 */
+  --ui-r-sm: 6px;
+  --ui-r: 10px;
+  --ui-r-lg: 14px;
+
+  /* 间距（4 的倍数，1→8） */
+  --ui-s1: 4px;
+  --ui-s2: 8px;
+  --ui-s3: 12px;
+  --ui-s4: 16px;
+  --ui-s5: 20px;
+  --ui-s6: 24px;
+  --ui-s7: 32px;
+  --ui-s8: 48px;
+
+  /* 字号 / 行高（12 / 13 / 14 正文 / 16 区块标题 / 20 页面标题） */
+  --ui-fs-1: 12px;
+  --ui-fs-2: 13px;
+  --ui-fs-3: 14px;
+  --ui-fs-4: 16px;
+  --ui-fs-5: 20px;
+  --ui-lh: 1.5;
+
+  /* 控件高度 */
+  --ui-h-sm: 28px;
+  --ui-h-md: 34px;
+
+  /* 阴影 */
+  --ui-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ui-shadow-2: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* 动效 */
+  --ui-dur: 140ms;
+  --ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 层级（复合件浮层用，A2 可引用） */
+  --ui-z-sticky: 10;
+  --ui-z-dropdown: 100;
+  --ui-z-overlay: 200;
+  --ui-z-toast: 300;
+
+  /* 字体 */
+  --ui-font: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ui-mono: 'Cascadia Code', Consolas, 'JetBrains Mono', monospace;
+}
+
+/* 浅色主题：规格 §3 表格的浅色列；阴影/派生色按同语义补换算，避免浅底上过重的黑阴影。 */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ui-bg: #f5f6f8;
+  --ui-panel: #ffffff;
+  --ui-raise: #f7f8fa;
+  --ui-hover: #eceff4;
+  --ui-active: #e6ecfa;
+  --ui-line: #e2e5ea;
+  --ui-line-2: #cbd1da;
+
+  --ui-text: #1b2230;
+  --ui-text-2: #5a6577;
+  --ui-text-3: #8b94a3;
+
+  --ui-accent: #2f6bf0;
+  --ui-accent-weak: rgba(47, 107, 240, 0.1);
+  --ui-danger: #d1293d;
+  --ui-warn: #9a6700;
+  --ui-ok: #1a7f4b;
+
+  --ui-accent-hover: #1f57d0;
+  --ui-on-accent: #ffffff;
+  --ui-danger-hover: #b32235;
+  --ui-on-danger: #ffffff;
+  --ui-danger-weak: rgba(209, 41, 61, 0.1);
+  --ui-warn-weak: rgba(154, 103, 0, 0.1);
+  --ui-ok-weak: rgba(26, 127, 75, 0.1);
+
+  --ui-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.08);
+  --ui-shadow-2: 0 12px 32px rgba(16, 24, 40, 0.16);
+}

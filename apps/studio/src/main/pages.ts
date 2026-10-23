@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isValidSlug } from '@xiao/core/site';
+import { listPosts } from './content.ts';
 
 export type PageTemplate = 'blank' | 'landing' | 'about';
 
@@ -60,6 +61,27 @@ export function listPages(siteDir: string): string[] {
   };
   walk(root);
   return found.sort();
+}
+
+export function pageHref(siteDir: string, file: string): string {
+  const normalized = file.replaceAll('\\', '/');
+  if (normalized === 'src/pages/posts/[...slug].astro') {
+    const post = listPosts(siteDir).find((item) => !item.draft);
+    return post ? `posts/${post.slug}/` : '';
+  }
+  if (normalized === 'src/pages/categories/[category].astro') {
+    const category = listPosts(siteDir).find((item) => item.category)?.category;
+    return category ? `categories/${encodeURIComponent(category)}/` : 'categories/';
+  }
+  if (normalized === 'src/pages/tags/[tag].astro') {
+    const tag = listPosts(siteDir).flatMap((item) => item.tags)[0];
+    return tag ? `tags/${encodeURIComponent(tag)}/` : 'tags/';
+  }
+  let route = normalized.replace(/^src\/pages\//, '').replace(/\.astro$/, '');
+  if (route === 'index') return '';
+  if (route.endsWith('/index')) route = route.slice(0, -'/index'.length);
+  if (route.includes('[')) return '';
+  return `${route}/`;
 }
 
 export function createPage(siteDir: string, template: PageTemplate, slug: string): string {

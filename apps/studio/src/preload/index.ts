@@ -28,6 +28,10 @@ const api = {
     undo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:undo', siteDir, file),
     redo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:redo', siteDir, file),
     props: (name: string) => ipcRenderer.invoke('canvas:props', name),
+    setText: (siteDir: string, nodeId: string, text: string, file: string) =>
+      ipcRenderer.invoke('canvas:setText', siteDir, nodeId, text, file),
+    setVisual: (siteDir: string, elementId: string, text: string, file: string) =>
+      ipcRenderer.invoke('canvas:setVisual', siteDir, elementId, text, file),
     setProp: (
       siteDir: string,
       nodeId: string,
@@ -40,6 +44,16 @@ const api = {
     changes: (siteDir: string) => ipcRenderer.invoke('publish:changes', siteDir),
     history: (siteDir: string) => ipcRenderer.invoke('publish:history', siteDir),
     record: (siteDir: string, repo: string) => ipcRenderer.invoke('publish:record', siteDir, repo),
+    target: (siteDir: string) => ipcRenderer.invoke('publish:target', siteDir),
+    connect: (
+      siteDir: string,
+      provider: 'gitea' | 'github',
+      remoteUrl: string,
+      login: string,
+      token: string,
+    ) => ipcRenderer.invoke('publish:connect', siteDir, provider, remoteUrl, login, token),
+    push: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:push', siteDir, force),
+    disconnect: (siteDir: string) => ipcRenderer.invoke('publish:disconnect', siteDir),
   },
   wizard: {
     write: (siteDir: string, owner: string, repo: string, branch: string) =>
@@ -65,6 +79,13 @@ const api = {
     list: (siteDir: string) => ipcRenderer.invoke('page:list', siteDir),
     create: (siteDir: string, template: 'blank' | 'landing' | 'about', slug: string) =>
       ipcRenderer.invoke('page:create', siteDir, template, slug),
+    href: (siteDir: string, file: string) => ipcRenderer.invoke('page:href', siteDir, file),
+    styleRead: (siteDir: string, slug: string) =>
+      ipcRenderer.invoke('page:styleRead', siteDir, slug),
+    styleWrite: (siteDir: string, slug: string, css: string) =>
+      ipcRenderer.invoke('page:styleWrite', siteDir, slug, css),
+    styleReset: (siteDir: string, slug: string) =>
+      ipcRenderer.invoke('page:styleReset', siteDir, slug),
   },
   seo: {
     check: (siteDir: string) => ipcRenderer.invoke('seo:check', siteDir),
@@ -110,9 +131,25 @@ const api = {
     focusSelector: (selector: string) => ipcRenderer.invoke('preview:focusSelector', selector),
     onPick: (callback: (payload: { file: string; offset: string }) => void): (() => void) =>
       listen('preview:onPick', callback),
+    onText: (
+      callback: (payload: { file: string; offset: string; text: string }) => void,
+    ): (() => void) => listen('preview:onText', callback),
+    editor: (
+      url: string,
+      bounds: { x: number; y: number; width: number; height: number } | null,
+    ): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:editor', url, bounds),
+    dock: (input: {
+      enabled: boolean;
+      url: string;
+      device: 'phone' | 'tablet' | 'pc';
+      bounds: { x: number; y: number; width: number; height: number };
+    }): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:dock', input),
+    hideDock: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:hideDock'),
   },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
+    openExternal: (url: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('app:openExternal', url),
   },
   project: {
     recent: (): Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>> =>

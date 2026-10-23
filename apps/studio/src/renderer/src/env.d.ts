@@ -10,16 +10,30 @@ import type {
 export interface CanvasNode {
   id: string;
   name: string;
+  kind: string;
+  text: string;
   locked: boolean;
   props: { name: string; value: string }[];
   children: CanvasNode[];
+}
+
+export interface CanvasPropOption {
+  value: string;
+  label: string;
 }
 
 export interface CanvasField {
   name: string;
   label: string;
   type: string;
-  options?: string[];
+  options?: CanvasPropOption[];
+  default?: unknown;
+  unit?: string;
+  min?: number;
+  max?: number;
+  group?: string;
+  placeholder?: string;
+  advanced?: boolean;
 }
 
 export interface XiaoApi {
@@ -44,6 +58,18 @@ export interface XiaoApi {
     undo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
     redo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
     props: (name: string) => Promise<IpcResult<CanvasField[]>>;
+    setText: (
+      siteDir: string,
+      nodeId: string,
+      text: string,
+      file: string,
+    ) => Promise<IpcResult<null>>;
+    setVisual: (
+      siteDir: string,
+      elementId: string,
+      text: string,
+      file: string,
+    ) => Promise<IpcResult<null>>;
     setProp: (
       siteDir: string,
       nodeId: string,
@@ -58,6 +84,37 @@ export interface XiaoApi {
     ) => Promise<IpcResult<{ posts: string[]; pages: string[]; settings: string[] }>>;
     history: (siteDir: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
     record: (siteDir: string, repo: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
+    target: (siteDir: string) => Promise<
+      IpcResult<{
+        provider: 'gitea' | 'github';
+        remoteUrl: string;
+        branch: string;
+        login?: string;
+      } | null>
+    >;
+    connect: (
+      siteDir: string,
+      provider: 'gitea' | 'github',
+      remoteUrl: string,
+      login: string,
+      token: string,
+    ) => Promise<
+      IpcResult<{ provider: 'gitea' | 'github'; remoteUrl: string; branch: string; login?: string }>
+    >;
+    push: (
+      siteDir: string,
+      force?: boolean,
+    ) => Promise<
+      IpcResult<{
+        committed: boolean;
+        forced: boolean;
+        warnings: string[];
+        message: string;
+        remote: string;
+        branch: string;
+      }>
+    >;
+    disconnect: (siteDir: string) => Promise<IpcResult<null>>;
   };
   wizard: {
     write: (
@@ -91,6 +148,13 @@ export interface XiaoApi {
       template: 'blank' | 'landing' | 'about',
       slug: string,
     ) => Promise<IpcResult<string>>;
+    href: (siteDir: string, file: string) => Promise<IpcResult<string>>;
+    styleRead: (
+      siteDir: string,
+      slug: string,
+    ) => Promise<IpcResult<{ css: string; exists: boolean }>>;
+    styleWrite: (siteDir: string, slug: string, css: string) => Promise<IpcResult<null>>;
+    styleReset: (siteDir: string, slug: string) => Promise<IpcResult<null>>;
   };
   seo: {
     check: (
@@ -135,9 +199,24 @@ export interface XiaoApi {
     focus: (file: string, offset: string) => Promise<IpcResult<null>>;
     focusSelector: (selector: string) => Promise<IpcResult<null>>;
     onPick: (callback: (payload: { file: string; offset: string }) => void) => () => void;
+    onText: (
+      callback: (payload: { file: string; offset: string; text: string }) => void,
+    ) => () => void;
+    editor: (
+      url: string,
+      bounds: { x: number; y: number; width: number; height: number } | null,
+    ) => Promise<IpcResult<null>>;
+    dock: (input: {
+      enabled: boolean;
+      url: string;
+      device: 'phone' | 'tablet' | 'pc';
+      bounds: { x: number; y: number; width: number; height: number };
+    }) => Promise<IpcResult<null>>;
+    hideDock: () => Promise<IpcResult<null>>;
   };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
+    openExternal: (url: string) => Promise<IpcResult<null>>;
   };
   project: {
     recent: () => Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>>;

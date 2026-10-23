@@ -1,43 +1,414 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { icons } from '../icons.ts';
+import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
+import {
+  UiButton,
+  UiEmpty,
+  UiField,
+  UiIcon,
+  UiInput,
+  UiPopover,
+  UiRow,
+  UiSpinner,
+} from '../ui/index.ts';
+
+type TemplateKey = 'blank' | 'landing' | 'about';
+
+interface TemplateOption {
+  key: TemplateKey;
+  label: string;
+  description: string;
+  icon: string;
+}
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const templates: TemplateOption[] = [
+  {
+    key: 'blank',
+    label: '空白',
+    description: '只有页面骨架，结构自己搭。',
+    icon: icons.files,
+  },
+  {
+    key: 'landing',
+    label: '落地页',
+    description: '大标题 + 区块 + 按钮，适合活动页。',
+    icon: icons.pages,
+  },
+  {
+    key: 'about',
+    label: '关于',
+    description: '介绍站点与作者，改文案即可。',
+    icon: icons.help,
+  },
+];
 
 const session = useSession();
+
 const pages = ref<string[]>([]);
+const loading = ref(true);
+const error = ref('');
+const createOpen = ref(false);
 const slug = ref('');
-const message = ref('');
+const slugTouched = ref(false);
+const creating = ref<TemplateKey | ''>('');
+
+const slugText = computed(() => slug.value.trim().toLowerCase());
+const slugValid = computed(() => SLUG_PATTERN.test(slugText.value));
+const slugError = computed(() => {
+  if (!slugTouched.value) return '';
+  if (!slugText.value) return '先填页面地址，例如 about';
+  if (!slugValid.value) return '只能用...，例如 about-us';
+  return '';
+});
+
+/** 首页排最前，其余按路径排序，找页面更顺手。 */
+const sortedPages = computed(() =>
+  [...pages.value].sort((a, b) => {
+    const aHome = /(^|\/)index\.astro$/.test(a);
+    const bHome = /(^|\/)index\.astro$/.test(b);
+    if (aHome !== bHome) return aHome ? -1 : 1;
+    return a.localeCompare(b);
+  }),
+);
+
+function describeError(cause: unknown): string {
+  if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
+  return '未知错误';
+}
+
+/** 文件名：列表主行。 */
+function fileName(file: string): string {
+  return file.split(/[\\/]/).at(-1) ?? file;
+}
+
+/** 相对路径：列表次行（相对站点根目录）。 */
+function filePath(file: string): string {
+  return file.replaceAll('\\', '/');
+}
 
 async function load(): Promise<void> {
-  if (!session.siteDir) return;
-  const result = await window.xiao.page.list(session.siteDir);
-  pages.value = result.ok ? result.data : [];
-  message.value = result.ok ? '' : result.message;
-}
-
-async function create(template: 'blank' | 'landing' | 'about'): Promise<void> {
-  const result = await window.xiao.page.create(session.siteDir, template, slug.value.trim());
-  message.value = result.ok ? `已新建 ${result.data}` : result.message;
-  if (result.ok) {
-    session.setPage(result.data);
-    slug.value = '';
+  if (!session.siteDir) {
+    pages.value = [];
+    error.value = '';
+    loading.value = false;
+    return;
   }
-  await load();
+  if (pages.value.length === 0) loading.value = true;
+  error.value = '';
+  try {
+    const result = await window.xiao.page.list(session.siteDir);
+    if (!result.ok) {
+      pages.value = [];
+      error.value = `${result.message}。点重试再读一次；仍失败就确认站点文件夹还在。`;
+      return;
+    }
+    pages.value = result.data;
+  } catch (cause) {
+    pages.value = [];
+    error.value = `读取页面列表时出错（${describeError(cause)}）。点重试再读一次；仍失败就重新打开站点。`;
+  } finally {
+    loading.value = false;
+  }
 }
 
-onMounted(() => void load());
+function setCreateOpen(open: boolean): void {
+  createOpen.value = open;
+  if (!open) return;
+  slugTouched.value = false;
+  slug.value = '';
+}
+
+function choose(file: string): void {
+  session.setPage(file);
+}
+
+async function create(template: TemplateKey): Promise<void> {
+  slugTouched.value = true;
+  if (!session.siteDir) {
+    notify('还没打开站点，先打开或新建站点再建页面。', 'error');
+    return;
+  }
+  const address = slug.value.trim();
+  if (!SLUG_PATTERN.test(address)) {
+    notify('页面地址不合法：只用小写字母、数字和连字符，例如 about-us。', 'error');
+    return;
+  }
+  if (creating.value) return;
+  creating.value = template;
+  try {
+    const result = await window.xiao.page.create(session.siteDir, template, address);
+    if (!result.ok) {
+      notify(`没能新建页面：${result.message}。换个地址，或检查站点文件夹权限后重试。`, 'error');
+      return;
+    }
+    createOpen.value = false;
+    notify(`已新建 ${result.data}`, 'info', 'page-create');
+    session.setPage(result.data);
+    await load();
+  } catch (cause) {
+    notify(`新建页面时出错：${describeError(cause)}。确认站点文件夹可写后重试。`, 'error');
+  } finally {
+    creating.value = '';
+  }
+}
+
+onMounted(() => {
+  void load();
+});
+
+watch(
+  () => session.siteDir,
+  () => {
+    void load();
+  },
+);
 </script>
 
 <template>
-  <label>地址 <input v-model="slug" /></label>
-  <button type="button" @click="create('blank')">空白</button>
-  <button type="button" @click="create('landing')">落地页</button>
-  <button type="button" @click="create('about')">关于</button>
-  <p v-if="message">{{ message }}</p>
-  <ul>
-    <li v-for="file in pages" :key="file">
-      <button type="button" :aria-pressed="session.pageFile === file" @click="session.setPage(file)">
-        {{ file }}
-      </button>
-    </li>
-  </ul>
+  <div class="pages">
+    <div class="toolbar">
+      <div v-if="session.siteDir" class="create-host">
+        <UiPopover
+          placement="bottom-start"
+          :model-value="createOpen"
+          @update:model-value="setCreateOpen"
+        >
+          <template #trigger>
+            <UiButton variant="primary" size="sm" :icon-left="icons.plus" block>
+              新建页面
+            </UiButton>
+          </template>
+          <template #default>
+            <div class="create-menu">
+              <UiField
+                label="页面地址"
+                :error="slugError"
+                hint="只用小写字母、数字和连字符，会变成 /地址/。"
+                required
+              >
+                <UiInput
+                  v-model="slug"
+                  placeholder="例如 about"
+                  autofocus
+                  :invalid="!!slugError"
+                  @keydown.enter="create('blank')"
+                />
+              </UiField>
+              <p class="menu-title">选择模板</p>
+              <button
+                v-for="template in templates"
+                :key="template.key"
+                class="template"
+                type="button"
+                :disabled="creating !== ''"
+                @click="create(template.key)"
+              >
+                <UiSpinner v-if="creating === template.key" :size="16" />
+                <UiIcon v-else :path="template.icon" :size="18" />
+                <span class="template-main">
+                  <span class="template-name">{{ template.label }}</span>
+                  <span class="template-desc">{{ template.description }}</span>
+                </span>
+              </button>
+            </div>
+          </template>
+        </UiPopover>
+      </div>
+    </div>
+
+    <div v-if="!session.siteDir" class="state">
+      <UiEmpty
+        :icon="icons.repo"
+        title="先打开一个站点"
+        description="打开或新建站点后，页面会列在这里。"
+      />
+    </div>
+
+    <div v-else-if="loading" class="state">
+      <UiSpinner :size="22" label="正在读取页面" />
+    </div>
+
+    <div v-else-if="error" class="state">
+      <UiEmpty :icon="icons.alert" title="读取页面失败" :description="error">
+        <template #action>
+          <UiButton variant="default" size="sm" :icon-left="icons.refresh" @click="load">
+            重试
+          </UiButton>
+        </template>
+      </UiEmpty>
+    </div>
+
+    <div v-else-if="pages.length === 0" class="state">
+      <UiEmpty
+        :icon="icons.pages"
+        title="还没有页面"
+        description="从「新建页面」开始：空白页、落地页或关于页。"
+      >
+        <template #action>
+          <UiButton variant="primary" size="sm" :icon-left="icons.plus" @click="setCreateOpen(true)">
+            新建页面
+          </UiButton>
+        </template>
+      </UiEmpty>
+    </div>
+
+    <div v-else class="list">
+      <UiRow
+        v-for="file in sortedPages"
+        :key="file"
+        :selected="session.activePage === file"
+        :title="filePath(file)"
+        @click="choose(file)"
+      >
+        <template #icon>
+          <UiIcon :path="icons.files" :size="16" />
+        </template>
+        <span class="file-name">{{ fileName(file) }}</span>
+        <template #meta>
+          <span class="file-path" :title="filePath(file)">{{ filePath(file) }}</span>
+        </template>
+      </UiRow>
+      <p class="total">共 {{ pages.length }} 个页面</p>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex: none;
+}
+
+.create-host {
+  display: block;
+  width: 100%;
+}
+
+.create-host :deep(.ui-popover__trigger) {
+  width: 100%;
+}
+
+.state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: var(--ui-s1);
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-path {
+  max-width: 128px;
+  overflow: hidden;
+  font-family: var(--ui-mono);
+  font-size: var(--ui-fs-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.total {
+  margin: 0;
+  padding: var(--ui-s1) var(--ui-s2) var(--ui-s3);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  text-align: center;
+}
+
+.create-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+  padding: var(--ui-s1);
+}
+
+.menu-title {
+  margin: var(--ui-s1) 0 0;
+  padding: 0 var(--ui-s1);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.template {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ui-s2);
+  width: 100%;
+  padding: var(--ui-s2) var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-raise);
+  color: var(--ui-text-2);
+  font-family: var(--ui-font);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--ui-dur) var(--ui-ease),
+    border-color var(--ui-dur) var(--ui-ease),
+    color var(--ui-dur) var(--ui-ease);
+}
+
+.template:hover:not(:disabled) {
+  border-color: var(--ui-line-2);
+  background: var(--ui-hover);
+  color: var(--ui-text);
+}
+
+.template:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.template:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.template-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.template-name {
+  color: var(--ui-text);
+  font-size: var(--ui-fs-2);
+  font-weight: 500;
+  line-height: var(--ui-lh);
+}
+
+.template-desc {
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
+}
+</style>

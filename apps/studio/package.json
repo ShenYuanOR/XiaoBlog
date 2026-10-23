@@ -10,6 +10,8 @@
     "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml"
   },
   "dependencies": {
+    "@astrojs/compiler-rs": "0.5.2",
+    "@mdi/js": "7.4.47",
     "@milkdown/crepe": "7.22.3",
     "@shikijs/monaco": "4.5.0",
     "@xiao/core": "workspace:*",

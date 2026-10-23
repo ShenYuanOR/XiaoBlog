@@ -101,10 +101,11 @@ export class RuntimeService {
     const args = [...astroCommand(task.kind, port)];
     const dev = task.kind === 'dev';
     if (dev) {
-      const config = app.isPackaged
+      // Astro 会把 --config 再拼到站点根目录上，绝对路径会变成不存在的路径。
+      const configAbs = app.isPackaged
         ? path.join(process.resourcesPath, 'preview.config.mjs')
-        : path.join(process.cwd(), 'resources', 'preview.config.mjs');
-      args.push('--config', config);
+        : path.resolve(import.meta.dirname, '../../resources/preview.config.mjs');
+      args.push('--config', path.relative(siteDir, configAbs));
     }
     void this.spawn(task, process.execPath, [entry, ...args], siteDir, dev, {
       ...process.env,

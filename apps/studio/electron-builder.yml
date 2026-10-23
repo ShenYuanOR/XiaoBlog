@@ -8,7 +8,7 @@ files:
 npmRebuild: false
 electronDist: node_modules/electron/dist
 asarUnpack:
-  - "**/*.node"
+  - '**/*.node'
 extraResources:
   - from: resources/preview.config.mjs
     to: preview.config.mjs
