@@ -99,7 +99,13 @@ export interface XiaoApi {
       login: string,
       token: string,
     ) => Promise<
-      IpcResult<{ provider: 'gitea' | 'github'; remoteUrl: string; branch: string; login?: string }>
+      IpcResult<{
+        provider: 'gitea' | 'github';
+        remoteUrl: string;
+        branch: string;
+        login?: string;
+        persisted?: boolean;
+      }>
     >;
     push: (
       siteDir: string,
@@ -115,6 +121,7 @@ export interface XiaoApi {
       }>
     >;
     disconnect: (siteDir: string) => Promise<IpcResult<null>>;
+    repair: (siteDir: string) => Promise<IpcResult<{ backup: string; files: number }>>;
   };
   wizard: {
     write: (

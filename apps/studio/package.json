@@ -6,6 +6,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:unsafe": "electron-vite dev --noSandbox",
     "build": "electron-vite build",
     "pack": "electron-vite build && electron-builder --dir -c electron-builder.yml"
   },

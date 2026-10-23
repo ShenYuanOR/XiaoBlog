@@ -44,8 +44,13 @@ export function remember(dir: string, title: string): RecentSite[] {
     { dir, title, openedAt: new Date().toISOString() },
     ...readRecent().filter((item) => item.dir !== dir),
   ].slice(0, 8);
-  mkdirSync(path.dirname(recentFile()), { recursive: true });
-  writeFileSync(recentFile(), `${JSON.stringify(next, null, 2)}\n`);
+  // 最近项目只是便利功能：userData 写不进去（权限/杀软/只读）时不能拖垮「打开站点」。
+  try {
+    mkdirSync(path.dirname(recentFile()), { recursive: true });
+    writeFileSync(recentFile(), `${JSON.stringify(next, null, 2)}\n`);
+  } catch (error) {
+    console.warn(`记录最近项目失败：${error instanceof Error ? error.message : String(error)}`);
+  }
   return next;
 }
 

@@ -3,7 +3,16 @@ import path from 'node:path';
 import git from 'isomorphic-git';
 import { slugFromTitle } from '@xiao/core/site';
 
-const skip = new Set(['node_modules', 'dist', '.astro', 'release', 'release2', '.shim']);
+const skip = new Set([
+  '.git',
+  '.shim',
+  'node_modules',
+  'dist',
+  '.astro',
+  'release',
+  'release2',
+  '.xiao-recycle',
+]);
 
 export function siteFolderName(title: string): string {
   return slugFromTitle(title);

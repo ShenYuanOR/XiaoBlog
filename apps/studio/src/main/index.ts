@@ -28,6 +28,7 @@ import {
   probeRemote,
   pushSite,
   remoteDefaultBranch,
+  repairRepository,
   type DeployTarget,
 } from './publish.ts';
 import { readPageStyle, resetPageStyle, writePageStyle } from './page-style.ts';
@@ -204,8 +205,12 @@ const publishHttp = createNetHttpClient(async (url, init) => {
   };
 });
 
+let deployStoreInstance: ReturnType<typeof createDeployStore> | undefined;
+
 function deployStore(): ReturnType<typeof createDeployStore> {
-  return createDeployStore(join(app.getPath('userData'), 'deploy-targets.json'));
+  // 单例：用户目录不可写时会退化成内存存储，必须复用同一个实例。
+  deployStoreInstance ??= createDeployStore(join(app.getPath('userData'), 'deploy-targets.json'));
+  return deployStoreInstance;
 }
 
 function send(channel: string, payload: unknown): void {
@@ -252,7 +257,6 @@ function readDeployHistory(siteDir: string): DeployRecord[] {
 
 function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
   const file = historyFile();
-  mkdirSync(app.getPath('userData'), { recursive: true });
   let all: Record<string, DeployRecord[]> = {};
   try {
     all = JSON.parse(readFileSync(file, 'utf8')) as Record<string, DeployRecord[]>;
@@ -260,7 +264,13 @@ function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
     all = {};
   }
   all[siteDir] = rows;
-  writeFileSync(file, `${JSON.stringify(all)}\n`);
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(all)}\n`);
+  } catch (error) {
+    // 部署历史是附属记录，写不进去不能影响推送结果本身。
+    console.warn(`记录部署历史失败：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 if (!app.isPackaged) {
@@ -494,7 +504,10 @@ app.whenReady().then(() => {
       const all = deployStore().read();
       all[siteDir] = target;
       deployStore().write(all);
-      return ok(target);
+      return ok({
+        ...target,
+        persisted: secretStore().persisted(siteDir) && deployStore().persisted(),
+      });
     },
   );
   ipcMain.handle('publish:push', async (_event, siteDir: string, force?: boolean) => {
@@ -514,7 +527,18 @@ app.whenReady().then(() => {
       return ok(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : '推送失败';
+      if (message.startsWith('REPO_BROKEN:')) {
+        return fail('REPO_BROKEN', message.slice('REPO_BROKEN:'.length));
+      }
       return fail('PUBLISH_PUSH', redactSecrets(message, [token]));
+    }
+  });
+  ipcMain.handle('publish:repair', async (_event, siteDir: string) => {
+    try {
+      const result = await repairRepository(siteDir);
+      return ok(result);
+    } catch (error) {
+      return fail('PUBLISH_REPAIR', error instanceof Error ? error.message : '修复仓库失败');
     }
   });
   ipcMain.handle('publish:disconnect', (_event, siteDir: string) => {

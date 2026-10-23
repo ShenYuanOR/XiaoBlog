@@ -24,6 +24,11 @@ pnpm exec astro build
 
 要求 Node ≥ 24 与 pnpm 11（仓库自身）；用户机器不需要装 Node / git —— 应用内置 Electron 自带的 Node 和离线 pnpm 仓库。
 
+### 启动排障（Windows）
+
+- **`pnpm dev` 在「starting electron app...」后直接退出、没有报错**：多半是 Chromium 沙箱在本机被安全软件（实测是火绒 HIPS）拦截。先用 `pnpm dev:unsafe`（即 `electron-vite dev --noSandbox`）确认应用本身没问题；长期使用请把 `apps/studio/node_modules/.pnpm/electron@*/node_modules/electron/dist/electron.exe` 加入安全软件信任区。
+- **应用能开、但「打开站点」报 `EPERM ... recent.json / secrets.json`**：同样是安全软件拦截了 Electron 写 `%APPDATA%\studio`。最近项目、部署历史已改为写入失败不影响主流程；Token 与仓库连接信息会降级为「只在本次运行有效」，发布页会提示。把 `%APPDATA%\studio` 加入信任区即可恢复持久化。
+
 ## 仓库结构
 
 ```

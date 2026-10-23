@@ -53,6 +53,7 @@ const api = {
       token: string,
     ) => ipcRenderer.invoke('publish:connect', siteDir, provider, remoteUrl, login, token),
     push: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:push', siteDir, force),
+    repair: (siteDir: string) => ipcRenderer.invoke('publish:repair', siteDir),
     disconnect: (siteDir: string) => ipcRenderer.invoke('publish:disconnect', siteDir),
   },
   wizard: {

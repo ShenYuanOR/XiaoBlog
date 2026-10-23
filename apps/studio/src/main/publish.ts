@@ -1,5 +1,13 @@
 import fs from 'node:fs';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import git from 'isomorphic-git';
 import { createHttpClient, checkPush, type HttpFetch } from './git.ts';
@@ -48,6 +56,73 @@ function isNothingToCommit(error: unknown): boolean {
   return /nothing to commit|No changes|no changes/i.test(text);
 }
 
+/** 旧版 Studio 的初始化提交把 .git/HEAD 之类写进了索引；isomorphic-git 见到就报 unsafe。重建索引即可。 */
+async function repairLegacyIndex(siteDir: string): Promise<boolean> {
+  const tracked = await git.listFiles({ fs, dir: siteDir });
+  const hasBad = tracked.some((filepath) => filepath === '.git' || filepath.startsWith('.git/'));
+  if (!hasBad) return false;
+  rmSync(path.join(siteDir, '.git', 'index'), { force: true });
+  console.warn('检测到旧版索引里的 .git 条目，已重建 git 索引');
+  return true;
+}
+
+const walkSkip = new Set([
+  'node_modules',
+  'dist',
+  '.astro',
+  '.xiao-recycle',
+  '.xiao-pnpm-store',
+  '.shim',
+  'release',
+  'release2',
+]);
+
+function walkFiles(root: string, dir = root): string[] {
+  const found: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (walkSkip.has(name) || name.startsWith('.git')) continue;
+    const full = path.join(dir, name);
+    const rel = path.relative(root, full).replaceAll('\\', '/');
+    if (statSync(full).isDirectory()) found.push(...walkFiles(root, full));
+    else found.push(rel);
+  }
+  return found;
+}
+
+function isUnsafePathError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /unsafe character sequences/i.test(text);
+}
+
+/**
+ * 旧版 Studio 把 `.git/HEAD` 写进了初始提交的树里，isomorphic-git 连读树都会拒绝。
+ * 修复方式：把整个 .git 备份成 .git-broken-<时间>，重新 init 并提交一次；站点文件不动。
+ */
+export async function repairRepository(
+  siteDir: string,
+): Promise<{ backup: string; files: number }> {
+  const gitDir = path.join(siteDir, '.git');
+  // 备份放到站点同盘的旁边目录：跨卷复制会被安全软件拦（EIO），放站点里又会被推送带上。
+  const backup = path.join(
+    path.dirname(siteDir),
+    `.xiao-git-backup-${path.basename(siteDir)}-${Date.now()}`,
+  );
+  if (existsSync(gitDir)) {
+    fs.cpSync(gitDir, backup, { recursive: true });
+    fs.rmSync(gitDir, { recursive: true, force: true });
+  }
+  await git.init({ fs, dir: siteDir, defaultBranch: 'master' });
+  const files = walkFiles(siteDir);
+  for (const filepath of files) await git.add({ fs, dir: siteDir, filepath });
+  await git.commit({
+    fs,
+    dir: siteDir,
+    message: '初始化站点（修复 git 历史）',
+    author: { name: '晓', email: 'studio@localhost' },
+  });
+  return { backup, files: files.length };
+}
+
 async function stageChanges(siteDir: string): Promise<{ staged: string[]; removed: string[] }> {
   const matrix = (await git.statusMatrix({ fs, dir: siteDir })) as unknown as [
     string,
@@ -57,7 +132,19 @@ async function stageChanges(siteDir: string): Promise<{ staged: string[]; remove
   ][];
   const staged: string[] = [];
   const removed: string[] = [];
+  // 旧版 Studio 把 .git/HEAD 之类提交进了索引；isomorphic-git 会拒绝含 .git 的路径，这里跳过。
+  // 同时跳过 .git-broken-*（修复备份）与 Studio 自己的临时目录。
+  const skipPath = (filepath: string): boolean => {
+    const first = filepath.split('/')[0] ?? filepath;
+    return (
+      first.startsWith('.git') ||
+      first === '.xiao-recycle' ||
+      first === '.xiao-pnpm-store' ||
+      first === '.shim'
+    );
+  };
   for (const [filepath, head, workdir, stage] of matrix) {
+    if (skipPath(filepath)) continue;
     if (workdir === 0 && head === 1) {
       await git.remove({ fs, dir: siteDir, filepath });
       removed.push(filepath);
@@ -132,10 +219,25 @@ function friendlyPushError(error: unknown, token: string): string {
 }
 
 /** 舞台 → 提交 → 推送。远端不是快进时抛错，由界面确认后带 force 重试。 */
+/** 舞台 → 提交 → 推送。远端不是快进时抛错，由界面确认后带 force 重试。 */
 export async function pushSite(input: PushSiteInput): Promise<PushSiteResult> {
+  try {
+    return await pushSiteInner(input);
+  } catch (error) {
+    if (isUnsafePathError(error)) {
+      throw new Error(
+        'REPO_BROKEN:这个站点的 git 历史里有旧版 Studio 写入的 .git 条目，需要重建 git 历史（站点文件不动，旧 .git 会备份）。',
+      );
+    }
+    throw error;
+  }
+}
+
+async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
   const { siteDir, target } = input;
   if (!existsSync(path.join(siteDir, '.git'))) throw new Error('这个站点还不是 git 仓库');
   await ensureRemote(siteDir, target.remoteUrl);
+  await repairLegacyIndex(siteDir);
   const branch = await currentBranch(siteDir, target.branch || 'master');
   const { staged, removed } = await stageChanges(siteDir);
   const tracked = await git.listFiles({ fs, dir: siteDir });
@@ -251,20 +353,39 @@ export async function remoteDefaultBranch(
 export interface DeployStore {
   read(): Record<string, DeployTarget>;
   write(all: Record<string, DeployTarget>): void;
+  /** 最近一次 write 是否真的落盘（false = 只在本次运行有效）。 */
+  persisted(): boolean;
 }
 
 export function createDeployStore(file: string): DeployStore {
+  let memory: Record<string, DeployTarget> = {};
+  let diskOk = true;
   return {
     read(): Record<string, DeployTarget> {
       try {
-        return JSON.parse(readFileSync(file, 'utf8')) as Record<string, DeployTarget>;
+        return {
+          ...memory,
+          ...(JSON.parse(readFileSync(file, 'utf8')) as Record<string, DeployTarget>),
+        };
       } catch {
-        return {};
+        return { ...memory };
       }
     },
     write(all: Record<string, DeployTarget>): void {
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, `${JSON.stringify(all, null, 2)}\n`);
+      memory = { ...all };
+      try {
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, `${JSON.stringify(all, null, 2)}\n`);
+        diskOk = true;
+      } catch (error) {
+        diskOk = false;
+        console.warn(
+          `仓库连接信息无法写入本机，只在本次运行有效：${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+    persisted(): boolean {
+      return diskOk;
     },
   };
 }

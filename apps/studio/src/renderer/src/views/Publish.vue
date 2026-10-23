@@ -53,6 +53,7 @@ interface DeployTarget {
   remoteUrl: string;
   branch: string;
   login?: string;
+  persisted?: boolean;
 }
 
 interface PushResult {
@@ -95,6 +96,7 @@ const pushError = ref('');
 const pushResult = ref<PushResult | null>(null);
 const forceOpen = ref(false);
 const disconnectOpen = ref(false);
+const repairOpen = ref(false);
 
 const repoLink = ref('');
 const branch = ref('master');
@@ -282,6 +284,13 @@ async function connectGitea(): Promise<void> {
       'info',
       'publish-connect',
     );
+    if (result.data.persisted === false) {
+      notify(
+        '令牌和仓库信息无法写入本机用户目录（可能被安全软件拦截，例如火绒 HIPS），只在本次运行有效；下次启动需要重新连接。',
+        'error',
+        'publish-persist',
+      );
+    }
     await loadTokens();
   } catch (error) {
     notify(
@@ -310,6 +319,9 @@ async function push(force: boolean): Promise<void> {
     if (!result.ok) {
       pushError.value = result.message;
       notify(result.message, 'error', 'publish-push');
+      if (result.code === 'REPO_BROKEN') {
+        repairOpen.value = true;
+      }
       return;
     }
     pushResult.value = result.data;
@@ -325,6 +337,22 @@ async function push(force: boolean): Promise<void> {
   } finally {
     pushing.value = false;
   }
+}
+
+async function confirmRepair(): Promise<void> {
+  repairOpen.value = false;
+  if (!session.siteDir) return;
+  const fixed = await window.xiao.publish.repair(session.siteDir);
+  if (!fixed.ok) {
+    notify(`修复失败：${fixed.message}`, 'error', 'publish-repair');
+    return;
+  }
+  notify(
+    `git 历史已重建：${fixed.data.files} 个文件；旧的 .git 备份在 ${fixed.data.backup}。继续推送…`,
+    'info',
+    'publish-repair',
+  );
+  await push(false);
 }
 
 async function confirmDisconnect(): Promise<void> {
@@ -1005,6 +1033,20 @@ watch(
           >
             覆盖并推送
           </UiButton>
+        </template>
+      </UiDialog>
+
+      <UiDialog v-model="repairOpen" title="需要修复 git 历史" :width="480">
+        <p>
+          这个站点是旧版 Studio 建的，git 历史里混进了 <code>.git</code> 条目，现在的推送库拒绝读取。
+        </p>
+        <p>
+          可以重建 git 历史：<strong>站点文件不会被改动</strong>，旧的 <code>.git</code> 会备份成
+          <code>.git-broken-&lt;时间&gt;</code> 保留在原地。重建后本站的提交历史从头开始。
+        </p>
+        <template #actions="{ close }">
+          <UiButton variant="ghost" @click="close">先不修</UiButton>
+          <UiButton variant="primary" :loading="pushing" @click="confirmRepair">重建并推送</UiButton>
         </template>
       </UiDialog>
 

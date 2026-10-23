@@ -22,3 +22,4 @@ blog/
 .gitea.env
 *.env
 apps/studio/.shim/
+apps/studio/.tmp-*
