@@ -6,6 +6,6 @@ import { publishedPosts } from '../lib/posts';
 const posts = (await publishedPosts()).map((post) => ({ slug: post.id, title: post.data.title }));
 ---
 
-<PageLayout title="搜索">
+<PageLayout title="搜索" page="search">
   <Search posts={posts} />
 </PageLayout>

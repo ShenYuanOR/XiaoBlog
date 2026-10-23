@@ -19,7 +19,87 @@
       "type": "object",
       "required": ["hue"],
       "properties": {
-        "hue": { "type": "number", "minimum": 0, "maximum": 360 }
+        "preset": {
+          "type": "string",
+          "enum": ["midnight", "paper", "magazine", "terminal", "warm", "minimal"],
+          "default": "midnight",
+          "description": "预设主题，作为其它字段的默认来源。省略时按 1.x 的 hue 派生色板（旧站点颜色不变）。"
+        },
+        "colorScheme": {
+          "type": "string",
+          "enum": ["auto", "light", "dark"],
+          "default": "auto"
+        },
+        "hue": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360,
+          "default": 250,
+          "description": "1.x 兼容字段：没有 preset / colors 时由它派生整套色板。"
+        },
+        "colors": {
+          "type": "object",
+          "description": "在预设基础上覆盖，缺省项取预设（无 preset 时仍由 hue 派生）。",
+          "properties": {
+            "light": { "$ref": "#/$defs/palette" },
+            "dark": { "$ref": "#/$defs/palette" }
+          }
+        },
+        "font": {
+          "type": "string",
+          "enum": ["sans", "serif", "mono", "custom", "mono-heading"],
+          "default": "sans"
+        },
+        "fontStack": {
+          "type": "string",
+          "default": "",
+          "description": "font=custom 时使用；填了就覆盖预设字体栈。"
+        },
+        "scale": {
+          "type": "string",
+          "enum": ["compact", "normal", "spacious"],
+          "default": "normal"
+        },
+        "lineHeight": {
+          "type": "string",
+          "enum": ["tight", "normal", "loose"],
+          "default": "normal"
+        },
+        "density": { "type": "string", "enum": ["compact", "normal"], "default": "normal" },
+        "radius": {
+          "type": "string",
+          "enum": ["none", "sm", "md", "lg", "pill"],
+          "default": "md"
+        },
+        "contentWidth": {
+          "type": "string",
+          "enum": ["narrow", "prose", "wide", "full"],
+          "default": "prose"
+        },
+        "shadow": {
+          "type": "string",
+          "enum": ["none", "soft", "strong"],
+          "default": "soft"
+        },
+        "motion": { "type": "boolean", "default": true }
+      }
+    }
+  },
+  "$defs": {
+    "palette": {
+      "type": "object",
+      "description": "色板覆盖项，均可不填。",
+      "properties": {
+        "accent": { "type": "string" },
+        "accentSoft": { "type": "string" },
+        "onAccent": { "type": "string" },
+        "bg": { "type": "string" },
+        "surface": { "type": "string" },
+        "text": { "type": "string" },
+        "text2": { "type": "string" },
+        "text3": { "type": "string" },
+        "line": { "type": "string" },
+        "scrim": { "type": "string" }
       }
     }
   }

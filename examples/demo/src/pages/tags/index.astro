@@ -6,7 +6,7 @@ import { withBase } from '../../lib/base';
 const tags = tagsOf(await publishedPosts());
 ---
 
-<PageLayout title="标签">
+<PageLayout title="标签" page="tags">
   <ul class="pills">
     {tags.map((tag) => (
       <li>

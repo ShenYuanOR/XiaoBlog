@@ -12,8 +12,10 @@ interface Props {
   headings: { depth: number; slug: string; text: string }[];
   prev?: PostEntry;
   next?: PostEntry;
+  /** 页面标识：默认不用传，posts/[...slug].astro 会传文章 id。 */
+  page?: string;
 }
-const { post, headings, prev, next } = Astro.props;
+const { post, headings, prev, next, page } = Astro.props;
 const posts = await publishedPosts();
 const config = loadConfig();
 const heads = articleHeads({
@@ -30,7 +32,7 @@ const source =
 const minutes = readingMinutes(source);
 ---
 
-<Base title={post.data.title} description={post.data.description} heads={heads}>
+<Base title={post.data.title} description={post.data.description} heads={heads} page={page}>
   <div class="shell">
     <aside class="side side-desktop">
       <SideTree posts={posts} current={post.id} />

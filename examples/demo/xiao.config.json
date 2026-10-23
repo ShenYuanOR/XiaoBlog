@@ -44,11 +44,18 @@
     }
   ],
   "theme": {
+    "preset": "midnight",
+    "colorScheme": "auto",
     "hue": 250,
     "font": "sans",
-    "contentWidth": "prose",
+    "fontStack": "",
+    "scale": "normal",
+    "lineHeight": "normal",
+    "density": "normal",
     "radius": "md",
-    "colorScheme": "auto"
+    "contentWidth": "prose",
+    "shadow": "soft",
+    "motion": true
   },
   "seo": {
     "titleTemplate": "%s | 晓",

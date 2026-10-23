@@ -3,43 +3,55 @@ import '../styles/base.css';
 import '../styles/prose.css';
 import '../styles/xiao.css';
 import '../styles/custom.css';
-import { loadConfig, titleOf } from '../lib/config';
+import { loadConfig, resolveTheme, themeCss, titleOf } from '../lib/config';
 import { withBase } from '../lib/base';
 import Header from '../components/site/Header.astro';
 import Footer from '../components/site/Footer.astro';
 import type { HeadEntry } from '../lib/seo';
 
+/**
+ * 页面级样式（R-04）：
+ * 约定 src/styles/pages/<slug>.css 与页面传进来的 page 同名；命中才输出 <link>。
+ * 目录可能为空（只有 .gitkeep），glob 匹配不到时返回空对象，不影响构建。
+ */
+const pageStyles = import.meta.glob<string>('/src/styles/pages/*.css', {
+  query: '?url',
+  import: 'default',
+  eager: true,
+});
+
 interface Props {
   title?: string;
   description?: string;
   heads?: HeadEntry[];
+  /** 页面标识：落到 <body data-page>，并用于查找 src/styles/pages/<page>.css。 */
+  page?: string;
 }
-const { title, description, heads = [] } = Astro.props;
+const { title, description, heads = [], page } = Astro.props;
 const config = loadConfig();
+const theme = resolveTheme(config);
+const tokens = themeCss(theme);
 const pageTitle = titleOf(title, config);
 const desc = description || config.site.description;
-const width =
-  config.theme.contentWidth === 'narrow'
-    ? '560px'
-    : config.theme.contentWidth === 'wide'
-      ? '1200px'
-      : '720px';
-const radius =
-  config.theme.radius === 'none'
-    ? '0'
-    : config.theme.radius === 'sm'
-      ? '6px'
-      : config.theme.radius === 'lg'
-        ? '20px'
-        : '12px';
+const pageSlug = typeof page === 'string' && page.trim() ? page.trim() : undefined;
+const pageAsset = pageSlug ? pageStyles[`/src/styles/pages/${pageSlug}.css`] : undefined;
+
+/** 资源 URL 在构建时可能已经带 base；没带时才补，避免 /sub/ 部署时出现双层前缀。 */
+function withAssetBase(url: string): string {
+  const base = import.meta.env.BASE_URL || '/';
+  return url.startsWith(base) ? url : withBase(url);
+}
+
+const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
 ---
 
 <!doctype html>
 <html
   lang={config.site.lang}
-  data-theme={config.theme.colorScheme}
-  data-width={config.theme.contentWidth}
-  data-font={config.theme.font}
+  data-theme={theme.colorScheme}
+  data-width={theme.contentWidth}
+  data-font={theme.font}
+  data-preset={theme.preset ?? undefined}
 >
   <head>
     <meta charset="utf-8" />
@@ -47,10 +59,8 @@ const radius =
     <title>{pageTitle}</title>
     <meta name="description" content={desc} />
     <link rel="icon" href={withBase(config.site.favicon)} />
-    <style
-      is:inline
-      set:html={`:root{--hue:${config.theme.hue};--content:${width};--radius:${radius};}`}
-    />
+    {pageHref && <link rel="stylesheet" href={pageHref} />}
+    <style is:inline set:html={tokens} />
     <script is:inline>
       (function () {
         const saved = localStorage.getItem('xiao-theme');
@@ -68,7 +78,7 @@ const radius =
     )}
     <slot name="head" />
   </head>
-  <body>
+  <body data-page={pageSlug}>
     <Header />
     <slot />
     <Footer />

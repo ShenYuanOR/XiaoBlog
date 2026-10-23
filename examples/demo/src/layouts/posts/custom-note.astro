@@ -7,6 +7,8 @@ interface Props {
   headings: { depth: number; slug: string; text: string }[];
   prev?: PostEntry;
   next?: PostEntry;
+  /** 页面标识（文章 id），随 {...props} 透传给 PostLayout。 */
+  page?: string;
 }
 const props = Astro.props;
 ---

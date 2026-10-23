@@ -13,6 +13,7 @@ if (fields.length > 0) {
 export default defineConfig({
   site: config.site.url,
   base: config.site.base,
+  devToolbar: { enabled: false },
   redirects: config.redirects,
   integrations: [sitemap(), xiaoValidate()],
   image: {

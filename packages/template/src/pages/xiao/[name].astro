@@ -115,7 +115,7 @@ const { name } = Astro.params;
 const View = views[name];
 ---
 
-<PageLayout title={name}>
+<PageLayout title={name} page={`xiao-${name}`}>
   <View
     href="/about"
     slug="hello"

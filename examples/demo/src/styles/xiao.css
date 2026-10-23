@@ -1,3 +1,7 @@
+/* Xiao 组件类样式。
+ * 只允许通过令牌变量取值（spec C-04）：颜色 --color-*、间距 --space-*、圆角 --radius*、字号 --font-size-*。
+ * 选择器名与 1.x 保持一致（拖拽/预览定位依赖类名）。
+ */
 .x-box,
 .x-stack,
 .x-grid,
@@ -23,22 +27,22 @@
   gap: 0;
 }
 .x-gap-xs {
-  gap: 4px;
+  gap: var(--space-1);
 }
 .x-gap-sm {
-  gap: 8px;
+  gap: var(--space-2);
 }
 .x-gap-md {
-  gap: 16px;
+  gap: var(--space-4);
 }
 .x-gap-lg {
-  gap: clamp(16px, 3vw, 24px);
+  gap: clamp(var(--space-4), 3vw, var(--space-5));
 }
 .x-gap-xl {
-  gap: clamp(24px, 4vw, 40px);
+  gap: clamp(var(--space-5), 4vw, var(--space-6));
 }
 .x-gap-2xl {
-  gap: clamp(32px, 5vw, 64px);
+  gap: clamp(var(--space-6), 5vw, var(--space-8));
 }
 .x-align-start {
   align-items: flex-start;
@@ -63,57 +67,57 @@
 }
 
 .x-pad-xs {
-  padding: 4px;
+  padding: var(--space-1);
 }
 .x-pad-sm {
-  padding: 8px;
+  padding: var(--space-2);
 }
 .x-pad-md {
-  padding: 16px;
+  padding: var(--space-4);
 }
 .x-pad-lg {
-  padding: clamp(16px, 3vw, 24px);
+  padding: clamp(var(--space-4), 3vw, var(--space-5));
 }
 .x-pad-xl {
-  padding: clamp(24px, 4vw, 40px);
+  padding: clamp(var(--space-5), 4vw, var(--space-6));
 }
 .x-pad-2xl {
-  padding: clamp(32px, 5vw, 64px);
+  padding: clamp(var(--space-6), 5vw, var(--space-8));
 }
 
 .x-bg-default {
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 .x-bg-primary {
-  background: var(--primary);
-  color: white;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 .x-bg-surface {
-  background: var(--surface);
+  background: var(--color-surface);
 }
 .x-bg-muted {
-  color: var(--muted);
+  color: var(--color-text-2);
 }
 .x-bg-accent {
-  background: var(--surface);
-  border: 1px solid var(--primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
 }
 .x-bg-inverse {
-  background: var(--fg);
-  color: var(--bg);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .x-width-narrow {
-  max-width: 560px;
+  max-width: var(--w-narrow);
   margin-inline: auto;
 }
 .x-width-prose {
-  max-width: 720px;
+  max-width: var(--w-prose);
   margin-inline: auto;
 }
 .x-width-wide {
-  max-width: 1200px;
+  max-width: var(--w-wide);
   margin-inline: auto;
 }
 .x-width-full {
@@ -139,18 +143,19 @@
 .x-quote,
 .x-code,
 .x-button {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
 }
 
 .x-button,
 .x-link,
 summary {
-  min-height: 44px;
+  min-height: var(--h-tap);
   display: inline-flex;
   align-items: center;
-  padding: 8px 14px;
+  padding: var(--space-2) var(--space-3);
   text-decoration: none;
 }
 

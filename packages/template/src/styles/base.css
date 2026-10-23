@@ -1,85 +1,170 @@
-:root {
-  color-scheme: light;
-  --bg: oklch(0.99 0.003 var(--hue));
-  --bg-soft: oklch(0.97 0.006 var(--hue));
-  --text: oklch(0.28 0.02 var(--hue));
-  --text-2: oklch(0.5 0.02 var(--hue));
-  --text-3: oklch(0.48 0.015 var(--hue));
-  --line: oklch(0.91 0.01 var(--hue));
-  --brand: oklch(0.55 0.15 var(--hue));
-  --brand-soft: oklch(0.95 0.03 var(--hue));
-  --fg: var(--text);
-  --primary: var(--brand);
-  --surface: var(--bg-soft);
-  --muted: var(--text-2);
-  --content: 720px;
-  --radius: 12px;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    'PingFang SC',
-    'Hiragino Sans GB',
-    'Microsoft YaHei',
-    sans-serif;
-}
+/* 设计令牌的默认兜底层。
+ *
+ * - BaseLayout 会把 resolveTheme() 的结果注入 :root（spec D-21），注入样式不带 @layer。
+ * - 本文件的令牌兜底放在 @layer xiao-tokens 里：unlayered 优先于任何 layer，所以注入值一定赢；
+ *   同时站点自定义 CSS（styles/custom.css，unlayered、排在后面）仍然能覆盖令牌，1.x 习惯不丢。
+ * - 颜色兜底沿用 1.x 的 --hue 派生公式：旧配置（没有 preset）不注入色板时，观感与 1.x 完全一致。
+ * - 变量前缀：--color-* / --space-* / --radius* / --font-* / --shadow-* / --w-* / --dur。
+ *   1.x 的 --bg/--brand/--content 等名字保留为别名，站点自带 CSS 不用改。
+ */
+@layer xiao-tokens {
+  :root {
+    color-scheme: light;
 
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: oklch(0.17 0.01 var(--hue));
-  --bg-soft: oklch(0.21 0.012 var(--hue));
-  --text: oklch(0.9 0.01 var(--hue));
-  --text-2: oklch(0.7 0.015 var(--hue));
-  --text-3: oklch(0.78 0.012 var(--hue));
-  --line: oklch(0.3 0.012 var(--hue));
-  --brand: oklch(0.75 0.13 var(--hue));
-  --brand-soft: oklch(0.28 0.05 var(--hue));
-}
+    /* 颜色（亮色，由 --hue 派生，与 1.x 相同） */
+    --hue: 250;
+    --color-bg: oklch(0.99 0.003 var(--hue));
+    --color-surface: oklch(0.97 0.006 var(--hue));
+    --color-text: oklch(0.28 0.02 var(--hue));
+    --color-text-2: oklch(0.5 0.02 var(--hue));
+    --color-text-3: oklch(0.48 0.015 var(--hue));
+    --color-line: oklch(0.91 0.01 var(--hue));
+    --color-accent: oklch(0.55 0.15 var(--hue));
+    --color-accent-soft: oklch(0.95 0.03 var(--hue));
+    --color-on-accent: #fff;
+    --color-scrim: rgb(0 0 0 / 40%);
 
-@media (prefers-color-scheme: dark) {
-  :root[data-theme='auto'] {
-    color-scheme: dark;
-    --bg: oklch(0.17 0.01 var(--hue));
-    --bg-soft: oklch(0.21 0.012 var(--hue));
-    --text: oklch(0.9 0.01 var(--hue));
-    --text-2: oklch(0.7 0.015 var(--hue));
-    --text-3: oklch(0.78 0.012 var(--hue));
-    --line: oklch(0.3 0.012 var(--hue));
-    --brand: oklch(0.75 0.13 var(--hue));
-    --brand-soft: oklch(0.28 0.05 var(--hue));
+    /* 1.x 变量别名（自定义 CSS 继续可用） */
+    --bg: var(--color-bg);
+    --bg-soft: var(--color-surface);
+    --surface: var(--color-surface);
+    --text: var(--color-text);
+    --text-2: var(--color-text-2);
+    --text-3: var(--color-text-3);
+    --line: var(--color-line);
+    --brand: var(--color-accent);
+    --brand-soft: var(--color-accent-soft);
+    --primary: var(--color-accent);
+    --fg: var(--color-text);
+    --muted: var(--color-text-2);
+
+    /* 字体 */
+    --font-body:
+      system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+      sans-serif;
+    --font-heading: var(--font-body);
+    --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+    --weight-heading: 600;
+
+    /* 字号 */
+    --font-size-xs: 12px;
+    --font-size-sm: 13px;
+    --font-size-base: 14px;
+    --font-size-md: 16px;
+    --font-size-lg: 18px;
+    --font-size-xl: 20px;
+    --font-size-2xl: 22px;
+    --font-size-3xl: 30px;
+    --font-size-3xl-mobile: 26px;
+    --font-size-body: 16px;
+    --font-size-body-sm: 15px;
+
+    /* 间距 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --space-8: 64px;
+
+    /* 圆角 */
+    --radius: 12px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-pill: 999px;
+
+    /* 阴影：1.x 没有阴影，兜底为 none，避免旧站点突变 */
+    --shadow-1: none;
+    --shadow-2: none;
+
+    /* 行高 */
+    --lh-body: 1.8;
+    --lh-heading: 1.35;
+    --lh-tight: 1.6;
+
+    /* 宽度 */
+    --w-narrow: 560px;
+    --w-prose: 720px;
+    --w-wide: 1200px;
+    --w-content: var(--w-prose);
+    --content: var(--w-content); /* 1.x 别名 */
+    --w-shell: 1440px;
+    --w-side: 260px;
+    --w-toc: 220px;
+    --w-search: 200px;
+    --w-drawer: 320px;
+
+    /* 尺寸 */
+    --h-topbar: 56px;
+    --h-control: 36px;
+    --h-tap: 44px;
+    --h-row: 32px;
+    --size-icon-btn: 32px;
+    --size-icon: 16px;
+    --pad-shell: 32px;
+    --pad-page: 32px;
+
+    /* 动效 */
+    --dur: 150ms;
+    --dur-2: 200ms;
+
+    /* 页面级覆盖（src/styles/pages/<slug>.css 用，见 .shell 上方注释） */
+    --page-bg: var(--color-bg);
+
+    font-family: var(--font-body);
   }
-}
 
-:root[data-font='serif'] {
-  font-family: 'Palatino Linotype', 'Songti SC', serif;
-}
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-bg: oklch(0.17 0.01 var(--hue));
+    --color-surface: oklch(0.21 0.012 var(--hue));
+    --color-text: oklch(0.9 0.01 var(--hue));
+    --color-text-2: oklch(0.7 0.015 var(--hue));
+    --color-text-3: oklch(0.78 0.012 var(--hue));
+    --color-line: oklch(0.3 0.012 var(--hue));
+    --color-accent: oklch(0.75 0.13 var(--hue));
+    --color-accent-soft: oklch(0.28 0.05 var(--hue));
+    --color-scrim: rgb(0 0 0 / 40%);
+  }
 
-:root[data-width='narrow'] {
-  --content: 560px;
-}
-:root[data-width='wide'] {
-  --content: 1200px;
-}
-:root[data-width='prose'] {
-  --content: 720px;
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme='auto'] {
+      color-scheme: dark;
+      --color-bg: oklch(0.17 0.01 var(--hue));
+      --color-surface: oklch(0.21 0.012 var(--hue));
+      --color-text: oklch(0.9 0.01 var(--hue));
+      --color-text-2: oklch(0.7 0.015 var(--hue));
+      --color-text-3: oklch(0.78 0.012 var(--hue));
+      --color-line: oklch(0.3 0.012 var(--hue));
+      --color-accent: oklch(0.75 0.13 var(--hue));
+      --color-accent-soft: oklch(0.28 0.05 var(--hue));
+      --color-scrim: rgb(0 0 0 / 40%);
+    }
+  }
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
+html {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  /* 背景交给 body：页面样式表可以把 [data-page] 的 --page-bg 改成别的颜色。 */
+  background: transparent;
 }
 
 body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--color-text);
   min-width: 0;
-  font-size: 16px;
+  font-size: var(--font-size-body);
   font-weight: 400;
-  line-height: 1.8;
+  line-height: var(--lh-body);
   font-synthesis: none;
 }
 
@@ -90,12 +175,19 @@ iframe {
   height: auto;
 }
 
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+}
+
 a {
-  color: var(--brand);
+  color: var(--color-accent);
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -105,17 +197,18 @@ a {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 16px;
-  height: 56px;
-  padding: 0 32px;
-  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  gap: var(--space-4);
+  height: var(--h-topbar);
+  padding: 0 var(--pad-shell);
+  background: color-mix(in oklab, var(--color-bg) 92%, transparent);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-line);
+  box-shadow: var(--shadow-1);
 }
 
 .brand {
-  color: var(--text);
-  font-size: 17px;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   text-decoration: none;
   margin-right: auto;
@@ -123,7 +216,7 @@ a {
 
 .nav-desktop {
   display: flex;
-  gap: 24px;
+  gap: var(--space-5);
 }
 
 .nav-desktop a,
@@ -138,13 +231,13 @@ a {
 }
 
 .nav-desktop a {
-  color: var(--text-2);
-  font-size: 14px;
+  color: var(--color-text-2);
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
 .nav-desktop a[aria-current='page'] {
-  color: var(--brand);
+  color: var(--color-accent);
 }
 
 .search-btn,
@@ -153,35 +246,35 @@ a {
   align-items: center;
   justify-content: center;
   border: 0;
-  color: var(--text-2);
-  background: var(--bg-soft);
+  color: var(--color-text-2);
+  background: var(--color-surface);
   text-decoration: none;
   cursor: pointer;
 }
 
 .search-btn {
-  width: 200px;
-  height: 36px;
-  gap: 8px;
-  border-radius: 999px;
-  font-size: 14px;
+  width: var(--w-search);
+  height: var(--h-control);
+  gap: var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-base);
 }
 
 .search-btn span {
-  color: var(--text-3);
+  color: var(--color-text-3);
 }
 
 .icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
+  width: var(--size-icon-btn);
+  height: var(--size-icon-btn);
+  border-radius: var(--radius-pill);
   padding: 0;
 }
 
 .icon-btn svg,
 .search-btn svg {
-  width: 16px;
-  height: 16px;
+  width: var(--size-icon);
+  height: var(--size-icon);
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -211,12 +304,25 @@ a {
   display: none;
 }
 
+/*
+ * 页面级样式（R-04）的落点：src/styles/pages/<slug>.css 由 BaseLayout 按页面 slug 自动加载，
+ * 页面模板输出 <body data-page="<slug>">。页面样式表建议写成：
+ *
+ *   body[data-page='index'] { --page-width: 960px; --page-padding: 48px; --page-bg: #f7f8fa; }
+ *   body[data-page='index'] .side { display: none; }        // hideSidebar
+ *   body[data-page='index'] .toc, ... .toc-mobile { display: none; }  // hideToc
+ *
+ * 页级变量只影响本页，且都有兜底：--page-width → --w-content、--page-padding → --pad-page、
+ * --page-side → --w-side、--page-toc → --w-toc、--page-bg → --color-bg。
+ */
 .shell {
   display: grid;
-  grid-template-columns: 260px minmax(0, var(--content)) 220px;
-  width: min(100%, 1440px);
+  grid-template-columns:
+    var(--page-side, var(--w-side)) minmax(0, var(--page-width, var(--w-content)))
+    var(--page-toc, var(--w-toc));
+  width: min(100%, var(--w-shell));
   margin: 0 auto;
-  padding: 0 32px 48px;
+  padding: 0 var(--pad-shell) var(--space-7);
 }
 
 .side,
@@ -229,24 +335,24 @@ a {
 
 .side {
   position: sticky;
-  top: 56px;
+  top: var(--h-topbar);
   align-self: start;
-  min-height: calc(100vh - 56px);
-  max-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--h-topbar));
+  max-height: calc(100vh - var(--h-topbar));
   overflow: auto;
-  padding: 24px 16px 24px 0;
-  background: var(--bg-soft);
-  border-right: 1px solid var(--line);
+  padding: var(--space-5) var(--space-4) var(--space-5) 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-line);
 }
 
 .side-group {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 .side-group summary,
 .toc-label {
-  color: var(--text-3);
-  font-size: 13px;
+  color: var(--color-text-3);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   letter-spacing: 0.08em;
   cursor: pointer;
@@ -265,53 +371,53 @@ a {
 
 .side a {
   display: block;
-  min-height: 32px;
-  padding: 0 12px;
-  color: var(--text-2);
-  font-size: 14px;
-  line-height: 32px;
-  border-radius: 6px;
+  min-height: var(--h-row);
+  padding: 0 var(--space-3);
+  color: var(--color-text-2);
+  font-size: var(--font-size-base);
+  line-height: var(--h-row);
+  border-radius: var(--radius-sm);
 }
 
 .side a[aria-current='page'] {
-  color: var(--brand);
-  background: var(--brand-soft);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .page-body,
 .prose {
-  padding: 32px;
+  padding: var(--page-padding, var(--pad-page));
 }
 
 .page-body h1,
 .home-intro h1 {
   margin: 0 0 0.4em;
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--weight-heading);
+  line-height: var(--lh-heading);
 }
 
 .toc {
   position: sticky;
-  top: 88px;
+  top: calc(var(--h-topbar) + var(--space-6));
   align-self: start;
-  padding-top: 32px;
+  padding-top: var(--space-6);
 }
 
 .toc a {
   display: block;
-  color: var(--text-2);
-  font-size: 13px;
+  color: var(--color-text-2);
+  font-size: var(--font-size-sm);
   line-height: 1.7;
 }
 
 .toc a[data-depth='3'] {
-  padding-left: 12px;
+  padding-left: var(--space-3);
 }
 
 .toc a[aria-current='true'] {
-  color: var(--brand);
-  box-shadow: inset 2px 0 0 var(--brand);
+  color: var(--color-accent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .toc-mobile {
@@ -319,10 +425,10 @@ a {
 }
 
 .footer {
-  border-top: 1px solid var(--line);
-  padding: 32px 16px;
-  color: var(--text-3);
-  font-size: 13px;
+  border-top: 1px solid var(--color-line);
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-3);
+  font-size: var(--font-size-sm);
   text-align: center;
 }
 
@@ -332,40 +438,40 @@ a {
 
 .subtitle,
 .home-intro .bio {
-  color: var(--text-2);
+  color: var(--color-text-2);
 }
 
 .recent li {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--line);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-line);
 }
 
 .recent-row {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: baseline;
 }
 
 .recent-title {
-  color: var(--text);
-  font-size: 16px;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
   font-weight: 500;
 }
 
 .recent time,
 .meta,
 .archive time {
-  color: var(--text-3);
-  font-size: 13px;
+  color: var(--color-text-3);
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 .recent p {
-  margin: 4px 0 0;
-  color: var(--text-2);
-  font-size: 14px;
-  line-height: 1.6;
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-2);
+  font-size: var(--font-size-base);
+  line-height: var(--lh-tight);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -374,65 +480,65 @@ a {
 
 .year {
   margin: 1.4em 0 0.4em;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-heading);
 }
 
 .archive li {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: baseline;
-  padding: 6px 0;
+  padding: var(--space-1) 0;
 }
 
 .archive a {
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .pills a,
 .tag-pills a {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  color: var(--text-2);
-  font-size: 12px;
+  min-height: var(--h-row);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: var(--font-size-xs);
 }
 
 .pager {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 32px;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
 }
 
 .pager a {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-height: 44px;
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--text);
+  gap: var(--space-1);
+  min-height: var(--h-tap);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
 }
 
 .pager small {
-  color: var(--text-3);
-  font-size: 12px;
+  color: var(--color-text-3);
+  font-size: var(--font-size-xs);
 }
 
 .license {
-  color: var(--text-3);
-  font-size: 13px;
+  color: var(--color-text-3);
+  font-size: var(--font-size-sm);
 }
 
 .not-found {
@@ -441,24 +547,24 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: var(--space-4);
   text-align: center;
 }
 
 .not-found a {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 999px;
-  background: var(--brand);
-  color: white;
+  min-height: var(--h-tap);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   text-decoration: none;
 }
 
 @media (max-width: 1279px) {
   .shell {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: var(--page-side, var(--w-side)) minmax(0, 1fr);
   }
   .toc-desktop {
     display: none;
@@ -467,17 +573,17 @@ a {
     display: block;
     position: static;
     padding: 0;
-    margin: 0 0 16px;
+    margin: 0 0 var(--space-4);
   }
 }
 
 @media (max-width: 767px) {
   body {
-    font-size: 15px;
+    font-size: var(--font-size-body-sm);
   }
   .topbar {
-    padding: 0 16px;
-    gap: 8px;
+    padding: 0 var(--space-4);
+    gap: var(--space-2);
   }
   .nav-desktop,
   .search-label,
@@ -485,9 +591,9 @@ a {
     display: none;
   }
   .search-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
+    width: var(--h-tap);
+    height: var(--h-tap);
+    border-radius: var(--radius-pill);
   }
   .search-label {
     position: absolute;
@@ -498,8 +604,8 @@ a {
   }
   .icon-btn,
   .nav-drawer summary {
-    width: 44px;
-    height: 44px;
+    width: var(--h-tap);
+    height: var(--h-tap);
   }
   .nav-drawer {
     display: block;
@@ -509,7 +615,7 @@ a {
     align-items: center;
     justify-content: center;
     list-style: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
   }
   .nav-drawer summary::-webkit-details-marker {
@@ -517,11 +623,11 @@ a {
   }
   .shell {
     grid-template-columns: minmax(0, 1fr);
-    padding: 0 0 32px;
+    padding: 0 0 var(--space-6);
   }
   .page-body,
   .prose {
-    padding: 32px 16px;
+    padding: var(--page-padding, var(--pad-page)) var(--space-4);
   }
   .pager {
     grid-template-columns: 1fr;
@@ -529,7 +635,7 @@ a {
   .nav-drawer[open] .drawer-mask {
     position: fixed;
     inset: 0;
-    background: rgb(0 0 0 / 40%);
+    background: var(--color-scrim);
   }
   .drawer-panel {
     position: fixed;
@@ -537,23 +643,24 @@ a {
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(85vw, 320px);
+    width: min(85vw, var(--w-drawer));
     overflow: auto;
-    padding: 24px 16px;
-    background: var(--bg);
-    border-right: 1px solid var(--line);
+    padding: var(--space-5) var(--space-4);
+    background: var(--color-bg);
+    border-right: 1px solid var(--color-line);
+    box-shadow: var(--shadow-2);
   }
   .drawer-panel nav {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-bottom: 24px;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
   }
   .drawer-panel nav a {
-    min-height: 44px;
+    min-height: var(--h-tap);
     display: flex;
     align-items: center;
-    color: var(--text);
+    color: var(--color-text);
   }
 }
 
@@ -562,11 +669,11 @@ a {
   button,
   summary {
     transition:
-      background-color 150ms,
-      color 150ms;
+      background-color var(--dur),
+      color var(--dur);
   }
   .drawer-panel {
-    transition: transform 200ms;
+    transition: transform var(--dur-2);
   }
 }
 

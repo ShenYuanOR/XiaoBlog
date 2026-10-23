@@ -9,12 +9,14 @@ interface Props {
   description?: string;
   heads?: HeadEntry[];
   showHeading?: boolean;
+  /** 页面标识：透传给 BaseLayout 的 <body data-page> 与按页样式表查找。 */
+  page?: string;
 }
-const { title, description, heads = [], showHeading = true } = Astro.props;
+const { title, description, heads = [], showHeading = true, page } = Astro.props;
 const posts = await publishedPosts();
 ---
 
-<Base title={title} description={description} heads={heads}>
+<Base title={title} description={description} heads={heads} page={page}>
   <div class="shell">
     <aside class="side side-desktop">
       <SideTree posts={posts} />

@@ -6,7 +6,7 @@ import { withBase } from '../../lib/base';
 const categories = categoriesOf(await publishedPosts());
 ---
 
-<PageLayout title="分类">
+<PageLayout title="分类" page="categories">
   <ul class="pills">
     {categories.map((item) => (
       <li>

@@ -1,37 +1,38 @@
 .prose {
   overflow-wrap: anywhere;
   font-weight: 400;
-  line-height: 1.8;
+  line-height: var(--lh-body);
 }
 
 .prose h1,
 .prose h2,
 .prose h3,
 .prose h4 {
-  font-weight: 600;
-  line-height: 1.35;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--lh-heading);
 }
 
 .prose h1 {
   margin: 0 0 0.4em;
-  font-size: 30px;
+  font-size: var(--font-size-3xl);
 }
 
 .prose h2 {
   margin: 2.2em 0 0.6em;
   padding-top: 0.6em;
-  border-top: 1px solid var(--line);
-  font-size: 22px;
+  border-top: 1px solid var(--color-line);
+  font-size: var(--font-size-2xl);
 }
 
 .prose h3 {
   margin: 1.6em 0 0.4em;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .prose h4 {
   margin: 1.4em 0 0.4em;
-  font-size: 16px;
+  font-size: var(--font-size-md);
 }
 
 .prose p {
@@ -40,7 +41,7 @@
 }
 
 .prose a {
-  color: var(--brand);
+  color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
@@ -51,41 +52,41 @@
 }
 
 .prose li::marker {
-  color: var(--text-3);
+  color: var(--color-text-3);
 }
 
 .prose :not(pre) > code {
   padding: 0.1em 0.35em;
-  border-radius: 4px;
-  background: var(--bg-soft);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface);
   font-size: 0.9em;
 }
 
 .prose pre {
   overflow: auto;
   margin: 0 0 1em;
-  padding: 16px;
-  border-radius: 8px;
-  background: var(--bg-soft);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .prose pre,
 .prose code {
-  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .prose blockquote {
   margin: 0 0 1em;
   padding-left: 1em;
-  border-left: 3px solid var(--line);
-  color: var(--text-2);
+  border-left: 3px solid var(--color-line);
+  color: var(--color-text-2);
 }
 
 .prose img {
   display: block;
   max-width: 100%;
   margin: 1em auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .meta {
@@ -96,6 +97,6 @@
   .prose h1,
   .page-body h1,
   .home-intro h1 {
-    font-size: 26px;
+    font-size: var(--font-size-3xl-mobile);
   }
 }

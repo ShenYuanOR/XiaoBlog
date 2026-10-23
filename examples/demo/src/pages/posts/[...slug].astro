@@ -21,6 +21,6 @@ const custom = layouts[`../../layouts/posts/${post.id}.astro`] as
 const Layout = custom?.default ?? PostLayout;
 ---
 
-<Layout post={post} headings={headings} prev={prev} next={next}>
+<Layout post={post} headings={headings} prev={prev} next={next} page={post.id}>
   <Content />
 </Layout>

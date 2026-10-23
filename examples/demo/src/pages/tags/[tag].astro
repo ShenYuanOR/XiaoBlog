@@ -13,7 +13,7 @@ const { tag } = Astro.props;
 const posts = (await publishedPosts()).filter((post) => post.data.tags.includes(tag));
 ---
 
-<PageLayout title={tag}>
+<PageLayout title={tag} page="tags">
   <ul>
     {posts.map((post) => (
       <li>
