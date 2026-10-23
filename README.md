@@ -8,16 +8,32 @@
 
 **在线演示：** [https://shenyuanor.github.io/XiaoBlog/](https://shenyuanor.github.io/XiaoBlog/)（由 `examples/demo` 构建）
 
-## 快速开始
+## 双层启动方式
+
+### 1. 双击启动（不需要命令行、不需要 Node）
+
+仓库根目录有两个 `.cmd`，也可以直接双击桌面上的「晓 Studio」快捷方式：
+
+| 文件 | 用途 |
+|---|---|
+| `启动晓.cmd` | 打开**已构建**的应用。速度最快，适合日常使用；改了代码不会自动生效 |
+| `启动晓-开发模式.cmd` | 开发模式：改代码后界面自动刷新（需要本机有 Node），窗口关掉就退出 |
+
+`启动晓.cmd` 用的是 `apps/studio/out/` 里的构建产物。如果更新了代码，需要先在有 Node 的终端执行一次：
+
+```powershell
+pnpm --filter studio build
+```
+
+### 2. 命令行（开发用）
 
 ```bash
 pnpm install
 
-# 桌面应用（开发模式）
 cd apps/studio
-pnpm dev
+pnpm dev            # 本机安全软件会拦 Chromium 沙箱时用 pnpm dev:unsafe
+pnpm dev:unsafe     # = electron-vite dev --noSandbox
 
-# 站点模板单独构建
 cd packages/template
 pnpm exec astro build
 ```

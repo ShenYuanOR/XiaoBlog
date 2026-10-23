@@ -125,7 +125,7 @@ function createWindow(): BrowserWindow {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  if (!app.isPackaged && !process.argv.includes('--probe')) {
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL && !process.argv.includes('--probe')) {
     win.webContents.once('did-finish-load', () => {
       win.webContents.openDevTools({ mode: 'detach' });
     });
