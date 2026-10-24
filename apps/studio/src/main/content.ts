@@ -357,13 +357,27 @@ export function rewriteCopiedLayout(source: string): string {
 
 export function customizePost(siteDir: string, slug: string): string {
   if (!isValidSlug(slug)) throw new Error('slug 只允许小写字母、数字和连字符');
+  const relative = `src/layouts/posts/${slug}.astro`;
   const dest = path.join(siteDir, 'src', 'layouts', 'posts', `${slug}.astro`);
   if (!existsSync(dest)) {
+    const source = path.join(siteDir, 'src', 'layouts', 'PostLayout.astro');
+    if (!existsSync(source)) {
+      throw new Error('站点模板里没有 src/layouts/PostLayout.astro，没法复制出自定义版式');
+    }
+    const raw = readFileSync(source, 'utf8');
+    // 版式必须保留正文插槽，否则文章内容会消失；默认模板应自带 <slot />。
+    if (!/<slot\b/.test(raw)) {
+      throw new Error('默认版式 PostLayout.astro 里没有 <slot />，先在源码里补上正文插槽再自定义');
+    }
+    const copied = rewriteCopiedLayout(raw);
+    if (!/<slot\b/.test(copied)) {
+      throw new Error('复制默认版式时丢了 <slot />，已取消生成');
+    }
     mkdirSync(path.dirname(dest), { recursive: true });
-    const raw = readFileSync(path.join(siteDir, 'src', 'layouts', 'PostLayout.astro'), 'utf8');
-    writeFileSync(dest, rewriteCopiedLayout(raw));
+    writeFileSync(dest, copied);
   }
-  return path.join('src', 'layouts', 'posts', `${slug}.astro`);
+  // 统一返回正斜杠相对路径：渲染层用 session.activePage + safePage 处理，不能是 Windows 反斜杠。
+  return relative;
 }
 
 export function deletePost(siteDir: string, slug: string): void {

@@ -47,6 +47,15 @@ import {
   saveImage,
   writePostFile,
 } from './content.ts';
+import {
+  deleteMedia,
+  listMedia,
+  renameMedia,
+  resolveMediaAsset,
+  resolvePostImage,
+  uploadMedia,
+  type MediaUploadInput,
+} from './media.ts';
 import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
 import { seoRows } from './seo.ts';
 import {
@@ -101,10 +110,30 @@ function registerProtocol(): void {
   protocol.handle('xiao-asset', (request) => {
     const url = new URL(request.url);
     const siteDir = url.searchParams.get('site') ?? '';
+    // 媒体库缩略图：xiao-asset://media/?site=<siteDir>&path=<站点相对路径>
+    // media.ts 里做了「站点内 + 图片扩展名 + 无 ..」校验，防止目录穿越。
+    const mediaPath = url.searchParams.get('path');
+    if (mediaPath !== null) {
+      const asset = resolveMediaAsset(siteDir, mediaPath);
+      if (!asset) return new Response(null, { status: 404 });
+      return net.fetch(pathToFileURL(asset.file).href).then((response) => {
+        const headers = new Headers(response.headers);
+        headers.set('Content-Type', asset.mime);
+        headers.set('Cache-Control', 'no-store');
+        return new Response(response.body, { status: response.status, headers });
+      });
+    }
+    // 兼容 Markdown 编辑器里的文章内图片：?site=&slug=&name=
     const slug = url.searchParams.get('slug') ?? '';
-    const name = url.pathname.split('/').pop() ?? '';
-    const file = join(siteDir, 'src', 'content', 'posts', slug, name);
-    return net.fetch(pathToFileURL(file).href);
+    let name = url.pathname.split('/').pop() ?? '';
+    try {
+      name = decodeURIComponent(name);
+    } catch {
+      // 名字不是合法编码时保留原样，交给下面的校验拒掉。
+    }
+    const legacy = resolvePostImage(siteDir, slug, name);
+    if (!legacy) return new Response(null, { status: 404 });
+    return net.fetch(pathToFileURL(legacy.file).href);
   });
   protocol.handle('app', (request) => {
     const url = new URL(request.url);
@@ -818,6 +847,37 @@ app.whenReady().then(() => {
       return ok(renamePost(siteDir, from, to));
     } catch (error) {
       return fail('CONTENT_RENAME', error instanceof Error ? error.message : '重命名失败');
+    }
+  });
+  ipcMain.handle('media:list', (_event, siteDir: string) => {
+    try {
+      return ok(listMedia(siteDir));
+    } catch (error) {
+      return fail('MEDIA_LIST', error instanceof Error ? error.message : '读取媒体库失败');
+    }
+  });
+  ipcMain.handle(
+    'media:upload',
+    (_event, siteDir: string, files: MediaUploadInput[], target?: string) => {
+      try {
+        return ok(uploadMedia(siteDir, files, target));
+      } catch (error) {
+        return fail('MEDIA_UPLOAD', error instanceof Error ? error.message : '上传图片失败');
+      }
+    },
+  );
+  ipcMain.handle('media:delete', (_event, siteDir: string, relPaths: string[], force?: boolean) => {
+    try {
+      return ok(deleteMedia(siteDir, relPaths, force === true));
+    } catch (error) {
+      return fail('MEDIA_DELETE', error instanceof Error ? error.message : '删除图片失败');
+    }
+  });
+  ipcMain.handle('media:rename', (_event, siteDir: string, relPath: string, newName: string) => {
+    try {
+      return ok(renameMedia(siteDir, relPath, newName));
+    } catch (error) {
+      return fail('MEDIA_RENAME', error instanceof Error ? error.message : '重命名图片失败');
     }
   });
   ipcMain.handle('project:markDirty', (_event, file: string, content: string) => {

@@ -20,21 +20,53 @@ export interface OutlineNode {
   name: string;
   kind: string;
   locked: boolean;
-  kind: string;
   text: string;
   props: { name: string; value: string }[];
   children: OutlineNode[];
 }
 
+/** 页面文件：src/pages/** 下的 .astro，路径字符白名单与旧实现保持一致。 */
+const PAGE_FILE_RE = /^src\/pages\/[\w./[\]-]+\.astro$/;
+/** 文章自定义版式：src/layouts/posts/<slug>.astro（slug 规则与 content.customize 一致）。 */
+const POST_LAYOUT_RE = /^src\/layouts\/posts\/[a-z0-9]+(?:-[a-z0-9]+)*\.astro$/;
+
+export function isPostLayout(file?: string): boolean {
+  if (!file) return false;
+  return POST_LAYOUT_RE.test(file.replaceAll('\\', '/'));
+}
+
+/** 画布可编辑的文件：普通页面 + 文章自定义版式；其他一律回落到首页，避免越出站点。 */
 export function safePage(file?: string): string {
-  if (!file || file.includes('..') || !/^src\/pages\/[\w./[\]-]+\.astro$/.test(file)) {
-    return 'src/pages/index.astro';
-  }
-  return file;
+  if (!file) return 'src/pages/index.astro';
+  const normalized = file.replaceAll('\\', '/');
+  if (normalized.includes('..')) return 'src/pages/index.astro';
+  if (PAGE_FILE_RE.test(normalized) || POST_LAYOUT_RE.test(normalized)) return normalized;
+  return 'src/pages/index.astro';
 }
 
 function pagePath(siteDir: string, file = 'src/pages/index.astro'): string {
   return path.join(siteDir, safePage(file));
+}
+
+/**
+ * 版式文件比页面文件深一层：core 的 importEdits 按页面写死 `../components/xiao/`，
+ * 插到 src/layouts/posts/*.astro 时要把新增的组件 import 再往上提一层。
+ */
+function fixInsertedImports(source: string, file: string): string {
+  if (!isPostLayout(file)) return source;
+  return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../../components/xiao/');
+}
+
+/** `<slot />` 是文章正文插槽：结构里受保护，不能删、不能改属性、不能往里塞组件。 */
+export function isSlotNode(node: { kind: string; name?: string } | undefined): boolean {
+  return Boolean(node && node.kind !== 'locked' && node.name === 'slot');
+}
+
+function assertNotSlotParent(doc: ReturnType<typeof parseAstro>, parentId: string): void {
+  const parent = findNode(doc.tree, parentId);
+  if (isSlotNode(parent)) {
+    throw new Error('「正文」块不能包含组件；先把它套进区块或容器，再往里放；正文块本身也不能删除');
+  }
 }
 
 const histories = new Map<string, FileHistory>();
@@ -79,7 +111,9 @@ export function insertComponent(
   if (!spec) throw new Error(`没有组件 ${component}`);
   const full = pagePath(siteDir, file);
   const before = readFileSync(full, 'utf8');
-  const next = insertNode(parseAstro(before), parentId, index, spec.snippet);
+  const doc = parseAstro(before);
+  assertNotSlotParent(doc, parentId);
+  const next = fixInsertedImports(insertNode(doc, parentId, index, spec.snippet), file);
   return writeEdit(full, before, next);
 }
 
@@ -92,7 +126,9 @@ export function moveComponent(
 ): string {
   const full = pagePath(siteDir, file);
   const before = readFileSync(full, 'utf8');
-  const next = moveNode(parseAstro(before), nodeId, parentId, index);
+  const doc = parseAstro(before);
+  assertNotSlotParent(doc, parentId);
+  const next = fixInsertedImports(moveNode(doc, nodeId, parentId, index), file);
   return writeEdit(full, before, next);
 }
 
@@ -114,7 +150,12 @@ export function setComponentProp(
 ): string {
   const full = pagePath(siteDir, file);
   const before = readFileSync(full, 'utf8');
-  const next = setProp(parseAstro(before), nodeId, name, value);
+  const doc = parseAstro(before);
+  const node = findNode(doc.tree, nodeId);
+  if (isSlotNode(node)) {
+    throw new Error('「正文」块受保护：不能改属性；可以在结构里移动它或把它套进容器');
+  }
+  const next = setProp(doc, nodeId, name, value);
   return writeEdit(full, before, next);
 }
 
@@ -145,7 +186,12 @@ export function setPageText(
 ): string {
   const full = pagePath(siteDir, file);
   const before = readFileSync(full, 'utf8');
-  const next = setText(parseAstro(before), nodeId, text);
+  const doc = parseAstro(before);
+  const node = findNode(doc.tree, nodeId);
+  if (isSlotNode(node)) {
+    throw new Error('「正文」块受保护：不能删除或改它的内容');
+  }
+  const next = setText(doc, nodeId, text);
   return writeEdit(full, before, next);
 }
 

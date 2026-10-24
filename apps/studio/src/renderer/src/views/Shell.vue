@@ -20,6 +20,7 @@ import Conflict from './Conflict.vue';
 import Canvas from './Canvas.vue';
 import DevDrawer from './DevDrawer.vue';
 import Editor from './Editor.vue';
+import Media from './Media.vue';
 import Pages from './Pages.vue';
 import Posts from './Posts.vue';
 import Publish from './Publish.vue';
@@ -407,6 +408,7 @@ const modeKey = computed({
         >
           <Editor v-if="session.nav === 'posts' && slug && hasSite" :site-dir="session.siteDir" :slug="slug" />
           <Canvas v-else-if="session.nav === 'pages' && hasSite" />
+          <Media v-else-if="session.nav === 'media'" />
           <Appearance v-else-if="session.nav === 'appearance'" />
           <Settings v-else-if="session.nav === 'settings'" />
           <Seo v-else-if="session.nav === 'seo'" />
@@ -545,7 +547,15 @@ const modeKey = computed({
 }
 
 .nav-switch {
+  flex: 0 1 auto;
+  max-width: 44vw;
   margin-left: var(--ui-s2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-switch::-webkit-scrollbar {
+  display: none;
 }
 
 .grow {

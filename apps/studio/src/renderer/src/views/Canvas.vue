@@ -14,7 +14,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
-import { useSession } from '../stores/session.ts';
+import { layoutSlugOf, useSession } from '../stores/session.ts';
 import {
   UiBadge,
   UiButton,
@@ -237,6 +237,11 @@ const loading = ref(true);
 const error = ref('');
 const pageRoute = ref('');
 
+// 文章版式模式（P2）：activePage 指向 src/layouts/posts/<slug>.astro 时进入。
+const layoutSlug = computed(() => layoutSlugOf(session.activePage));
+const layoutMode = computed(() => Boolean(layoutSlug.value));
+const layoutTitle = computed(() => session.layoutTitle);
+
 const selectedId = ref('');
 const expanded = ref<string[]>([]);
 const focusedRowId = ref('');
@@ -290,7 +295,9 @@ const dragGhost = ref<{ label: string; x: number; y: number } | null>(null);
 const dropLabel = ref('');
 
 type StageHit = { file: string; offset: string; place: 'before' | 'after' | 'into'; tag: string };
-type DragKind = { kind: 'new'; name: string; label: string } | { kind: 'move'; id: string; name: string; label: string };
+type DragKind =
+  | { kind: 'new'; name: string; label: string }
+  | { kind: 'move'; id: string; name: string; label: string };
 
 let dragArmed: { x: number; y: number; payload: DragKind } | null = null;
 let dragActive: DragKind | null = null;
@@ -418,6 +425,7 @@ const selectedTitle = computed(() => {
   if (!node) return '';
   if (node.kind === 'text') return '文字';
   if (node.kind === 'locked') return '模板代码';
+  if (isSlotNode(node)) return '正文';
   return META_BY_NAME.get(node.name)?.label ?? node.name;
 });
 
@@ -441,7 +449,9 @@ const selectedIcon = computed(() =>
 
 const selectedKindLabel = computed(() => {
   const node = selectedNode.value;
-  return node ? kindLabel(node) : '';
+  if (!node) return '';
+  if (isSlotNode(node)) return '正文插槽';
+  return kindLabel(node);
 });
 
 const selectedTextNode = computed(() => {
@@ -554,11 +564,17 @@ function labelOfNode(node: OutlineNode): string {
   if (node.kind === 'locked') {
     return node.name === 'locked' ? '表达式（锁定）' : `${node.name}（锁定）`;
   }
+  if (isSlotNode(node)) return '正文';
   return META_BY_NAME.get(node.name)?.label ?? node.name;
+}
+
+function isSlotNode(node: OutlineNode): boolean {
+  return node.kind !== 'locked' && node.name === 'slot';
 }
 
 function nodeMetaText(node: OutlineNode): string {
   if (node.kind === 'text' || node.kind === 'locked') return '';
+  if (isSlotNode(node)) return 'slot';
   const meta = META_BY_NAME.get(node.name);
   return meta ? node.name : '';
 }
@@ -581,6 +597,7 @@ function kindLabel(node: OutlineNode): string {
 function rowIcon(node: OutlineNode): string {
   if (node.kind === 'locked') return mdiLockOutline;
   if (node.kind === 'text') return mdiTextShort;
+  if (isSlotNode(node)) return mdiFormatText;
   const meta = META_BY_NAME.get(node.name);
   if (meta) return CATEGORY_ICON[meta.category];
   if (isLayoutName(node.name)) return icons.pages;
@@ -589,7 +606,10 @@ function rowIcon(node: OutlineNode): string {
 }
 
 function pageLabel(file: string): string {
-  const base = file.replace(/^src\/pages\//, '').replace(/\.astro$/, '');
+  const normalized = file.replaceAll('\\', '/');
+  const layoutSlug = layoutSlugOf(normalized);
+  if (layoutSlug) return `文章版式 · ${layoutSlug}`;
+  const base = normalized.replace(/^src\/pages\//, '').replace(/\.astro$/, '');
   if (base === 'index') return '首页';
   return base.endsWith('/index') ? base.slice(0, -6) : base;
 }
@@ -840,6 +860,12 @@ function buildPageCss(slug: string, state: PageStyleState): string {
 }
 
 async function loadPageStyle(force = false): Promise<void> {
+  // 版式模式没有「页面样式」概念（面板也隐藏），不要拿布局 slug 去匹配站点页面 css。
+  if (layoutMode.value) {
+    styleKey = '';
+    resetPageStyleDraft();
+    return;
+  }
   const siteDir = session.siteDir;
   const slug = pageStyleSlug.value;
   const key = `${siteDir}\u0000${slug}`;
@@ -968,13 +994,20 @@ async function reload(keepId = selectedId.value): Promise<void> {
   const token = ++reloadToken;
   loading.value = true;
   const page = session.activePage;
+  const isLayout = layoutMode.value;
   const [outlineResult, hrefResult] = await Promise.all([
     window.xiao.canvas.outline(session.siteDir, page),
-    window.xiao.page.href(session.siteDir, page),
+    isLayout
+      ? Promise.resolve({ ok: true as const, data: '' })
+      : window.xiao.page.href(session.siteDir, page),
   ]);
   if (token !== reloadToken) return;
   loading.value = false;
-  pageRoute.value = hrefResult.ok && hrefResult.data ? `/${hrefResult.data}` : '';
+  pageRoute.value = isLayout
+    ? `/posts/${encodeURIComponent(layoutSlug.value)}/`
+    : hrefResult.ok && hrefResult.data
+      ? `/${hrefResult.data}`
+      : '';
   if (!outlineResult.ok) {
     outline.value = [];
     error.value = friendlyError(outlineResult.message);
@@ -1045,6 +1078,14 @@ function draftFromNode(specs: PropSpec[], node: OutlineNode): Record<string, Dra
 
 async function syncSelectionDetails(node: OutlineNode): Promise<void> {
   if (node.kind === 'locked') {
+    propSpecs.value = [];
+    draft.value = {};
+    textDraft.value = '';
+    propsLoading.value = false;
+    return;
+  }
+  // 正文插槽没有 manifest 属性，检查器用专门的面板说明保护规则。
+  if (isSlotNode(node)) {
     propSpecs.value = [];
     draft.value = {};
     textDraft.value = '';
@@ -1261,7 +1302,11 @@ async function insertComponent(meta: ComponentMeta, at?: InsertTarget | null): P
   if (!target || busy.value || insertPending.value || !session.siteDir) return;
   const allowed = await nestAllowed(target.parentName, meta.name);
   if (!allowed) {
-    notify(`${target.parentName} 里放不下${meta.label}；换一个容器再试。`, 'error', 'canvas-insert-blocked');
+    notify(
+      `${target.parentName} 里放不下${meta.label}；换一个容器再试。`,
+      'error',
+      'canvas-insert-blocked',
+    );
     return;
   }
   const parentPath = pathOf(outline.value, target.parentId);
@@ -1464,6 +1509,13 @@ function switchPage(value: string | number): void {
   session.setPage(file);
 }
 
+/** 版式模式专属：回到正在写的那篇文章（Shell 的文章选择状态还在，一般能直接回到编辑器）。 */
+function backToWriting(): void {
+  session.closeLayout();
+  session.setNav('posts');
+  notify('已回到写作视图', 'info', 'canvas-layout-back');
+}
+
 // ---------------------------------------------------------------------------
 // 预览联动
 // ---------------------------------------------------------------------------
@@ -1472,6 +1524,9 @@ function stagePreviewUrl(): string {
   const base = session.previewUrl;
   if (!base) return '';
   const root = base.endsWith('/') ? base : `${base}/`;
+  if (layoutMode.value && layoutSlug.value) {
+    return new URL(`posts/${encodeURIComponent(layoutSlug.value)}/`, root).href;
+  }
   if (!pageRoute.value) return root;
   return new URL(pageRoute.value, root).href;
 }
@@ -1532,7 +1587,11 @@ async function ensurePreview(): Promise<void> {
   try {
     const result = await window.xiao.runtime.start('dev', session.siteDir);
     if (!result.ok) {
-      notify(`预览没能启动：${result.message}。先确认站点依赖已经装好。`, 'error', 'canvas-preview');
+      notify(
+        `预览没能启动：${result.message}。先确认站点依赖已经装好。`,
+        'error',
+        'canvas-preview',
+      );
     }
   } finally {
     session.building = false;
@@ -1578,7 +1637,9 @@ function onPreviewResize(payload: { prop: 'width' | 'pad'; px: number }): void {
   if (!spec || spec.type !== 'enum' || !spec.options?.length) return;
   const allowed = spec.options.map((item) => item.value);
   const next =
-    payload.prop === 'width' ? snapToken(payload.px, WIDTH_PX, allowed) : snapToken(payload.px, PAD_PX, allowed);
+    payload.prop === 'width'
+      ? snapToken(payload.px, WIDTH_PX, allowed)
+      : snapToken(payload.px, PAD_PX, allowed);
   if (!next || String(draft.value[spec.name] ?? '') === next) return;
   commitProp(spec, next);
 }
@@ -1617,7 +1678,7 @@ async function updateDrag(event: PointerEvent): Promise<void> {
   hitFrame = requestAnimationFrame(() => {
     void window.xiao.preview.hit(event.clientX, event.clientY).then((result) => {
       lastHit = result.ok ? result.data : null;
-      dropLabel.value = lastHit ? hitToInsert(lastHit)?.label ?? '' : '';
+      dropLabel.value = lastHit ? (hitToInsert(lastHit)?.label ?? '') : '';
       void window.xiao.preview.drop(lastHit);
     });
   });
@@ -1658,7 +1719,12 @@ function onPalettePointerDown(event: PointerEvent, meta: ComponentMeta): void {
 
 function onTreePointerDown(event: PointerEvent, row: TreeRow): void {
   if (row.node.locked) return;
-  armDrag(event, { kind: 'move', id: row.node.id, name: row.node.name, label: labelOfNode(row.node) });
+  armDrag(event, {
+    kind: 'move',
+    id: row.node.id,
+    name: row.node.name,
+    label: labelOfNode(row.node),
+  });
 }
 
 function onWindowPointerMove(event: PointerEvent): void {
@@ -1722,11 +1788,20 @@ function onSaveRequest(): void {
 watch(
   () => session.activePage,
   () => {
+    // 离开版式文件时清掉「正在编辑哪篇版式」的元数据，避免标题/预览残留。
+    if (!layoutSlugOf(session.activePage)) session.closeLayout();
     expanded.value = [];
     clearSelection();
     void reload('');
   },
 );
+
+// 进入文章版式时自动打开预览坞，显示 /posts/<slug>/ 的真实页面。
+watch(layoutMode, (value) => {
+  if (!value) return;
+  void ensurePreview();
+  void nextTick(syncStage);
+});
 
 watch(
   () => session.siteDir,
@@ -1772,8 +1847,6 @@ watch(
     void nextTick(syncStage);
   },
 );
-
-
 
 watch(boardEl, (el) => {
   stageObserver?.disconnect();
@@ -1844,7 +1917,11 @@ onBeforeUnmount(() => {
               type="button"
               class="palette-item"
               :disabled="busy || Boolean(insertPending)"
-              :title="insertTarget ? `放入${insertTarget.label}，也可拖到页面上` : '拖到页面上，或先选中一个容器'"
+              :title="
+                insertTarget
+                  ? `放入${insertTarget.label}，也可拖到页面上`
+                  : '拖到页面上，或先选中一个容器'
+              "
               @pointerdown="onPalettePointerDown($event, meta)"
               @click="onPaletteClick(meta)"
             >
@@ -1881,16 +1958,27 @@ onBeforeUnmount(() => {
     <section class="stage" aria-label="页面结构">
       <header class="stage-bar">
         <div class="stage-bar__left">
-          <UiIcon class="stage-bar__page-icon" :path="icons.files" :size="15" />
-          <div class="page-select">
-            <UiSelect
-              :model-value="session.activePage"
-              :options="pageOptions"
-              size="sm"
-              aria-label="选择页面"
-              @update:model-value="switchPage"
-            />
-          </div>
+          <template v-if="layoutMode">
+            <UiButton variant="ghost" size="sm" :icon-left="icons.back" @click="backToWriting">
+              返回写作
+            </UiButton>
+            <UiBadge tone="accent" size="sm">文章版式</UiBadge>
+            <span class="stage-title" :title="layoutTitle || layoutSlug">
+              {{ layoutTitle || layoutSlug }}
+            </span>
+          </template>
+          <template v-else>
+            <UiIcon class="stage-bar__page-icon" :path="icons.files" :size="15" />
+            <div class="page-select">
+              <UiSelect
+                :model-value="session.activePage"
+                :options="pageOptions"
+                size="sm"
+                aria-label="选择页面"
+                @update:model-value="switchPage"
+              />
+            </div>
+          </template>
           <UiBadge v-if="pageRoute" class="stage-route" tone="neutral" size="sm">
             {{ pageRoute }}
           </UiBadge>
@@ -1898,7 +1986,12 @@ onBeforeUnmount(() => {
         <div class="stage-bar__right">
           <span class="zoom-read">{{ Math.round(stageZoom * 100) }}%</span>
           <UiTooltip label="缩小">
-            <UiButton variant="ghost" size="sm" aria-label="缩小" @click="setStageZoom(stageZoom - 0.1)">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              aria-label="缩小"
+              @click="setStageZoom(stageZoom - 0.1)"
+            >
               −
             </UiButton>
           </UiTooltip>
@@ -1908,7 +2001,12 @@ onBeforeUnmount(() => {
             </UiButton>
           </UiTooltip>
           <UiTooltip label="放大">
-            <UiButton variant="ghost" size="sm" aria-label="放大" @click="setStageZoom(stageZoom + 0.1)">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              aria-label="放大"
+              @click="setStageZoom(stageZoom + 0.1)"
+            >
               +
             </UiButton>
           </UiTooltip>
@@ -1996,6 +2094,7 @@ onBeforeUnmount(() => {
                     'is-selected': row.node.id === selectedId,
                     'is-locked': row.node.locked,
                     'is-container': row.container,
+                    'is-slot': isSlotNode(row.node),
                   }"
                   role="treeitem"
                   :aria-level="row.depth + 1"
@@ -2034,6 +2133,13 @@ onBeforeUnmount(() => {
                   <span v-if="row.node.locked" class="tree-row__lock">
                     <UiIcon :path="mdiLockOutline" :size="12" />锁定
                   </span>
+                  <span
+                    v-else-if="isSlotNode(row.node)"
+                    class="tree-row__lock tree-row__lock--slot"
+                    title="文章正文插槽：可移动、可套容器，不能删除"
+                  >
+                    <UiIcon :path="icons.shield" :size="12" />受保护
+                  </span>
                 </div>
                 <div
                   v-if="row.node.id === insertAnchorId && insertTarget"
@@ -2049,10 +2155,7 @@ onBeforeUnmount(() => {
         </aside>
 
         <div class="board">
-          <div
-            v-if="!stageLive"
-            class="board-empty"
-          >
+          <div v-if="!stageLive" class="board-empty">
             <UiEmpty
               v-if="session.previewMode === 'window'"
               title="预览在独立窗口"
@@ -2072,7 +2175,12 @@ onBeforeUnmount(() => {
               :icon="icons.preview"
             >
               <template #action>
-                <UiButton variant="primary" size="sm" :loading="session.building" @click="ensurePreview">
+                <UiButton
+                  variant="primary"
+                  size="sm"
+                  :loading="session.building"
+                  @click="ensurePreview"
+                >
                   启动预览
                 </UiButton>
               </template>
@@ -2144,6 +2252,23 @@ onBeforeUnmount(() => {
             </p>
             <div class="inspector-actions">
               <UiButton size="sm" :icon="icons.code" @click="openSource">去源码里改</UiButton>
+            </div>
+          </UiPanel>
+
+          <!-- 正文插槽：文章内容渲染的位置，受保护 -->
+          <UiPanel v-else-if="isSlotNode(selectedRow.node)" title="正文">
+            <p class="hint-text">
+              这里是文章正文的位置（<code>&lt;slot /&gt;</code>）。可以拖动它、或把它套进区块/分栏；
+              不能删除，也不接受组件属性。
+            </p>
+            <p class="inspector-tip">
+              想把正文放进分栏：先插入「分栏组」，再把图层里的「正文」拖进分栏即可。
+            </p>
+            <div class="inspector-actions">
+              <UiButton size="sm" :icon-left="icons.code" @click="openSource">源码里查看</UiButton>
+              <UiButton size="sm" :icon-left="icons.posts" @click="backToWriting"
+                >回到写作</UiButton
+              >
             </div>
           </UiPanel>
 
@@ -2255,16 +2380,30 @@ onBeforeUnmount(() => {
                 <span class="page-info__key">结构</span>
                 <span>{{ totalNodes }} 个节点</span>
               </div>
+              <div v-if="layoutMode" class="page-info__row">
+                <span class="page-info__key">文章</span>
+                <span>{{ layoutTitle || layoutSlug }}</span>
+              </div>
             </div>
+            <p v-if="layoutMode" class="hint-text">
+              这是《{{
+                layoutTitle || layoutSlug
+              }}》的专属版式：改动只影响这篇文章，其他文章继续用默认版式。
+            </p>
             <div class="inspector-actions">
-              <UiButton size="sm" :icon="icons.refresh" :loading="loading" @click="reload()">
+              <UiButton size="sm" :icon-left="icons.refresh" :loading="loading" @click="reload()">
                 刷新结构
               </UiButton>
-              <UiButton size="sm" :icon="icons.code" @click="openSource">源码里自定义</UiButton>
+              <UiButton size="sm" :icon-left="icons.code" @click="openSource"
+                >源码里自定义</UiButton
+              >
+              <UiButton v-if="layoutMode" size="sm" :icon-left="icons.back" @click="backToWriting">
+                回到写作
+              </UiButton>
             </div>
           </UiPanel>
 
-          <UiPanel title="页面样式" collapsible>
+          <UiPanel v-if="!layoutMode" title="页面样式" collapsible>
             <div v-if="!pageStyleSupported" class="hint-text">
               {{ pageStyleUnsupportedReason }}
             </div>
@@ -2348,7 +2487,7 @@ onBeforeUnmount(() => {
             </div>
           </UiPanel>
 
-          <UiPanel title="新建页面" collapsible>
+          <UiPanel v-if="!layoutMode" title="新建页面" collapsible>
             <div class="prop-list">
               <UiField label="页面地址" hint="小写字母、数字和连字符，例如 about">
                 <UiInput
@@ -2643,6 +2782,17 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.stage-title {
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: var(--ui-fs-2);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .stage-body {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
@@ -2779,6 +2929,15 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
+/* 正文插槽：不是锁定节点（可移动/可套容器），但视觉上要区别于普通组件。 */
+.tree-row.is-slot {
+  color: var(--ui-text);
+}
+
+.tree-row.is-slot .tree-row__icon {
+  color: var(--ui-accent);
+}
+
 .tree-row__caret {
   display: inline-flex;
   flex: none;
@@ -2836,6 +2995,10 @@ onBeforeUnmount(() => {
   margin-left: auto;
   color: var(--ui-text-3);
   font-size: var(--ui-fs-1);
+}
+
+.tree-row__lock--slot {
+  color: var(--ui-accent);
 }
 
 .insert-line {

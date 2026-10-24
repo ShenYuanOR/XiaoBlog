@@ -8,6 +8,13 @@ import type {
   RuntimeStart,
 } from '@xiao/core/ipc';
 import type { ConflictEvent, ReloadEvent } from '../main/watch.ts';
+import type {
+  MediaDeleteResult,
+  MediaItem,
+  MediaRenameResult,
+  MediaUploadInput,
+  MediaUploadResult,
+} from '../main/media.ts';
 
 function listen<T>(channel: string, callback: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => callback(payload);
@@ -164,6 +171,28 @@ const api = {
       base64: string,
     ): Promise<IpcResult<string>> =>
       ipcRenderer.invoke('content:saveImage', siteDir, slug, name, base64),
+  },
+  media: {
+    list: (siteDir: string): Promise<IpcResult<MediaItem[]>> =>
+      ipcRenderer.invoke('media:list', siteDir),
+    upload: (
+      siteDir: string,
+      files: MediaUploadInput[],
+      target?: string,
+    ): Promise<IpcResult<MediaUploadResult>> =>
+      ipcRenderer.invoke('media:upload', siteDir, files, target),
+    delete: (
+      siteDir: string,
+      relPaths: string[],
+      force?: boolean,
+    ): Promise<IpcResult<MediaDeleteResult>> =>
+      ipcRenderer.invoke('media:delete', siteDir, relPaths, force),
+    rename: (
+      siteDir: string,
+      relPath: string,
+      newName: string,
+    ): Promise<IpcResult<MediaRenameResult>> =>
+      ipcRenderer.invoke('media:rename', siteDir, relPath, newName),
   },
   preview: {
     set: (mode: 'phone' | 'tablet' | 'pc' | 'custom' | 'side', url: string, customWidth?: number) =>

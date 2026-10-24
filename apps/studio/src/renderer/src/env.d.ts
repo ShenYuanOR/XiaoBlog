@@ -6,6 +6,13 @@ import type {
   RuntimeLogEvent,
   RuntimeStart,
 } from '@xiao/core/ipc';
+import type {
+  MediaDeleteResult,
+  MediaItem,
+  MediaRenameResult,
+  MediaUploadInput,
+  MediaUploadResult,
+} from '../../main/media.ts';
 
 export interface CanvasNode {
   id: string;
@@ -228,6 +235,28 @@ export interface XiaoApi {
       name: string,
       base64: string,
     ) => Promise<IpcResult<string>>;
+  };
+  media: {
+    /** 扫描 `src/content/posts/**` 与 `public/**` 的图片，并统计文本里的引用数。 */
+    list: (siteDir: string) => Promise<IpcResult<MediaItem[]>>;
+    /** 上传图片（bytes 支持 Uint8Array / number[]）；默认写 `public/media/<年份>/`。 */
+    upload: (
+      siteDir: string,
+      files: MediaUploadInput[],
+      target?: string,
+    ) => Promise<IpcResult<MediaUploadResult>>;
+    /** 移动到 `.xiao/trash/`；有引用时必须传 `force: true`。 */
+    delete: (
+      siteDir: string,
+      relPaths: string[],
+      force?: boolean,
+    ) => Promise<IpcResult<MediaDeleteResult>>;
+    /** 同目录改名，并尽力更新 md/html/astro/css 里的引用。 */
+    rename: (
+      siteDir: string,
+      relPath: string,
+      newName: string,
+    ) => Promise<IpcResult<MediaRenameResult>>;
   };
   preview: {
     set: (

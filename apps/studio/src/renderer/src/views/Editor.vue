@@ -16,7 +16,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { copy } from '../copy.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
-import { useSession } from '../stores/session.ts';
+import { layoutFileOf, useSession } from '../stores/session.ts';
 import {
   UiBadge,
   UiButton,
@@ -37,9 +37,15 @@ import {
 // Monaco 的 worker 由 Vite 打包成独立模块；沿用旧实现的写法，不要改成默认 CDN 路径。
 self.MonacoEnvironment = {
   getWorker: () =>
-    new Worker(new URL('../../../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url), {
-      type: 'module',
-    }),
+    new Worker(
+      new URL(
+        '../../../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js',
+        import.meta.url,
+      ),
+      {
+        type: 'module',
+      },
+    ),
 };
 
 const props = defineProps<{ siteDir: string; slug: string }>();
@@ -79,6 +85,11 @@ const convertStats = ref<ConvertStats | null>(null);
 const convertLosses = ref<string[]>([]);
 const convertError = ref('');
 let pendingConvertSlug = '';
+
+/* 文章版式（P2）：生成/复用 src/layouts/posts/<slug>.astro 后进画布编辑 */
+const layoutBusy = ref(false);
+const layoutConfirmOpen = ref(false);
+const layoutPath = computed(() => layoutFileOf(props.slug));
 
 const title = ref('');
 const category = ref('');
@@ -191,7 +202,9 @@ const showEmptyHint = computed(
   () => format.value === 'markdown' && viewState.value === 'empty' && !sourceMode.value,
 );
 
-const errorTitle = computed(() => (errorKind.value === 'mount' ? '编辑器没能加载' : '没能打开这篇'));
+const errorTitle = computed(() =>
+  errorKind.value === 'mount' ? '编辑器没能加载' : '没能打开这篇',
+);
 
 const errorHint = computed(() =>
   errorKind.value === 'mount'
@@ -213,7 +226,8 @@ const formatLabel = computed(() => (format.value === 'html' ? 'HTML' : 'Markdown
 
 function hintFor(key: FieldKey, normal: string): string {
   if (!hasFrontmatter.value) return '这篇没有 frontmatter，属性改动暂时不会写回文件。';
-  if (blockedFields.value.includes(key)) return '这一项在 frontmatter 里是多行写法，请切到源码模式修改。';
+  if (blockedFields.value.includes(key))
+    return '这一项在 frontmatter 里是多行写法，请切到源码模式修改。';
   return normal;
 }
 
@@ -265,7 +279,9 @@ function readTagList(source: string): string[] {
         .filter(Boolean) ?? []
     );
   }
-  const block = new RegExp(`^tags:[ \\t]*\\r?\\n((?:[ \\t]+-[^\\r\\n]*(?:\\r?\\n|$))*)`, 'm').exec(source);
+  const block = new RegExp(`^tags:[ \\t]*\\r?\\n((?:[ \\t]+-[^\\r\\n]*(?:\\r?\\n|$))*)`, 'm').exec(
+    source,
+  );
   if (!block) return [];
   return (block[1] ?? '')
     .split(/\r?\n/)
@@ -485,10 +501,16 @@ function persist(): Promise<void> {
       }
       // Markdown：正文走保真写回层，元数据只 patch 改动键。
       const working: MarkdownSession =
-        patch.tags !== undefined ? { ...current, fmRaw: stripBlockList(current.fmRaw, 'tags') } : current;
+        patch.tags !== undefined
+          ? { ...current, fmRaw: stripBlockList(current.fmRaw, 'tags') }
+          : current;
       const saved = saveMarkdown(working, bodyChanged ? body : current.body, patch);
       if (!saved.write) {
-        if (saved.reason === 'clean' || saved.reason === 'unchanged' || saved.reason === 'identical') {
+        if (
+          saved.reason === 'clean' ||
+          saved.reason === 'unchanged' ||
+          saved.reason === 'identical'
+        ) {
           afterSave(saved.text, fields, seq);
           return;
         }
@@ -569,7 +591,10 @@ function focusVisual(): void {
   editable?.focus();
 }
 
-function createMonacoEditor(text: string, language: string): monaco.editor.IStandaloneCodeEditor | undefined {
+function createMonacoEditor(
+  text: string,
+  language: string,
+): monaco.editor.IStandaloneCodeEditor | undefined {
   const host = sourceRoot.value;
   if (!host) return undefined;
   const model = monaco.editor.createModel(text, language);
@@ -792,7 +817,10 @@ interface PmTrLike {
 }
 
 interface PmViewLike {
-  state: { doc: { forEach: (fn: (node: PmNodeLike, offset: number) => void) => void }; tr: PmTrLike };
+  state: {
+    doc: { forEach: (fn: (node: PmNodeLike, offset: number) => void) => void };
+    tr: PmTrLike;
+  };
   dispatch: (tr: unknown) => void;
   posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null;
   nodeDOM: (pos: number) => Node | null;
@@ -826,7 +854,10 @@ function proseMirrorView(): PmViewLike | undefined {
   return view;
 }
 
-function blockAt(view: PmViewLike, pos: number): { from: number; to: number; node: PmNodeLike } | null {
+function blockAt(
+  view: PmViewLike,
+  pos: number,
+): { from: number; to: number; node: PmNodeLike } | null {
   let found: { from: number; to: number; node: PmNodeLike } | null = null;
   view.state.doc.forEach((node, offset) => {
     if (found) return;
@@ -844,7 +875,9 @@ function clearBlockDrop(): void {
 
 function clearBlockDrag(): void {
   clearBlockDrop();
-  crepeRoot.value?.querySelectorAll('.is-xiao-block-drag').forEach((el) => el.classList.remove('is-xiao-block-drag'));
+  crepeRoot.value
+    ?.querySelectorAll('.is-xiao-block-drag')
+    .forEach((el) => el.classList.remove('is-xiao-block-drag'));
   document.body.classList.remove('xiao-block-dragging');
   blockDrag = null;
 }
@@ -914,7 +947,9 @@ function onBlockPointerUp(): void {
   try {
     let dest = drag.after ? drag.targetTo : drag.targetFrom;
     if (dest > drag.from) dest -= drag.to - drag.from;
-    drag.view.dispatch(drag.view.state.tr.delete(drag.from, drag.to).insert(dest, drag.node).scrollIntoView());
+    drag.view.dispatch(
+      drag.view.state.tr.delete(drag.from, drag.to).insert(dest, drag.node).scrollIntoView(),
+    );
     drag.view.focus();
   } catch (error) {
     notify(`块移动失败：${describeError(error)}。可以撤销后重试。`, 'error', 'editor-block-move');
@@ -943,7 +978,15 @@ interface HNode {
   text?: string;
 }
 
-const CONVERT_DROP_TAGS = new Set(['script', 'style', 'link', 'meta', 'base', 'template', 'noscript']);
+const CONVERT_DROP_TAGS = new Set([
+  'script',
+  'style',
+  'link',
+  'meta',
+  'base',
+  'template',
+  'noscript',
+]);
 const CONVERT_VOID_TAGS = new Set([
   'area',
   'base',
@@ -1065,7 +1108,11 @@ function serializeHNodes(nodes: HNode[]): string {
   return nodes.map((node) => serializeHNode(node)).join('');
 }
 
-function collectNodes(node: HNode, predicate: (item: HNode) => boolean, out: HNode[] = []): HNode[] {
+function collectNodes(
+  node: HNode,
+  predicate: (item: HNode) => boolean,
+  out: HNode[] = [],
+): HNode[] {
   if (node.type !== 'element') return out;
   if (predicate(node)) out.push(node);
   for (const child of node.children ?? []) collectNodes(child, predicate, out);
@@ -1150,10 +1197,13 @@ function sanitizeElement(node: HNode): HNode | null {
   for (const attr of node.attrs ?? []) {
     const name = attr.name.toLowerCase();
     if (name.startsWith('on')) continue;
-    if (['contenteditable', 'spellcheck', 'draggable', 'translate', 'style'].includes(name)) continue;
+    if (['contenteditable', 'spellcheck', 'draggable', 'translate', 'style'].includes(name))
+      continue;
     if (name.startsWith('data-')) continue;
     if (name === 'class') {
-      const kept = attr.value.split(/\s+/).filter((token) => token && !SANITIZE_CLASS_PREFIX.test(token));
+      const kept = attr.value
+        .split(/\s+/)
+        .filter((token) => token && !SANITIZE_CLASS_PREFIX.test(token));
       if (kept.length > 0) attrs.push({ name: 'class', value: kept.join(' ') });
       continue;
     }
@@ -1222,7 +1272,11 @@ function lossLines(losses: Map<string, number>): string[] {
   return [...losses.entries()].map(([label, count]) => `${label} ×${count}`);
 }
 
-function noteExtraAttrs(node: HNode, allowed: readonly string[], losses: Map<string, number>): void {
+function noteExtraAttrs(
+  node: HNode,
+  allowed: readonly string[],
+  losses: Map<string, number>,
+): void {
   if ((node.attrs ?? []).some((attr) => !allowed.includes(attr.name))) {
     noteLoss(losses, '部分元素属性（class/style/data-* 等）未迁移');
   }
@@ -1255,7 +1309,11 @@ function imageMarkdown(node: HNode, stats: ConvertStats, losses: Map<string, num
   return `![${alt}](${src}${titlePart})`;
 }
 
-function inlineToMarkdown(nodes: HNode[], stats: ConvertStats, losses: Map<string, number>): string {
+function inlineToMarkdown(
+  nodes: HNode[],
+  stats: ConvertStats,
+  losses: Map<string, number>,
+): string {
   let out = '';
   for (const node of nodes) {
     if (node.type === 'text') {
@@ -1290,8 +1348,7 @@ function inlineToMarkdown(nodes: HNode[], stats: ConvertStats, losses: Map<strin
         stats.kept += 1;
         noteExtraAttrs(node, ['href', 'title'], losses);
         const href = attrOf(node, 'href') ?? '';
-        const label =
-          inlineToMarkdown(children, stats, losses).trim() || mdEscapeText(href);
+        const label = inlineToMarkdown(children, stats, losses).trim() || mdEscapeText(href);
         out += href ? `[${label}](${href})` : label;
         break;
       }
@@ -1367,7 +1424,9 @@ function listToMarkdown(
     const marker = ordered ? `${index}.` : '-';
     lines.push(`${'  '.repeat(depth)}${marker} ${text}`.trimEnd());
     for (const item of nested) {
-      lines.push(listToMarkdown(item, (item.tag ?? '').toLowerCase() === 'ol', stats, losses, depth + 1));
+      lines.push(
+        listToMarkdown(item, (item.tag ?? '').toLowerCase() === 'ol', stats, losses, depth + 1),
+      );
     }
     index += 1;
   }
@@ -1393,7 +1452,9 @@ function tableToMarkdown(node: HNode, stats: ConvertStats, losses: Map<string, n
       ),
     }))
     .filter((row) => row.cells.length > 0);
-  const headerRow = rows.find((row) => row.cells.some((cell) => (cell.tag ?? '').toLowerCase() === 'th')) ?? rows[0];
+  const headerRow =
+    rows.find((row) => row.cells.some((cell) => (cell.tag ?? '').toLowerCase() === 'th')) ??
+    rows[0];
   if (!headerRow) return '';
   if (!rows.some((row) => row.cells.some((cell) => (cell.tag ?? '').toLowerCase() === 'th'))) {
     noteLoss(losses, '表格没有表头，首行被当作表头');
@@ -1678,6 +1739,60 @@ async function openPreview(): Promise<void> {
   }
 }
 
+/* ---------- 文章版式（P2） ---------- */
+
+/**
+ * 点「版式」：先把写作层未保存的改动写盘，再决定是复用已有布局还是确认生成，
+ * 生成后切到「页面」画布编辑它。布局不存在时不静默创建（避免给所有文章生成文件）。
+ */
+async function openPostLayout(): Promise<void> {
+  if (!props.siteDir || !props.slug || layoutBusy.value) return;
+  await flush();
+  if (sessionStore.saveState === 'dirty' || sessionStore.saveState === 'conflict') {
+    notify('正文还没保存成功，先按 Ctrl+S 处理掉保存问题，再打开版式。', 'error', 'editor-layout');
+    return;
+  }
+  const existing = await window.xiao.dev.read(props.siteDir, layoutPath.value);
+  if (!existing.ok) {
+    layoutConfirmOpen.value = true;
+    return;
+  }
+  await enterPostLayout();
+}
+
+async function enterPostLayout(): Promise<void> {
+  if (!props.siteDir || !props.slug || layoutBusy.value) return;
+  layoutBusy.value = true;
+  try {
+    const result = await window.xiao.content.customize(props.siteDir, props.slug);
+    if (!result.ok) {
+      notify(
+        `没能生成版式：${result.message}。确认站点里有 src/layouts/PostLayout.astro 且含 <slot /> 后重试。`,
+        'error',
+        'editor-layout',
+      );
+      return;
+    }
+    sessionStore.openLayout(props.slug, title.value.trim() || props.slug);
+    sessionStore.setPage(result.data);
+    sessionStore.setNav('pages');
+    notify(
+      '已打开文章版式：改动会写回布局文件，重新构建后这篇文章生效；其他文章不受影响。',
+      'info',
+      'editor-layout',
+    );
+  } catch (error) {
+    notify(`打开版式失败：${describeError(error)}。请稍后重试。`, 'error', 'editor-layout');
+  } finally {
+    layoutBusy.value = false;
+  }
+}
+
+function confirmPostLayout(): void {
+  layoutConfirmOpen.value = false;
+  void enterPostLayout();
+}
+
 /* ---------- 格式转换（显式单向，先备份再换文件） ---------- */
 
 async function waitForVisual(): Promise<boolean> {
@@ -1797,7 +1912,8 @@ function onConvertPostRequest(event: Event): void {
 
 /* ---------- 浮层越界修正 ---------- */
 
-const menuSelector = '.milkdown-slash-menu, .milkdown-toolbar, .milkdown-link-preview, .milkdown-link-edit';
+const menuSelector =
+  '.milkdown-slash-menu, .milkdown-toolbar, .milkdown-link-preview, .milkdown-link-edit';
 let menuObserver: MutationObserver | undefined;
 let menuFrame = 0;
 
@@ -1969,8 +2085,14 @@ watch(
         <span class="bar-label">预览</span>
       </UiButton>
 
-      <UiTooltip label="版式编辑：下一步支持">
-        <UiButton :icon="icons.pages" disabled aria-label="版式（下一步支持）">
+      <UiTooltip label="用画布编辑这篇文章的版式">
+        <UiButton
+          :icon="icons.pages"
+          :loading="layoutBusy"
+          :disabled="layoutBusy || viewState !== 'ready'"
+          aria-label="版式"
+          @click="openPostLayout"
+        >
           <span class="bar-label">版式</span>
         </UiButton>
       </UiTooltip>
@@ -2017,7 +2139,9 @@ watch(
           :icon="icons.edit"
         >
           <template #action>
-            <UiButton variant="primary" :icon-left="icons.edit" @click="beginWriting">开始写第一段</UiButton>
+            <UiButton variant="primary" :icon-left="icons.edit" @click="beginWriting"
+              >开始写第一段</UiButton
+            >
           </template>
         </UiEmpty>
       </div>
@@ -2061,12 +2185,24 @@ watch(
             <UiInput v-model="tagsText" :disabled="!fieldsEditable" placeholder="随笔, 旅行" />
           </UiField>
 
-          <UiField label="摘要" :hint="hintFor('summary', '一两句话概括这篇，用于列表和搜索结果。')">
-            <UiTextarea v-model="summary" :rows="3" :disabled="!fieldsEditable" placeholder="这篇讲了什么？" />
+          <UiField
+            label="摘要"
+            :hint="hintFor('summary', '一两句话概括这篇，用于列表和搜索结果。')"
+          >
+            <UiTextarea
+              v-model="summary"
+              :rows="3"
+              :disabled="!fieldsEditable"
+              placeholder="这篇讲了什么？"
+            />
           </UiField>
 
           <UiField label="封面" :hint="hintFor('cover', '图片地址；留空表示不用封面。')">
-            <UiInput v-model="cover" :disabled="!fieldsEditable" placeholder="./cover.jpg 或站内路径" />
+            <UiInput
+              v-model="cover"
+              :disabled="!fieldsEditable"
+              placeholder="./cover.jpg 或站内路径"
+            />
           </UiField>
 
           <UiField
@@ -2103,14 +2239,40 @@ watch(
           </div>
 
           <p v-if="format === 'html'" class="inspector-note inspector-note--info">
-            HTML 文章的正文按原样保存；这里的元数据只改 frontmatter，不会重排正文。用「预览」看渲染效果。
+            HTML 文章的正文按原样保存；这里的元数据只改
+            frontmatter，不会重排正文。用「预览」看渲染效果。
           </p>
-          <p v-if="viewState !== 'loading' && viewState !== 'error' && !hasFrontmatter" class="inspector-note">
+          <p
+            v-if="viewState !== 'loading' && viewState !== 'error' && !hasFrontmatter"
+            class="inspector-note"
+          >
             这篇没有 frontmatter，属性改动暂时不会写回文件；请先切到源码模式补上 frontmatter。
           </p>
         </div>
       </section>
     </Teleport>
+
+    <UiDialog v-model="layoutConfirmOpen" title="生成自定义版式？" :width="520">
+      <div class="convert-body">
+        <p>
+          这篇文章还没有自定义版式。会把站点的
+          <code>src/layouts/PostLayout.astro</code> 复制成 <code>{{ layoutPath }}</code
+          >，然后打开画布编辑。
+        </p>
+        <p>
+          生成后只有这篇文章使用它，默认版式和其他文章不受影响。正文
+          <code>&lt;slot /&gt;</code> 会作为受保护的「正文」块保留，可移动、可套容器，但不能删除。
+        </p>
+      </div>
+      <template #actions>
+        <UiButton variant="ghost" :disabled="layoutBusy" @click="layoutConfirmOpen = false">
+          取消
+        </UiButton>
+        <UiButton variant="primary" :loading="layoutBusy" @click="confirmPostLayout">
+          生成并打开版式
+        </UiButton>
+      </template>
+    </UiDialog>
 
     <UiDialog
       v-model="convertOpen"
@@ -2135,16 +2297,21 @@ watch(
         <ul v-if="convertLosses.length" class="convert-losses">
           <li v-for="(item, index) in convertLosses" :key="index">{{ item }}</li>
         </ul>
-        <p v-else-if="convertStats" class="convert-empty-loss">没有发现需要保留为 HTML 或丢弃的内容。</p>
+        <p v-else-if="convertStats" class="convert-empty-loss">
+          没有发现需要保留为 HTML 或丢弃的内容。
+        </p>
 
         <p class="convert-backup">
-          转换前会把原文件备份到站点的 <code>.xiao/backups/</code>，然后只保留目标格式文件。转换是单次操作，不会自动双向同步。
+          转换前会把原文件备份到站点的
+          <code>.xiao/backups/</code>，然后只保留目标格式文件。转换是单次操作，不会自动双向同步。
         </p>
         <p v-if="convertError" class="convert-error" role="alert">{{ convertError }}</p>
       </div>
 
       <template #actions>
-        <UiButton variant="ghost" :disabled="converting" @click="convertOpen = false">取消</UiButton>
+        <UiButton variant="ghost" :disabled="converting" @click="convertOpen = false"
+          >取消</UiButton
+        >
         <UiButton variant="primary" :loading="converting" @click="confirmConvert">
           {{ convertTarget === 'html' ? '确认转为 HTML' : '确认转为 Markdown' }}
         </UiButton>

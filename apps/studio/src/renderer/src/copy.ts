@@ -1,6 +1,6 @@
 import type { IconName } from './icons.ts';
 
-export type NavKey = 'posts' | 'pages' | 'appearance' | 'seo' | 'publish' | 'settings';
+export type NavKey = 'posts' | 'pages' | 'media' | 'appearance' | 'seo' | 'publish' | 'settings';
 
 export interface NavItem {
   key: NavKey;
@@ -12,6 +12,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { key: 'posts', label: '文章', icon: 'posts', hint: '写文章、改属性、看草稿' },
   { key: 'pages', label: '页面', icon: 'pages', hint: '首页、关于页、落地页的布局' },
+  { key: 'media', label: '媒体', icon: 'image', hint: '站点图片、引用计数与清理' },
   { key: 'appearance', label: '外观', icon: 'appearance', hint: '主题、颜色、字体、预设' },
   { key: 'seo', label: 'SEO', icon: 'seo', hint: '标题、摘要、分享卡片、死链' },
   { key: 'publish', label: '发布', icon: 'publish', hint: '改动清单、体检、推送' },
@@ -75,6 +76,9 @@ export const copy = {
   emptyPage: '选一个页面开始搭，或新建一个页面。',
   emptyPreview: '启动预览后才能看到页面。',
   startPreview: '启动预览',
+  media: '媒体',
+  mediaEmpty: '还没有图片。上传一张，或把图片拖进这个页面。',
+  mediaUnused: '未引用',
 } as const;
 
 export type Copy = typeof copy;

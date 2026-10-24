@@ -8,6 +8,19 @@ export type PreviewMode = 'off' | 'dock' | 'window';
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict';
 export type StudioMode = 'write' | 'develop';
 
+/** 文章自定义版式的相对路径：src/layouts/posts/<slug>.astro。 */
+export function layoutFileOf(slug: string): string {
+  return `src/layouts/posts/${slug}.astro`;
+}
+
+/** 从页面文件反推版式 slug；不是文章版式时返回空串。 */
+export function layoutSlugOf(file: string): string {
+  const match = /^src\/layouts\/posts\/([a-z0-9]+(?:-[a-z0-9]+)*)\.astro$/.exec(
+    file.replaceAll('\\', '/'),
+  );
+  return match?.[1] ?? '';
+}
+
 export const useSession = defineStore('session', () => {
   const mode = ref<StudioMode>('write');
   const nav = ref<NavKey>('posts');
@@ -23,6 +36,9 @@ export const useSession = defineStore('session', () => {
   const previewDevice = ref<PreviewDevice>('pc');
   const activePost = ref('');
   const activePage = ref('src/pages/index.astro');
+  /** 正在编辑的文章版式：只做标题/返回写作的来源，模式由 activePage 是否 layouts/posts 决定。 */
+  const layoutSlug = ref('');
+  const layoutTitle = ref('');
   const devOpen = ref('');
   const drag = ref<{ kind: 'new' | 'move'; name: string; id: string } | null>(null);
   const saveState = ref<SaveState>('saved');
@@ -86,6 +102,17 @@ export const useSession = defineStore('session', () => {
     activePage.value = file;
   }
 
+  /** 从文章编辑器进入它的自定义版式（activePage 由调用方一起切换）。 */
+  function openLayout(slug: string, title: string): void {
+    layoutSlug.value = slug;
+    layoutTitle.value = title;
+  }
+
+  function closeLayout(): void {
+    layoutSlug.value = '';
+    layoutTitle.value = '';
+  }
+
   function editCustomCss(): void {
     devOpen.value = 'src/styles/custom.css';
   }
@@ -122,6 +149,8 @@ export const useSession = defineStore('session', () => {
     previewDocked,
     activePost,
     activePage,
+    layoutSlug,
+    layoutTitle,
     devOpen,
     devDrawer,
     drag,
@@ -142,6 +171,8 @@ export const useSession = defineStore('session', () => {
     pushLog,
     setSite,
     setPage,
+    openLayout,
+    closeLayout,
     editCustomCss,
     setDrag,
     setConflict,
