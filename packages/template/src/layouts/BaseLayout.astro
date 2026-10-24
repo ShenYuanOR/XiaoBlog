@@ -4,6 +4,7 @@ import '../styles/prose.css';
 import '../styles/xiao.css';
 import '../styles/custom.css';
 import { loadConfig, resolveTheme, themeCss, titleOf } from '../lib/config';
+import { breakpointCss, resolveBreakpoints } from '../lib/breakpoints';
 import { withBase } from '../lib/base';
 import Header from '../components/site/Header.astro';
 import Footer from '../components/site/Footer.astro';
@@ -31,6 +32,8 @@ const { title, description, heads = [], page } = Astro.props;
 const config = loadConfig();
 const theme = resolveTheme(config);
 const tokens = themeCss(theme);
+/** 断点 token 类 + hide 区间，按 theme.breakpoints 生成（省略时与 1.x 的 md/sm/hide 等价）。 */
+const breakpointStyles = breakpointCss(resolveBreakpoints(config.theme));
 const pageTitle = titleOf(title, config);
 const desc = description || config.site.description;
 const pageSlug = typeof page === 'string' && page.trim() ? page.trim() : undefined;
@@ -61,6 +64,7 @@ const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
     <link rel="icon" href={withBase(config.site.favicon)} />
     {pageHref && <link rel="stylesheet" href={pageHref} />}
     <style is:inline set:html={tokens} />
+    <style is:inline set:html={breakpointStyles} />
     <script is:inline>
       (function () {
         const saved = localStorage.getItem('xiao-theme');

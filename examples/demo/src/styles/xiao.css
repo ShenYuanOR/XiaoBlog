@@ -1,191 +1,298 @@
 /* Xiao 组件类样式。
  * 只允许通过令牌变量取值（spec C-04）：颜色 --color-*、间距 --space-*、圆角 --radius*、字号 --font-size-*。
  * 选择器名与 1.x 保持一致（拖拽/预览定位依赖类名）。
+ *
+ * 断点相关规则（x-<id>-* token 类与 x-hide-*）由 src/lib/breakpoints.ts 按
+ * xiao.config.json 的 theme.breakpoints 生成，经 BaseLayout 以 inline style 注入；
+ * 本文件只保留无前缀的 base 类，以及窄屏下 base 类的默认响应式收缩。
+ *
+ * 为什么整文件放进 @layer：生成的内联样式在 head 里排在 Astro 打包的 CSS 之前，
+ * 若 base 类不入层，同特异性下「后面的 bundled 规则」会盖掉生成的断点类
+ * （例如 .x-pad-none 盖 .x-md-pad-md）。入层后 unlayered 的生成样式永远优先，
+ * 同时站点 custom.css / 页面样式（unlayered、更晚）仍可覆盖这些组件类。
  */
-.x-box,
-.x-stack,
-.x-grid,
-.x-card,
-.x-prose {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+@layer xiao-classes {
+  .x-box,
+  .x-stack,
+  .x-grid,
+  .x-card,
+  .x-prose {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 
-.x-stack {
-  display: flex;
-}
-.x-dir-column {
-  flex-direction: column;
-}
-.x-dir-row {
-  flex-direction: row;
-}
-.x-wrap {
-  flex-wrap: wrap;
-}
-.x-gap-none {
-  gap: 0;
-}
-.x-gap-xs {
-  gap: var(--space-1);
-}
-.x-gap-sm {
-  gap: var(--space-2);
-}
-.x-gap-md {
-  gap: var(--space-4);
-}
-.x-gap-lg {
-  gap: clamp(var(--space-4), 3vw, var(--space-5));
-}
-.x-gap-xl {
-  gap: clamp(var(--space-5), 4vw, var(--space-6));
-}
-.x-gap-2xl {
-  gap: clamp(var(--space-6), 5vw, var(--space-8));
-}
-.x-align-start {
-  align-items: flex-start;
-}
-.x-align-center {
-  align-items: center;
-}
-.x-align-end {
-  align-items: flex-end;
-}
-.x-justify-start {
-  justify-content: flex-start;
-}
-.x-justify-center {
-  justify-content: center;
-}
-.x-justify-end {
-  justify-content: flex-end;
-}
-.x-justify-between {
-  justify-content: space-between;
-}
-
-.x-pad-xs {
-  padding: var(--space-1);
-}
-.x-pad-sm {
-  padding: var(--space-2);
-}
-.x-pad-md {
-  padding: var(--space-4);
-}
-.x-pad-lg {
-  padding: clamp(var(--space-4), 3vw, var(--space-5));
-}
-.x-pad-xl {
-  padding: clamp(var(--space-5), 4vw, var(--space-6));
-}
-.x-pad-2xl {
-  padding: clamp(var(--space-6), 5vw, var(--space-8));
-}
-
-.x-bg-default {
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-.x-bg-primary {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-}
-.x-bg-surface {
-  background: var(--color-surface);
-}
-.x-bg-muted {
-  color: var(--color-text-2);
-}
-.x-bg-accent {
-  background: var(--color-surface);
-  border: 1px solid var(--color-accent);
-}
-.x-bg-inverse {
-  background: var(--color-text);
-  color: var(--color-bg);
-}
-
-.x-width-narrow {
-  max-width: var(--w-narrow);
-  margin-inline: auto;
-}
-.x-width-prose {
-  max-width: var(--w-prose);
-  margin-inline: auto;
-}
-.x-width-wide {
-  max-width: var(--w-wide);
-  margin-inline: auto;
-}
-.x-width-full {
-  width: 100%;
-}
-
-.x-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-}
-.x-cols-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.x-cols-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.x-cols-4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.x-card,
-.x-callout,
-.x-quote,
-.x-code,
-.x-button {
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-1);
-}
-
-.x-button,
-.x-link,
-summary {
-  min-height: var(--h-tap);
-  display: inline-flex;
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  text-decoration: none;
-}
-
-.x-ratio-16x9 {
-  aspect-ratio: 16 / 9;
-}
-.x-ratio-4x3 {
-  aspect-ratio: 4 / 3;
-}
-.x-ratio-1x1 {
-  aspect-ratio: 1;
-}
-.x-ratio-21x9 {
-  aspect-ratio: 21 / 9;
-}
-.x-media {
-  width: 100%;
-  object-fit: cover;
-}
-
-@media (max-width: 767px) {
-  .x-dir-row {
+  .x-stack {
+    display: flex;
+  }
+  .x-dir-column {
     flex-direction: column;
   }
-  .x-cols-2,
-  .x-cols-3,
+  .x-dir-row {
+    flex-direction: row;
+  }
+  .x-wrap {
+    flex-wrap: wrap;
+  }
+  .x-gap-none {
+    gap: 0;
+  }
+  .x-gap-xs {
+    gap: var(--space-1);
+  }
+  .x-gap-sm {
+    gap: var(--space-2);
+  }
+  .x-gap-md {
+    gap: var(--space-4);
+  }
+  .x-gap-lg {
+    gap: clamp(var(--space-4), 3vw, var(--space-5));
+  }
+  .x-gap-xl {
+    gap: clamp(var(--space-5), 4vw, var(--space-6));
+  }
+  .x-gap-2xl {
+    gap: clamp(var(--space-6), 5vw, var(--space-8));
+  }
+  .x-align-start {
+    align-items: flex-start;
+  }
+  .x-align-center {
+    align-items: center;
+  }
+  .x-align-end {
+    align-items: flex-end;
+  }
+  .x-justify-start {
+    justify-content: flex-start;
+  }
+  .x-justify-center {
+    justify-content: center;
+  }
+  .x-justify-end {
+    justify-content: flex-end;
+  }
+  .x-justify-between {
+    justify-content: space-between;
+  }
+
+  .x-pad-xs {
+    padding: var(--space-1);
+  }
+  .x-pad-sm {
+    padding: var(--space-2);
+  }
+  .x-pad-md {
+    padding: var(--space-4);
+  }
+  .x-pad-lg {
+    padding: clamp(var(--space-4), 3vw, var(--space-5));
+  }
+  .x-pad-xl {
+    padding: clamp(var(--space-5), 4vw, var(--space-6));
+  }
+  .x-pad-2xl {
+    padding: clamp(var(--space-6), 5vw, var(--space-8));
+  }
+
+  .x-bg-default {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+  .x-bg-primary {
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+  .x-bg-surface {
+    background: var(--color-surface);
+  }
+  .x-bg-muted {
+    color: var(--color-text-2);
+  }
+  .x-bg-accent {
+    background: var(--color-surface);
+    border: 1px solid var(--color-accent);
+  }
+  .x-bg-inverse {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .x-width-narrow {
+    max-width: var(--w-narrow);
+    margin-inline: auto;
+  }
+  .x-width-prose {
+    max-width: var(--w-prose);
+    margin-inline: auto;
+  }
+  .x-width-wide {
+    max-width: var(--w-wide);
+    margin-inline: auto;
+  }
+  .x-width-full {
+    width: 100%;
+  }
+
+  .x-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  }
+  .x-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .x-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .x-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .x-card,
+  .x-callout,
+  .x-quote,
+  .x-code,
+  .x-button {
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-1);
+  }
+
+  .x-button,
+  .x-link,
+  summary {
+    min-height: var(--h-tap);
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    text-decoration: none;
+  }
+
+  .x-ratio-16x9 {
+    aspect-ratio: 16 / 9;
+  }
+  .x-ratio-4x3 {
+    aspect-ratio: 4 / 3;
+  }
+  .x-ratio-1x1 {
+    aspect-ratio: 1;
+  }
+  .x-ratio-21x9 {
+    aspect-ratio: 21 / 9;
+  }
+  .x-media {
+    width: 100%;
+    object-fit: cover;
+  }
+
+  /* 窄屏下 base 类的默认收缩。固定取最窄断点的语义（1.x 是 767px）：
+ * 这些类没有断点前缀，由 bundled CSS 保证在 base 类之后生效（生成的内联样式不能承担，
+ * 因为 Astro 会把 bundled CSS 追加在 head 末尾，会反过来覆盖内联规则）。
+ * 断点自定义后，需要「按断点收缩」的场景请用 x-<id>-dir-column / x-<id>-cols-1 这类 token 类。 */
+  @media (max-width: 767px) {
+    .x-dir-row {
+      flex-direction: column;
+    }
+    .x-cols-2,
+    .x-cols-3,
+    .x-cols-4 {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* 无前缀的 base token 类（与生成器里的 x-<id>-* 一一对应）。 */
+  .x-pad-none {
+    padding: 0;
+  }
+  .x-cols-1 {
     grid-template-columns: minmax(0, 1fr);
   }
-  .x-hide-mobile {
-    display: none;
+  .x-radius-none {
+    border-radius: 0;
+  }
+  .x-radius-sm {
+    border-radius: var(--radius-sm);
+  }
+  .x-radius-md {
+    border-radius: var(--radius-md);
+  }
+  .x-radius-lg {
+    border-radius: var(--radius-lg);
+  }
+  .x-radius-full {
+    border-radius: 999px;
+  }
+  .x-shadow-none {
+    box-shadow: none;
+  }
+  .x-shadow-sm {
+    box-shadow: var(--shadow-1);
+  }
+  .x-shadow-md {
+    box-shadow: var(--shadow-2);
+  }
+  .x-shadow-lg {
+    box-shadow: 0 16px 40px rgb(0 0 0 / 18%);
+  }
+  .x-border-none {
+    border: 0;
+  }
+  .x-border-subtle {
+    border: 1px solid var(--color-line);
+  }
+  .x-border-strong {
+    border: 1px solid var(--color-text-2);
+  }
+  .x-text-xs {
+    font-size: var(--font-size-xs);
+  }
+  .x-text-sm {
+    font-size: var(--font-size-sm);
+  }
+  .x-text-base {
+    font-size: var(--font-size-base);
+  }
+  .x-text-md {
+    font-size: var(--font-size-md);
+  }
+  .x-text-lg {
+    font-size: var(--font-size-lg);
+  }
+  .x-text-xl {
+    font-size: var(--font-size-xl);
+  }
+  .x-text-2xl {
+    font-size: var(--font-size-2xl);
+  }
+  .x-text-3xl {
+    font-size: var(--font-size-3xl);
+  }
+  .x-weight-normal {
+    font-weight: 400;
+  }
+  .x-weight-medium {
+    font-weight: 500;
+  }
+  .x-weight-bold {
+    font-weight: 600;
+  }
+  .x-color-default {
+    color: var(--color-text);
+  }
+  .x-color-muted {
+    color: var(--color-text-2);
+  }
+  .x-color-primary {
+    color: var(--color-accent);
+  }
+  .x-talign-start {
+    text-align: start;
+  }
+  .x-talign-center {
+    text-align: center;
+  }
+  .x-talign-end {
+    text-align: end;
   }
 }

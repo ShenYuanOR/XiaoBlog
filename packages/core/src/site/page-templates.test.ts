@@ -10,10 +10,17 @@ describe('自定义此页和页面模板', () => {
     const site = mkdtempSync(path.join(tmpdir(), 'xiao-page-'));
     const layout = path.join(site, 'src', 'layouts');
     mkdirSync(layout, { recursive: true });
-    writeFileSync(path.join(layout, 'PostLayout.astro'), 'SHARED\n');
+    writeFileSync(
+      path.join(layout, 'PostLayout.astro'),
+      "import Base from './BaseLayout.astro';\nimport { loadConfig } from '../lib/config';\n",
+    );
     const custom = customizePost(site, 'only-this');
-    writeFileSync(path.join(site, custom), 'CUSTOM\n');
-    expect(readFileSync(path.join(layout, 'PostLayout.astro'), 'utf8')).toBe('SHARED\n');
+    expect(readFileSync(path.join(site, custom), 'utf8')).toBe(
+      "import Base from '../BaseLayout.astro';\nimport { loadConfig } from '../../lib/config';\n",
+    );
+    expect(readFileSync(path.join(layout, 'PostLayout.astro'), 'utf8')).toContain(
+      './BaseLayout.astro',
+    );
     expect(existsSync(path.join(site, 'src', 'layouts', 'posts', 'other.astro'))).toBe(false);
   });
 

@@ -78,6 +78,19 @@ describe('只改一段', () => {
   });
 });
 
+describe('晓组件 HTML', () => {
+  it('带 data-xiao 的块可以改文案后写回', () => {
+    const source =
+      '前。\n\n<article class="x-box x-card" data-xiao="card"><p data-xiao="text">旧文案</p></article>\n\n后。\n';
+    const session = markDirty(openMarkdown(source));
+    const current = source.replace('旧文案', '新文案');
+    const saved = saveMarkdown(session, current);
+    expect(saved.write).toBe(true);
+    expect(saved.text).toContain('新文案');
+    expect(saved.text).not.toContain('旧文案');
+  });
+});
+
 describe('守卫块被修改', () => {
   it('改了带 meta 的代码块就拒绝写盘', () => {
     const source = fixtures['code-meta'] ?? '';

@@ -81,11 +81,36 @@
           "enum": ["none", "soft", "strong"],
           "default": "soft"
         },
-        "motion": { "type": "boolean", "default": true }
+        "motion": { "type": "boolean", "default": true },
+        "breakpoints": {
+          "type": "array",
+          "description": "响应式断点；省略时用内置默认（md=1023 平板、sm=767 手机），老内容不变。",
+          "minItems": 1,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/breakpoint" }
+        }
       }
     }
   },
   "$defs": {
+    "breakpoint": {
+      "type": "object",
+      "required": ["id", "maxWidth"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,16}$",
+          "description": "类名前缀（x-<id>-* / x-hide-<id>）；建成后不允许改名。"
+        },
+        "label": { "type": "string", "description": "面板显示名，可改。" },
+        "maxWidth": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 3840,
+          "description": "该断点覆盖的最大宽度（含）。"
+        }
+      }
+    },
     "palette": {
       "type": "object",
       "description": "色板覆盖项，均可不填。",

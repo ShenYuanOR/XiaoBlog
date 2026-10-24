@@ -1,4 +1,5 @@
 import raw from '../../xiao.config.json';
+import type { Breakpoint } from './breakpoints';
 import {
   BASE_FONT_SIZES,
   BASE_SPACES,
@@ -50,6 +51,8 @@ export interface ThemeConfig {
   contentWidth?: ContentWidthId;
   shadow?: ShadowId;
   motion?: boolean;
+  /** 响应式断点；省略时用 lib/breakpoints.ts 的 DEFAULT_BREAKPOINTS。 */
+  breakpoints?: Breakpoint[];
 }
 
 export interface XiaoConfig {

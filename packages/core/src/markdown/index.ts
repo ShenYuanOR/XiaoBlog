@@ -61,7 +61,7 @@ export function saveMarkdown(
   if (!acceptWrite(newBody, currentBody, session.body, session.style)) {
     return { write: false, text: session.original, reason: 'rejected' };
   }
-  const text = `${fmRaw}${newBody}`;
+  const text = fmRaw && !fmRaw.endsWith('\n') ? `${fmRaw}\n${newBody}` : `${fmRaw}${newBody}`;
   if (text === session.original) return { write: false, text, reason: 'identical' };
   return { write: true, text, reason: 'edited' };
 }

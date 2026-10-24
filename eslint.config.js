@@ -32,6 +32,7 @@ export default defineConfig(
     'redirects/**',
     '.vitepress/**',
     '.agents/**',
+    'blog/**',
     'coverage/**',
     'packages/core/src/markdown/corpus/**',
     '**/*.vue',

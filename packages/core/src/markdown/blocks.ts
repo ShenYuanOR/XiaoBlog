@@ -43,8 +43,13 @@ function hasContainer(slice: string): boolean {
   return /^:::/m.test(slice);
 }
 
+function isXiaoHtml(slice: string): boolean {
+  return /data-xiao\s*=/.test(slice);
+}
+
 export function isGuarded(node: MdastNode, slice: string): boolean {
-  if (node.type === 'definition' || node.type === 'html') return true;
+  if (node.type === 'html') return !isXiaoHtml(slice);
+  if (node.type === 'definition') return true;
   if (node.type === 'code' && Boolean(node.meta)) return true;
   if (node.type === 'paragraph' && isImageAlt(node)) return true;
   if (hasBackslashAutolink(slice) || hasContainer(slice)) return true;

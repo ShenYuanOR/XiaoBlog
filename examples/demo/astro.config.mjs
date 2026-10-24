@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
+import { xiaoMarkdownIntegration } from './src/lib/md-xiao.mjs';
 import { configFieldErrors } from './src/lib/rules.mjs';
 import { xiaoValidate } from './src/lib/validate.mjs';
 
@@ -15,7 +16,7 @@ export default defineConfig({
   base: config.site.base,
   devToolbar: { enabled: false },
   redirects: config.redirects,
-  integrations: [sitemap(), xiaoValidate()],
+  integrations: [sitemap(), xiaoMarkdownIntegration(), xiaoValidate()],
   image: {
     layout: 'constrained',
     responsiveStyles: true,
