@@ -38,6 +38,7 @@ const deviceItems = [
   { key: 'phone', label: '手机', icon: icons.phone },
   { key: 'tablet', label: '平板', icon: icons.tablet },
   { key: 'pc', label: '电脑', icon: icons.pc },
+  { key: 'side', label: '并排', icon: icons.side },
 ];
 
 const navKey = computed({
@@ -54,6 +55,8 @@ const navOptions = navItems.map((item) => ({
 const showList = computed(
   () => Boolean(session.siteDir) && (session.nav === 'posts' || session.nav === 'pages'),
 );
+const showInspector = computed(() => session.inspectorOpen && showList.value);
+const listRail = computed(() => showList.value && session.listCollapsed);
 const hasSite = computed(() => Boolean(session.siteDir));
 
 const commands = computed(() => [
@@ -70,6 +73,10 @@ const commands = computed(() => [
   { id: 'site:open', label: '打开其他站点…', group: '站点', icon: icons.files },
   { id: 'site:welcome', label: '回到欢迎页', group: '站点', icon: icons.back },
 ]);
+
+watch(commandOpen, (open) => {
+  session.chromeOpen = open;
+});
 
 function runCommand(id: string): void {
   commandOpen.value = false;
@@ -128,6 +135,7 @@ let frame = 0;
 let observer: ResizeObserver | null = null;
 
 function syncDock(): void {
+  if (session.nav === 'pages' && !commandOpen.value) return;
   const element = dockEl.value;
   if (!element) {
     void window.xiao.preview.hideDock();
@@ -257,7 +265,7 @@ const saveText = computed(() => {
 });
 
 const previewDeviceKey = computed({
-  get: () => (session.previewDevice === 'side' ? 'pc' : session.previewDevice),
+  get: () => session.previewDevice,
   set: (value: string) => session.setPreviewDevice(value as PreviewDevice),
 });
 
@@ -268,7 +276,7 @@ const modeKey = computed({
 </script>
 
 <template>
-  <div class="shell">
+  <div class="shell" :class="{ 'has-dev': session.devDrawer }">
     <header class="top">
       <div class="brand">
         <span class="brand-mark">晓</span>
@@ -318,13 +326,40 @@ const modeKey = computed({
       />
     </header>
 
-    <div class="body" :class="{ 'has-list': showList }">
-      <aside v-if="showList" class="list">
+    <div
+      class="body"
+      :class="{
+        'has-list': showList && !session.listCollapsed,
+        'list-rail': listRail,
+        'has-inspector': showInspector,
+      }"
+    >
+      <aside v-if="showList" class="list" :class="{ collapsed: session.listCollapsed }">
         <header class="list-head">
-          <h2>{{ navItem?.label }}</h2>
-          <span class="list-hint">{{ session.nav === 'posts' ? '选题写作' : '选择页面' }}</span>
+          <template v-if="!session.listCollapsed">
+            <h2>{{ navItem?.label }}</h2>
+            <span class="list-hint">{{ session.nav === 'posts' ? '选题写作' : '选择页面' }}</span>
+            <UiTooltip :label="session.nav === 'posts' ? '收起文章列表' : '收起页面列表'">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                :icon="icons.chevronLeft"
+                :aria-label="session.nav === 'posts' ? '收起文章列表' : '收起页面列表'"
+                @click="session.listCollapsed = true"
+              />
+            </UiTooltip>
+          </template>
+          <UiTooltip v-else :label="session.nav === 'posts' ? '展开文章列表' : '展开页面列表'">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="icons.chevronRight"
+              :aria-label="session.nav === 'posts' ? '展开文章列表' : '展开页面列表'"
+              @click="session.listCollapsed = false"
+            />
+          </UiTooltip>
         </header>
-        <div class="list-body">
+        <div v-show="!session.listCollapsed" class="list-body">
           <Posts v-if="session.nav === 'posts' && hasSite" :active="slug" @select="slug = $event" />
           <Pages v-else-if="session.nav === 'pages' && hasSite" />
           <UiEmpty
@@ -353,13 +388,13 @@ const modeKey = computed({
           </div>
           <div class="view-actions">
             <UiSegmented v-if="session.previewMode !== 'off'" v-model="previewDeviceKey" :items="deviceItems" />
-            <UiTooltip :label="copy.inspector">
+            <UiTooltip v-if="showList" :label="session.inspectorOpen ? '收起属性栏' : '展开属性栏'">
               <UiButton
                 variant="ghost"
                 size="sm"
                 :icon="icons.list"
                 :class="{ on: session.inspectorOpen }"
-                aria-label="切换检查器"
+                :aria-label="session.inspectorOpen ? '收起属性栏' : '展开属性栏'"
                 @click="session.inspectorOpen = !session.inspectorOpen"
               />
             </UiTooltip>
@@ -399,7 +434,11 @@ const modeKey = computed({
           </UiEmpty>
         </div>
 
-        <div v-if="session.previewMode === 'dock'" class="dock" :class="{ live: !!session.previewUrl }">
+        <div
+          v-if="session.previewMode === 'dock' && session.nav !== 'pages'"
+          class="dock"
+          :class="{ live: !!session.previewUrl }"
+        >
           <div ref="dockEl" class="dock-frame">
             <UiEmpty
               v-if="!session.previewUrl"
@@ -417,7 +456,7 @@ const modeKey = computed({
         </div>
       </main>
 
-      <aside v-if="session.inspectorOpen && showList" class="inspector">
+      <aside v-if="showInspector" class="inspector">
         <div id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
@@ -457,11 +496,15 @@ const modeKey = computed({
 <style scoped>
 .shell {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr) auto 24px;
+  grid-template-rows: 48px minmax(0, 1fr) 24px;
   height: 100vh;
   overflow: hidden;
   background: var(--ui-bg);
   color: var(--ui-text);
+}
+
+.shell.has-dev {
+  grid-template-rows: 48px minmax(0, 1fr) auto 24px;
 }
 
 .top {
@@ -521,11 +564,23 @@ const modeKey = computed({
 }
 
 .body.has-list {
+  grid-template-columns: 272px minmax(0, 1fr);
+}
+
+.body.list-rail {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.body.has-inspector {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.body.has-list.has-inspector {
   grid-template-columns: 272px minmax(0, 1fr) 320px;
 }
 
-.body:not(.has-list) {
-  grid-template-columns: minmax(0, 1fr) 320px;
+.body.list-rail.has-inspector {
+  grid-template-columns: 44px minmax(0, 1fr) 320px;
 }
 
 .list {
@@ -536,15 +591,27 @@ const modeKey = computed({
   border-right: 1px solid var(--ui-line);
 }
 
+.list.collapsed {
+  width: 44px;
+}
+
 .list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--ui-s1);
   padding: var(--ui-s2) var(--ui-s3);
   border-bottom: 1px solid var(--ui-line);
 }
 
+.list.collapsed .list-head {
+  justify-content: center;
+  padding: var(--ui-s2) 0;
+}
+
 .list-head h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: var(--ui-fs-2);
   font-weight: 600;
@@ -652,7 +719,9 @@ const modeKey = computed({
 
 .status {
   display: flex;
+  box-sizing: border-box;
   align-items: center;
+  height: 24px;
   gap: var(--ui-s2);
   padding: 0 var(--ui-s3);
   background: var(--ui-panel);

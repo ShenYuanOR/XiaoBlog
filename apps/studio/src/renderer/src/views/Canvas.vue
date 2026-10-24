@@ -282,6 +282,21 @@ let styleKey = '';
 const specCache = new Map<string, PropSpec[]>();
 const nestCache = new Map<string, boolean>();
 const hostReady = ref(false);
+const boardEl = ref<HTMLElement | null>(null);
+const layersCollapsed = ref(false);
+const collapsedListForStage = ref(false);
+const stageZoom = ref(1);
+const dragGhost = ref<{ label: string; x: number; y: number } | null>(null);
+const dropLabel = ref('');
+
+type StageHit = { file: string; offset: string; place: 'before' | 'after' | 'into'; tag: string };
+type DragKind = { kind: 'new'; name: string; label: string } | { kind: 'move'; id: string; name: string; label: string };
+
+let dragArmed: { x: number; y: number; payload: DragKind } | null = null;
+let dragActive: DragKind | null = null;
+let lastHit: StageHit | null = null;
+let hitFrame = 0;
+let skipPaletteClick = false;
 
 // 写操作串行化，避免连续改属性时两次 reload 互相覆盖。
 let writeQueue: Promise<unknown> = Promise.resolve();
@@ -289,6 +304,10 @@ let propsToken = 0;
 let reloadToken = 0;
 let nestToken = 0;
 let stopPick: () => void = () => undefined;
+let stopResize: () => void = () => undefined;
+let stopCamera: () => void = () => undefined;
+let stageFrame = 0;
+let stageObserver: ResizeObserver | null = null;
 
 function sequenced<T>(task: () => Promise<T>): Promise<T> {
   const run = writeQueue.then(task, task);
@@ -979,6 +998,7 @@ async function reload(keepId = selectedId.value): Promise<void> {
   }
   selectedId.value = keep.id;
   await syncSelectionDetails(keep);
+  void focusPreview(keep.id);
 }
 
 async function loadPropSpecs(node: OutlineNode): Promise<void> {
@@ -1040,6 +1060,7 @@ async function syncSelectionDetails(node: OutlineNode): Promise<void> {
     return;
   }
   await loadPropSpecs(node);
+  if (selectedId.value === node.id) void focusPreview(node.id);
 }
 
 function singleTextNode(node: OutlineNode): OutlineNode | undefined {
@@ -1072,6 +1093,7 @@ function clearSelection(): void {
   draft.value = {};
   textDraft.value = '';
   propsLoading.value = false;
+  void window.xiao.preview.focus('', '');
 }
 
 async function selectNode(node: OutlineNode, syncPreview = true): Promise<void> {
@@ -1190,12 +1212,56 @@ watch(
   { immediate: true },
 );
 
-async function insertComponent(meta: ComponentMeta): Promise<void> {
-  const target = insertTarget.value;
+async function nestAllowed(parentName: string, childName: string): Promise<boolean> {
+  const key = `${parentName}>${childName}`;
+  const cached = nestCache.get(key);
+  if (cached !== undefined) return cached;
+  const result = await window.xiao.canvas.canNest(parentName, childName);
+  const allowed = result.ok ? result.data : false;
+  nestCache.set(key, allowed);
+  return allowed;
+}
+
+function isSelfOrDescendant(id: string, ancestorId: string): boolean {
+  if (id === ancestorId) return true;
+  let parentId = nodeMap.value.get(id)?.parentId ?? null;
+  while (parentId) {
+    if (parentId === ancestorId) return true;
+    parentId = nodeMap.value.get(parentId)?.parentId ?? null;
+  }
+  return false;
+}
+
+function hitToInsert(hit: StageHit): InsertTarget | null {
+  const file = hit.file.replaceAll('\\', '/');
+  const current = session.activePage.replaceAll('\\', '/');
+  if (file !== current) return null;
+  const row = nodeMap.value.get(hit.offset);
+  if (!row) return insertTarget.value;
+  if (hit.place === 'into' && row.container) {
+    return {
+      parentId: row.node.id,
+      parentName: row.node.name,
+      index: row.node.children.length,
+      label: `${labelOfNode(row.node)} 内部`,
+    };
+  }
+  const parent = row.parentId ? nodeMap.value.get(row.parentId) : undefined;
+  if (!parent) return insertTarget.value;
+  return {
+    parentId: parent.node.id,
+    parentName: parent.node.name,
+    index: hit.place === 'before' ? row.index : row.index + 1,
+    label: `${labelOfNode(parent.node)} · ${labelOfNode(row.node)} ${hit.place === 'before' ? '之前' : '之后'}`,
+  };
+}
+
+async function insertComponent(meta: ComponentMeta, at?: InsertTarget | null): Promise<void> {
+  const target = at ?? insertTarget.value;
   if (!target || busy.value || insertPending.value || !session.siteDir) return;
-  const reason = blocked.value[meta.name];
-  if (reason) {
-    notify(`${reason}；换一个容器再试。`, 'error', 'canvas-insert-blocked');
+  const allowed = await nestAllowed(target.parentName, meta.name);
+  if (!allowed) {
+    notify(`${target.parentName} 里放不下${meta.label}；换一个容器再试。`, 'error', 'canvas-insert-blocked');
     return;
   }
   const parentPath = pathOf(outline.value, target.parentId);
@@ -1230,6 +1296,38 @@ async function insertComponent(meta: ComponentMeta): Promise<void> {
   } finally {
     busy.value = false;
     insertPending.value = '';
+  }
+}
+
+async function moveNode(id: string, at: InsertTarget): Promise<void> {
+  if (!session.siteDir || busy.value) return;
+  if (isSelfOrDescendant(at.parentId, id)) {
+    notify('不能把容器拖进它自己里面。', 'error', 'canvas-move');
+    return;
+  }
+  const row = nodeMap.value.get(id);
+  if (!row || row.node.locked) return;
+  const allowed = await nestAllowed(at.parentName, row.node.name);
+  if (!allowed) {
+    notify(`${at.parentName} 里放不下${labelOfNode(row.node)}。`, 'error', 'canvas-move');
+    return;
+  }
+  busy.value = true;
+  session.setSaveState('saving');
+  try {
+    const result = await sequenced(() =>
+      window.xiao.canvas.move(session.siteDir, id, at.parentId, at.index, session.activePage),
+    );
+    if (!result.ok) {
+      notify(`没能移动：${result.message}`, 'error', 'canvas-move');
+      session.setSaveState('dirty');
+      return;
+    }
+    session.setSaveState('saved');
+    await reload(id);
+    notify('已调整位置', 'info', 'canvas-move');
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -1370,13 +1468,205 @@ function switchPage(value: string | number): void {
 // 预览联动
 // ---------------------------------------------------------------------------
 
+function stagePreviewUrl(): string {
+  const base = session.previewUrl;
+  if (!base) return '';
+  const root = base.endsWith('/') ? base : `${base}/`;
+  if (!pageRoute.value) return root;
+  return new URL(pageRoute.value, root).href;
+}
+
+const stageLive = computed(
+  () =>
+    Boolean(session.previewUrl) &&
+    session.previewMode === 'dock' &&
+    !session.chromeOpen &&
+    !overwriteStyleOpen.value &&
+    !resetStyleOpen.value,
+);
+
+function syncStage(): void {
+  const hole = boardEl.value;
+  if (!hole || !stageLive.value) {
+    if (session.nav === 'pages') void window.xiao.preview.hideDock();
+    return;
+  }
+  const url = stagePreviewUrl();
+  if (!url) {
+    void window.xiao.preview.hideDock();
+    return;
+  }
+  cancelAnimationFrame(stageFrame);
+  stageFrame = requestAnimationFrame(() => {
+    const rect = hole.getBoundingClientRect();
+    if (rect.width < 120 || rect.height < 120) {
+      void window.xiao.preview.hideDock();
+      return;
+    }
+    const device =
+      session.previewDevice === 'phone' ||
+      session.previewDevice === 'tablet' ||
+      session.previewDevice === 'side'
+        ? session.previewDevice
+        : 'pc';
+    void window.xiao.preview.dock({
+      enabled: true,
+      url,
+      device,
+      zoom: stageZoom.value,
+      bounds: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+    });
+  });
+}
+
+async function ensurePreview(): Promise<void> {
+  if (session.previewMode === 'window') return;
+  session.setPreviewMode('dock');
+  if (session.previewUrl || session.building || !session.siteDir) return;
+  session.building = true;
+  try {
+    const result = await window.xiao.runtime.start('dev', session.siteDir);
+    if (!result.ok) {
+      notify(`预览没能启动：${result.message}。先确认站点依赖已经装好。`, 'error', 'canvas-preview');
+    }
+  } finally {
+    session.building = false;
+  }
+}
+
+function selectedHandles(): { width: boolean; pad: boolean } {
+  const names = new Set(propSpecs.value.map((spec) => spec.name));
+  return { width: names.has('width'), pad: names.has('pad') };
+}
+
 async function focusPreview(id: string): Promise<void> {
   if (!session.previewUrl) return;
+  const node = findNode(outline.value, id);
+  const label = node ? labelOfNode(node) : '';
   try {
-    await window.xiao.preview.focus(session.activePage, id);
+    await window.xiao.preview.focus(session.activePage, id, label, selectedHandles());
   } catch {
-    // 只有独立预览窗会接收定位事件，停靠预览下失败可以忽略。
+    // 预览未挂上时忽略。
   }
+}
+
+const WIDTH_PX: Record<string, number> = { narrow: 560, prose: 720, wide: 1200, full: 1600 };
+const PAD_PX: Record<string, number> = { none: 0, xs: 4, sm: 8, md: 16, lg: 24, xl: 40, '2xl': 64 };
+
+function snapToken(px: number, table: Record<string, number>, allowed: string[]): string {
+  let best = allowed[0] ?? '';
+  let bestDelta = Infinity;
+  for (const value of allowed) {
+    const size = table[value];
+    if (size == null) continue;
+    const delta = Math.abs(size - px);
+    if (delta < bestDelta) {
+      best = value;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
+function onPreviewResize(payload: { prop: 'width' | 'pad'; px: number }): void {
+  const spec = propSpecs.value.find((item) => item.name === payload.prop);
+  if (!spec || spec.type !== 'enum' || !spec.options?.length) return;
+  const allowed = spec.options.map((item) => item.value);
+  const next =
+    payload.prop === 'width' ? snapToken(payload.px, WIDTH_PX, allowed) : snapToken(payload.px, PAD_PX, allowed);
+  if (!next || String(draft.value[spec.name] ?? '') === next) return;
+  commitProp(spec, next);
+}
+
+function onPreviewCamera(payload: { zoom: number }): void {
+  if (typeof payload.zoom === 'number') stageZoom.value = payload.zoom;
+}
+
+async function setStageZoom(next: number): Promise<void> {
+  stageZoom.value = Math.min(2, Math.max(0.5, Math.round(next * 20) / 20));
+  await window.xiao.preview.zoom(stageZoom.value);
+}
+
+function armDrag(event: PointerEvent, payload: DragKind): void {
+  if (event.button !== 0 || busy.value) return;
+  dragArmed = { x: event.clientX, y: event.clientY, payload };
+}
+
+async function updateDrag(event: PointerEvent): Promise<void> {
+  if (!dragArmed && !dragActive) return;
+  if (dragArmed && !dragActive) {
+    const dx = event.clientX - dragArmed.x;
+    const dy = event.clientY - dragArmed.y;
+    if (dx * dx + dy * dy < 36) return;
+    dragActive = dragArmed.payload;
+    skipPaletteClick = dragActive.kind === 'new';
+    session.setDrag({
+      kind: dragActive.kind,
+      name: dragActive.name,
+      id: dragActive.kind === 'move' ? dragActive.id : '',
+    });
+  }
+  if (!dragActive) return;
+  dragGhost.value = { label: dragActive.label, x: event.clientX, y: event.clientY };
+  cancelAnimationFrame(hitFrame);
+  hitFrame = requestAnimationFrame(() => {
+    void window.xiao.preview.hit(event.clientX, event.clientY).then((result) => {
+      lastHit = result.ok ? result.data : null;
+      dropLabel.value = lastHit ? hitToInsert(lastHit)?.label ?? '' : '';
+      void window.xiao.preview.drop(lastHit);
+    });
+  });
+}
+
+async function finishDrag(): Promise<void> {
+  const payload = dragActive;
+  const hit = lastHit;
+  dragArmed = null;
+  dragActive = null;
+  lastHit = null;
+  dragGhost.value = null;
+  dropLabel.value = '';
+  session.setDrag(null);
+  void window.xiao.preview.drop(null);
+  if (!payload) return;
+  const at = hit ? hitToInsert(hit) : insertTarget.value;
+  if (!at) return;
+  if (payload.kind === 'new') {
+    const meta = COMPONENTS.find((item) => item.name === payload.name);
+    if (meta) await insertComponent(meta, at);
+    return;
+  }
+  await moveNode(payload.id, at);
+}
+
+function onPaletteClick(meta: ComponentMeta): void {
+  if (skipPaletteClick) {
+    skipPaletteClick = false;
+    return;
+  }
+  void insertComponent(meta);
+}
+
+function onPalettePointerDown(event: PointerEvent, meta: ComponentMeta): void {
+  armDrag(event, { kind: 'new', name: meta.name, label: meta.label });
+}
+
+function onTreePointerDown(event: PointerEvent, row: TreeRow): void {
+  if (row.node.locked) return;
+  armDrag(event, { kind: 'move', id: row.node.id, name: row.node.name, label: labelOfNode(row.node) });
+}
+
+function onWindowPointerMove(event: PointerEvent): void {
+  void updateDrag(event);
+}
+
+function onWindowPointerUp(): void {
+  void finishDrag();
 }
 
 async function onPreviewPick(payload: { file: string; offset: string }): Promise<void> {
@@ -1407,7 +1697,7 @@ async function onPreviewPick(payload: { file: string; offset: string }): Promise
     notify('这块是模板代码，不能在搭建里改；去开发者模式改源码。', 'info', 'canvas-pick-lock');
     return;
   }
-  await selectNode(row.node, false);
+  await selectNode(row.node, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -1464,22 +1754,67 @@ watch(
   },
 );
 
+watch(
+  () =>
+    [
+      session.previewUrl,
+      session.previewMode,
+      session.previewDevice,
+      session.chromeOpen,
+      session.activePage,
+      pageRoute.value,
+      overwriteStyleOpen.value,
+      resetStyleOpen.value,
+      layersCollapsed.value,
+      stageZoom.value,
+    ] as const,
+  () => {
+    void nextTick(syncStage);
+  },
+);
+
+
+
+watch(boardEl, (el) => {
+  stageObserver?.disconnect();
+  if (!el) return;
+  stageObserver = new ResizeObserver(() => syncStage());
+  stageObserver.observe(el);
+  syncStage();
+});
+
 onMounted(() => {
   checkInspectorHost();
   window.addEventListener('xiao-canvas', onCanvasRefresh);
   window.addEventListener('xiao:save', onSaveRequest);
+  window.addEventListener('pointermove', onWindowPointerMove);
+  window.addEventListener('pointerup', onWindowPointerUp);
   stopPick = window.xiao.preview.onPick((payload) => {
     void onPreviewPick(payload);
   });
+  stopResize = window.xiao.preview.onResize(onPreviewResize);
+  stopCamera = window.xiao.preview.onCamera(onPreviewCamera);
+  if (!session.listCollapsed) {
+    session.listCollapsed = true;
+    collapsedListForStage.value = true;
+  }
   void loadPages();
   void reload();
   void loadPageStyle();
+  void ensurePreview().then(() => nextTick(syncStage));
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('xiao-canvas', onCanvasRefresh);
   window.removeEventListener('xiao:save', onSaveRequest);
+  window.removeEventListener('pointermove', onWindowPointerMove);
+  window.removeEventListener('pointerup', onWindowPointerUp);
   stopPick();
+  stopResize();
+  stopCamera();
+  stageObserver?.disconnect();
+  cancelAnimationFrame(stageFrame);
+  if (collapsedListForStage.value) session.listCollapsed = false;
 });
 </script>
 
@@ -1508,14 +1843,10 @@ onBeforeUnmount(() => {
               :key="meta.name"
               type="button"
               class="palette-item"
-              :disabled="
-                !insertTarget || busy || Boolean(blocked[meta.name]) || Boolean(insertPending)
-              "
-              :title="
-                blocked[meta.name] ??
-                (insertTarget ? `放入${insertTarget.label}` : '先选中一个可插入的容器')
-              "
-              @click="insertComponent(meta)"
+              :disabled="busy || Boolean(insertPending)"
+              :title="insertTarget ? `放入${insertTarget.label}，也可拖到页面上` : '拖到页面上，或先选中一个容器'"
+              @pointerdown="onPalettePointerDown($event, meta)"
+              @click="onPaletteClick(meta)"
             >
               <span class="palette-item__icon">
                 <UiIcon :path="CATEGORY_ICON[meta.category]" :size="16" />
@@ -1565,6 +1896,22 @@ onBeforeUnmount(() => {
           </UiBadge>
         </div>
         <div class="stage-bar__right">
+          <span class="zoom-read">{{ Math.round(stageZoom * 100) }}%</span>
+          <UiTooltip label="缩小">
+            <UiButton variant="ghost" size="sm" aria-label="缩小" @click="setStageZoom(stageZoom - 0.1)">
+              −
+            </UiButton>
+          </UiTooltip>
+          <UiTooltip label="100%">
+            <UiButton variant="ghost" size="sm" aria-label="重置缩放" @click="setStageZoom(1)">
+              1:1
+            </UiButton>
+          </UiTooltip>
+          <UiTooltip label="放大">
+            <UiButton variant="ghost" size="sm" aria-label="放大" @click="setStageZoom(stageZoom + 0.1)">
+              +
+            </UiButton>
+          </UiTooltip>
           <UiTooltip label="撤销（按页面文件）">
             <UiButton
               variant="ghost"
@@ -1598,91 +1945,140 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <div class="stage-body">
-        <div v-if="loading && !outline.length" class="stage-state">
-          <UiSpinner :size="20" />
-          <p>正在读取页面结构…</p>
-        </div>
-
-        <UiEmpty v-else-if="error" title="读不到页面结构" :description="error" :icon="icons.alert">
-          <template #action>
-            <UiButton size="sm" @click="reload()">刷新重试</UiButton>
-            <UiButton size="sm" variant="ghost" :icon="icons.code" @click="openSource">
-              打开源码
-            </UiButton>
-          </template>
-        </UiEmpty>
-
-        <UiEmpty
-          v-else-if="!outline.length"
-          title="这页还是空的"
-          description="页面里还没有可识别的结构。去源码里加一个根布局（例如 PageLayout），或者插入后点刷新。"
-          :icon="icons.pages"
-        >
-          <template #action>
-            <UiButton size="sm" @click="reload()">刷新结构</UiButton>
-            <UiButton size="sm" variant="ghost" :icon="icons.code" @click="openSource">
-              在源码里自定义
-            </UiButton>
-          </template>
-        </UiEmpty>
-
-        <div v-else class="outline-tree" role="tree" aria-label="页面结构">
-          <template v-for="(row, index) in visibleRows" :key="row.node.id">
-            <div
-              :id="rowDomId(row.node.id)"
-              class="tree-row"
-              :class="{
-                'is-selected': row.node.id === selectedId,
-                'is-locked': row.node.locked,
-                'is-container': row.container,
-              }"
-              role="treeitem"
-              :aria-level="row.depth + 1"
-              :aria-selected="row.node.id === selectedId"
-              :aria-expanded="row.node.children.length ? isExpanded(row) : undefined"
-              :aria-disabled="row.node.locked || undefined"
-              :tabindex="row.node.locked ? -1 : row.node.id === activeRowId ? 0 : -1"
-              :data-node-id="row.node.id"
-              :style="{ paddingLeft: `calc(var(--ui-s2) + ${row.depth * 12}px)` }"
-              @focus="focusedRowId = row.node.id"
-              @click="selectNode(row.node)"
-              @dblclick="toggleRow(row)"
-              @keydown="onRowKey(row, index, $event)"
-            >
-              <button
-                v-if="row.node.children.length"
-                type="button"
-                class="tree-row__caret"
-                tabindex="-1"
-                :aria-label="isExpanded(row) ? '收起' : '展开'"
-                @click.stop="toggleRow(row)"
-                @dblclick.stop
-              >
-                <UiIcon
-                  :path="isExpanded(row) ? icons.chevronDown : icons.chevronRight"
-                  :size="12"
+      <div class="stage-body" :class="{ 'layers-collapsed': layersCollapsed }">
+        <aside class="layers" aria-label="图层">
+          <header class="layers-head">
+            <template v-if="!layersCollapsed">
+              <UiIcon :path="icons.layers" :size="13" />
+              <span>图层</span>
+              <UiTooltip label="收起图层">
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  :icon="icons.chevronLeft"
+                  aria-label="收起图层"
+                  @click="layersCollapsed = true"
                 />
-              </button>
-              <span v-else class="tree-row__caret-space" aria-hidden="true"></span>
-              <UiIcon class="tree-row__icon" :path="rowIcon(row.node)" :size="14" />
-              <span class="tree-row__label">{{ labelOfNode(row.node) }}</span>
-              <span v-if="nodeMetaText(row.node)" class="tree-row__name">
-                {{ nodeMetaText(row.node) }}
-              </span>
-              <span v-if="row.node.locked" class="tree-row__lock">
-                <UiIcon :path="mdiLockOutline" :size="12" />锁定
-              </span>
+              </UiTooltip>
+            </template>
+            <UiTooltip v-else label="展开图层">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                :icon="icons.layers"
+                aria-label="展开图层"
+                @click="layersCollapsed = false"
+              />
+            </UiTooltip>
+          </header>
+          <div v-show="!layersCollapsed" class="layers-body">
+            <div v-if="loading && !outline.length" class="stage-state">
+              <UiSpinner :size="20" />
+              <p>正在读取结构…</p>
             </div>
-            <div
-              v-if="row.node.id === insertAnchorId && insertTarget"
-              class="insert-line"
-              aria-hidden="true"
+            <UiEmpty v-else-if="error" title="读不到结构" :description="error" :icon="icons.alert">
+              <template #action>
+                <UiButton size="sm" @click="reload()">刷新</UiButton>
+              </template>
+            </UiEmpty>
+            <UiEmpty
+              v-else-if="!outline.length"
+              title="这页还是空的"
+              description="插入组件，或去源码里加根布局。"
+              :icon="icons.pages"
+            />
+            <div v-else class="outline-tree" role="tree" aria-label="页面结构">
+              <template v-for="(row, index) in visibleRows" :key="row.node.id">
+                <div
+                  :id="rowDomId(row.node.id)"
+                  class="tree-row"
+                  :class="{
+                    'is-selected': row.node.id === selectedId,
+                    'is-locked': row.node.locked,
+                    'is-container': row.container,
+                  }"
+                  role="treeitem"
+                  :aria-level="row.depth + 1"
+                  :aria-selected="row.node.id === selectedId"
+                  :aria-expanded="row.node.children.length ? isExpanded(row) : undefined"
+                  :aria-disabled="row.node.locked || undefined"
+                  :tabindex="row.node.locked ? -1 : row.node.id === activeRowId ? 0 : -1"
+                  :data-node-id="row.node.id"
+                  :style="{ paddingLeft: `calc(var(--ui-s2) + ${row.depth * 12}px)` }"
+                  @focus="focusedRowId = row.node.id"
+                  @pointerdown="onTreePointerDown($event, row)"
+                  @click="selectNode(row.node)"
+                  @dblclick="toggleRow(row)"
+                  @keydown="onRowKey(row, index, $event)"
+                >
+                  <button
+                    v-if="row.node.children.length"
+                    type="button"
+                    class="tree-row__caret"
+                    tabindex="-1"
+                    :aria-label="isExpanded(row) ? '收起' : '展开'"
+                    @click.stop="toggleRow(row)"
+                    @dblclick.stop
+                  >
+                    <UiIcon
+                      :path="isExpanded(row) ? icons.chevronDown : icons.chevronRight"
+                      :size="12"
+                    />
+                  </button>
+                  <span v-else class="tree-row__caret-space" aria-hidden="true"></span>
+                  <UiIcon class="tree-row__icon" :path="rowIcon(row.node)" :size="14" />
+                  <span class="tree-row__label">{{ labelOfNode(row.node) }}</span>
+                  <span v-if="nodeMetaText(row.node)" class="tree-row__name">
+                    {{ nodeMetaText(row.node) }}
+                  </span>
+                  <span v-if="row.node.locked" class="tree-row__lock">
+                    <UiIcon :path="mdiLockOutline" :size="12" />锁定
+                  </span>
+                </div>
+                <div
+                  v-if="row.node.id === insertAnchorId && insertTarget"
+                  class="insert-line"
+                  aria-hidden="true"
+                >
+                  <span class="insert-line__bar"></span>
+                  <span class="insert-line__label">插入到这里</span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </aside>
+
+        <div class="board">
+          <div
+            v-if="!stageLive"
+            class="board-empty"
+          >
+            <UiEmpty
+              v-if="session.previewMode === 'window'"
+              title="预览在独立窗口"
+              description="点顶栏的预览按钮停靠回来，舞台才会显示真页面。"
+              :icon="icons.external"
+            />
+            <UiEmpty
+              v-else-if="session.building"
+              title="正在启动预览"
+              description="站点 dev 起来之后，真页面会出现在这块舞台上。"
+              :icon="icons.preview"
+            />
+            <UiEmpty
+              v-else
+              title="舞台还没有页面"
+              description="启动预览后，点页面上的元素就能选中，右侧改属性。"
+              :icon="icons.preview"
             >
-              <span class="insert-line__bar"></span>
-              <span class="insert-line__label">插入到这里</span>
-            </div>
-          </template>
+              <template #action>
+                <UiButton variant="primary" size="sm" :loading="session.building" @click="ensurePreview">
+                  启动预览
+                </UiButton>
+              </template>
+            </UiEmpty>
+          </div>
+          <div ref="boardEl" class="board-hole" />
         </div>
       </div>
 
@@ -1692,9 +2088,16 @@ onBeforeUnmount(() => {
         <span v-if="selectedRow" class="stage-foot__path">{{ selectedPath }}</span>
         <div class="grow"></div>
         <UiIcon :path="icons.preview" :size="13" />
-        <span>预览里点元素可选中；滚动定位需独立预览窗</span>
+        <span>{{ dropLabel || '拖组件到页面上；Ctrl+滚轮缩放，空格拖动画布' }}</span>
       </footer>
     </section>
+    <div
+      v-if="dragGhost"
+      class="drag-ghost"
+      :style="{ left: `${dragGhost.x + 12}px`, top: `${dragGhost.y + 12}px` }"
+    >
+      {{ dragGhost.label }}
+    </div>
   </div>
 
   <Teleport v-if="hostReady" to="#inspector-host">
@@ -1973,7 +2376,7 @@ onBeforeUnmount(() => {
 
           <UiPanel title="提示" collapsible :default-open="false">
             <p class="hint-text">
-              点结构里的节点选中它，右侧会变成属性表单；点组件面板里的组件会插到选中容器末尾。启动预览后，点预览里的元素也能反向选中结构。
+              中间是真页面。点页面上的块选中它，右侧改属性；左边图层是结构树。组件仍插到选中容器里。
             </p>
           </UiPanel>
         </template>
@@ -2099,7 +2502,7 @@ onBeforeUnmount(() => {
   color: var(--ui-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: grab;
   transition:
     background-color var(--ui-dur) var(--ui-ease),
     border-color var(--ui-dur) var(--ui-ease);
@@ -2205,6 +2608,25 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
+.zoom-read {
+  min-width: 3em;
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  text-align: right;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 40;
+  padding: 2px 8px;
+  border-radius: var(--ui-r-sm);
+  background: #3b82f6;
+  color: #fff;
+  font-size: var(--ui-fs-1);
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+}
+
 .stage-bar__page-icon {
   color: var(--ui-text-3);
 }
@@ -2222,10 +2644,69 @@ onBeforeUnmount(() => {
 }
 
 .stage-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.stage-body.layers-collapsed {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.layers {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--ui-line);
+  background: var(--ui-panel);
+}
+
+.layers-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s1);
+  min-height: 36px;
+  padding: 0 var(--ui-s2);
+  border-bottom: 1px solid var(--ui-line);
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-1);
+  font-weight: 600;
+}
+
+.layers-head > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.layers-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+}
+
+.board {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: #07090e;
+}
+
+.board-hole {
+  position: absolute;
+  inset: 12px;
+}
+
+.board-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: var(--ui-bg);
 }
 
 .stage-state {
@@ -2247,7 +2728,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: var(--ui-s1);
-  min-height: 100%;
+  min-height: 0;
   padding: var(--ui-s2);
 }
 

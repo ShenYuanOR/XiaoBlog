@@ -128,10 +128,32 @@ const api = {
   preview: {
     set: (mode: 'phone' | 'tablet' | 'pc' | 'custom' | 'side', url: string, customWidth?: number) =>
       ipcRenderer.invoke('preview:set', mode, url, customWidth),
-    focus: (file: string, offset: string) => ipcRenderer.invoke('preview:focus', file, offset),
+    focus: (
+      file: string,
+      offset: string,
+      label?: string,
+      handles?: { width?: boolean; pad?: boolean },
+    ) => ipcRenderer.invoke('preview:focus', file, offset, label, handles),
     focusSelector: (selector: string) => ipcRenderer.invoke('preview:focusSelector', selector),
+    hit: (x: number, y: number) =>
+      ipcRenderer.invoke('preview:hit', x, y) as Promise<
+        IpcResult<{
+          file: string;
+          offset: string;
+          place: 'before' | 'after' | 'into';
+          tag: string;
+        } | null>
+      >,
+    drop: (
+      hit: { file: string; offset: string; place: 'before' | 'after' | 'into'; tag: string } | null,
+    ) => ipcRenderer.invoke('preview:drop', hit),
+    zoom: (value: number) => ipcRenderer.invoke('preview:zoom', value),
     onPick: (callback: (payload: { file: string; offset: string }) => void): (() => void) =>
       listen('preview:onPick', callback),
+    onResize: (callback: (payload: { prop: 'width' | 'pad'; px: number }) => void): (() => void) =>
+      listen('preview:onResize', callback),
+    onCamera: (callback: (payload: { zoom: number }) => void): (() => void) =>
+      listen('preview:onCamera', callback),
     onText: (
       callback: (payload: { file: string; offset: string; text: string }) => void,
     ): (() => void) => listen('preview:onText', callback),
@@ -142,8 +164,9 @@ const api = {
     dock: (input: {
       enabled: boolean;
       url: string;
-      device: 'phone' | 'tablet' | 'pc';
+      device: 'phone' | 'tablet' | 'pc' | 'side';
       bounds: { x: number; y: number; width: number; height: number };
+      zoom?: number;
     }): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:dock', input),
     hideDock: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:hideDock'),
   },

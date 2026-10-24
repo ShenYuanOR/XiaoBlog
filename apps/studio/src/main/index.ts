@@ -15,11 +15,15 @@ import {
   destroyDock,
   hideDock,
   hidePageEditor,
+  hitPreview,
+  hintDrop,
+  setDockZoom,
   showDock,
   showPageEditor,
   showPreview,
   type PreviewMode,
   type DockInput,
+  type StageHit,
 } from './preview.ts';
 import { SiteWatcher } from './watch.ts';
 import {
@@ -111,6 +115,15 @@ function registerProtocol(): void {
   });
 }
 
+function rendererLoadUrl(): string {
+  if (app.isPackaged) return 'app://bundle/index.html';
+  const host = process.env.HOST || '127.0.0.1';
+  const port = Number(process.env.PORT || process.env.DEV_PORT || '');
+  // PORT 是本进程 Vite 绑定端口。ELECTRON_RENDERER_URL 可能从别的项目泄漏进来。
+  if (port > 0) return `http://${host}:${port}`;
+  return process.env.ELECTRON_RENDERER_URL ?? 'app://bundle/index.html';
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -125,16 +138,13 @@ function createWindow(): BrowserWindow {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL && !process.argv.includes('--probe')) {
+  const url = rendererLoadUrl();
+  if (!app.isPackaged && url.startsWith('http') && !process.argv.includes('--probe')) {
     win.webContents.once('did-finish-load', () => {
       win.webContents.openDevTools({ mode: 'detach' });
     });
   }
-  if (app.isPackaged) {
-    void win.loadURL('app://bundle/index.html');
-  } else {
-    void win.loadURL(process.env.ELECTRON_RENDERER_URL ?? 'app://bundle/index.html');
-  }
+  void win.loadURL(url);
   return win;
 }
 
@@ -365,9 +375,39 @@ app.whenReady().then(() => {
       win.webContents.send('preview:onPick', payload);
     }
   });
-  ipcMain.handle('preview:focus', (_event, file: string, offset: string) => {
-    focusPreview(file, offset);
+  ipcMain.handle(
+    'preview:focus',
+    (
+      _event,
+      file: string,
+      offset: string,
+      label?: string,
+      handles?: { width?: boolean; pad?: boolean },
+    ) => {
+      focusPreview(file ?? '', offset ?? '', typeof label === 'string' ? label : '', handles);
+      return ok(null);
+    },
+  );
+  ipcMain.handle('preview:hit', async (_event, x: number, y: number) => ok(await hitPreview(x, y)));
+  ipcMain.handle('preview:drop', (_event, hit: StageHit | null) => {
+    hintDrop(hit);
     return ok(null);
+  });
+  ipcMain.handle('preview:zoom', (_event, zoom: number) => {
+    setDockZoom(Number(zoom) || 1);
+    return ok(null);
+  });
+  ipcMain.on('preview:resize', (event, payload: { prop: 'width' | 'pad'; px: number }) => {
+    if (!isPreviewContents(event.sender)) return;
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('preview:onResize', payload);
+    }
+  });
+  ipcMain.on('preview:camera', (event, payload: { zoom: number }) => {
+    if (!isPreviewContents(event.sender)) return;
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('preview:onCamera', payload);
+    }
   });
   ipcMain.handle('preview:focusSelector', async (_event, selector: string) => {
     await focusSelector(selector);

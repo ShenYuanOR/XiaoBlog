@@ -28,6 +28,7 @@ export const useSession = defineStore('session', () => {
   const saveState = ref<SaveState>('saved');
   const inspectorOpen = ref(true);
   const listCollapsed = ref(false);
+  const chromeOpen = ref(false);
   const building = ref(false);
   const theme = ref<ThemeMode>(themeMode.value);
 
@@ -127,6 +128,7 @@ export const useSession = defineStore('session', () => {
     saveState,
     inspectorOpen,
     listCollapsed,
+    chromeOpen,
     building,
     theme,
     load,

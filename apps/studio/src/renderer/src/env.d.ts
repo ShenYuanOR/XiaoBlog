@@ -203,9 +203,31 @@ export interface XiaoApi {
       url: string,
       customWidth?: number,
     ) => Promise<IpcResult<number[]>>;
-    focus: (file: string, offset: string) => Promise<IpcResult<null>>;
+    focus: (
+      file: string,
+      offset: string,
+      label?: string,
+      handles?: { width?: boolean; pad?: boolean },
+    ) => Promise<IpcResult<null>>;
     focusSelector: (selector: string) => Promise<IpcResult<null>>;
+    hit: (
+      x: number,
+      y: number,
+    ) => Promise<
+      IpcResult<{
+        file: string;
+        offset: string;
+        place: 'before' | 'after' | 'into';
+        tag: string;
+      } | null>
+    >;
+    drop: (
+      hit: { file: string; offset: string; place: 'before' | 'after' | 'into'; tag: string } | null,
+    ) => Promise<IpcResult<null>>;
+    zoom: (value: number) => Promise<IpcResult<null>>;
     onPick: (callback: (payload: { file: string; offset: string }) => void) => () => void;
+    onResize: (callback: (payload: { prop: 'width' | 'pad'; px: number }) => void) => () => void;
+    onCamera: (callback: (payload: { zoom: number }) => void) => () => void;
     onText: (
       callback: (payload: { file: string; offset: string; text: string }) => void,
     ) => () => void;
@@ -216,8 +238,9 @@ export interface XiaoApi {
     dock: (input: {
       enabled: boolean;
       url: string;
-      device: 'phone' | 'tablet' | 'pc';
+      device: 'phone' | 'tablet' | 'pc' | 'side';
       bounds: { x: number; y: number; width: number; height: number };
+      zoom?: number;
     }) => Promise<IpcResult<null>>;
     hideDock: () => Promise<IpcResult<null>>;
   };

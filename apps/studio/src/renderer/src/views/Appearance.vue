@@ -79,7 +79,22 @@ interface ThemeDraft {
   contentWidth: ContentWidthId;
   shadow: ShadowId;
   motion: boolean;
+  breakpoints: BreakpointDraft[];
 }
+
+/** 断点：桌面（base）下按最大宽度生效，id 会进类名（x-<id>-pad-lg），建立后不建议改名。 */
+interface BreakpointDraft {
+  id: string;
+  label: string;
+  maxWidth: number;
+}
+
+const DEFAULT_BREAKPOINTS: BreakpointDraft[] = [
+  { id: 'md', label: '平板', maxWidth: 1023 },
+  { id: 'sm', label: '手机', maxWidth: 767 },
+];
+const BP_ID = /^[a-z][a-z0-9-]{1,16}$/;
+const MAX_BREAKPOINTS = 6;
 
 const FONT_STACKS: Record<Exclude<LegacyFontId, 'mono-heading'>, string> = {
   sans: "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
@@ -470,6 +485,7 @@ const draft = reactive<ThemeDraft>({
   contentWidth: 'prose',
   shadow: 'none',
   motion: true,
+  breakpoints: DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp })),
 });
 
 const REJECT_LABELS: Record<string, string> = {
@@ -484,6 +500,7 @@ const REJECT_LABELS: Record<string, string> = {
   'theme.scale': '字号刻度',
   'theme.radius': '圆角',
   'theme.contentWidth': '内容宽度',
+  'theme.breakpoints': '响应式断点',
   'posts.pageSize': '每页篇数',
 };
 
@@ -560,7 +577,30 @@ function normalizeTheme(value: unknown): ThemeDraft {
     ),
     shadow: pickEnum(theme.shadow, ['none', 'soft', 'strong'] as const, preset?.shadow ?? 'none'),
     motion: typeof theme.motion === 'boolean' ? theme.motion : (preset?.motion ?? true),
+    breakpoints: normalizeBreakpoints(theme.breakpoints),
   };
+}
+
+/** 断点表：非法/重复/超量时回退默认；按 maxWidth 升序返回。 */
+function normalizeBreakpoints(value: unknown): BreakpointDraft[] {
+  if (!Array.isArray(value)) return DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp }));
+  const seen = new Set<string>();
+  const widths = new Set<number>();
+  const rows: BreakpointDraft[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const id = typeof item.id === 'string' ? item.id.trim() : '';
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    const maxWidth = typeof item.maxWidth === 'number' ? Math.round(item.maxWidth) : NaN;
+    if (!BP_ID.test(id) || seen.has(id)) continue;
+    if (!Number.isFinite(maxWidth) || maxWidth < 320 || maxWidth > 3840) continue;
+    if (widths.has(maxWidth)) continue;
+    seen.add(id);
+    widths.add(maxWidth);
+    rows.push({ id, label: label || id, maxWidth });
+  }
+  rows.sort((a, b) => a.maxWidth - b.maxWidth);
+  return rows.length > 0 ? rows.slice(0, MAX_BREAKPOINTS) : DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp }));
 }
 
 function copyTheme(target: ThemeDraft, source: ThemeDraft): void {
@@ -580,6 +620,7 @@ function copyTheme(target: ThemeDraft, source: ThemeDraft): void {
   target.contentWidth = source.contentWidth;
   target.shadow = source.shadow;
   target.motion = source.motion;
+  target.breakpoints = source.breakpoints.map((bp) => ({ ...bp }));
 }
 
 function snapshotOf(value: ThemeDraft): string {
@@ -600,10 +641,71 @@ function snapshotOf(value: ThemeDraft): string {
     contentWidth: value.contentWidth,
     shadow: value.shadow,
     motion: value.motion,
+    breakpoints: value.breakpoints.map((bp) => `${bp.id}:${bp.label}:${bp.maxWidth}`),
   });
 }
 
 const dirty = computed(() => loaded.value && snapshotOf(draft) !== savedSnapshot.value);
+
+/** 已保存过的断点 id 不允许改（类名已经写进内容）；新加的、还没保存的可以改。 */
+const lockedBpIds = ref<string[]>([]);
+
+const bpErrors = computed<string[]>(() => {
+  const errors: string[] = [];
+  const rows = draft.breakpoints;
+  if (rows.length === 0) errors.push('至少保留一个断点');
+  if (rows.length > MAX_BREAKPOINTS) errors.push(`最多 ${MAX_BREAKPOINTS} 个断点`);
+  const ids = new Set<string>();
+  const widths = new Set<number>();
+  for (const row of rows) {
+    if (!BP_ID.test(row.id)) errors.push(`标识「${row.id}」只能用小写字母、数字和连字符，且以字母开头`);
+    else if (ids.has(row.id)) errors.push(`标识「${row.id}」重复`);
+    ids.add(row.id);
+    if (!row.label.trim()) errors.push(`断点「${row.id}」缺少名称`);
+    if (!Number.isFinite(row.maxWidth) || row.maxWidth < 320 || row.maxWidth > 3840) {
+      errors.push(`断点「${row.id}」的最大宽度要在 320–3840 之间`);
+    } else if (widths.has(row.maxWidth)) {
+      errors.push(`最大宽度 ${row.maxWidth}px 重复`);
+    }
+    widths.add(row.maxWidth);
+  }
+  return [...new Set(errors)];
+});
+
+function addBreakpoint(): void {
+  if (draft.breakpoints.length >= MAX_BREAKPOINTS) return;
+  const largest = draft.breakpoints.reduce((max, bp) => Math.max(max, bp.maxWidth), 767);
+  const nextWidth = Math.min(3840, largest + 160);
+  let index = draft.breakpoints.length + 1;
+  let id = `bp${index}`;
+  const used = new Set(draft.breakpoints.map((bp) => bp.id));
+  while (used.has(id)) id = `bp${++index}`;
+  draft.breakpoints = [
+    ...draft.breakpoints,
+    { id, label: `断点 ${draft.breakpoints.length + 1}`, maxWidth: nextWidth },
+  ];
+  draft.breakpoints.sort((a, b) => a.maxWidth - b.maxWidth);
+}
+
+function removeBreakpoint(id: string): void {
+  if (draft.breakpoints.length <= 1) return;
+  if (lockedBpIds.value.includes(id)) {
+    notify(
+      '这个断点已经保存过，内容里可能已经有它的类名。删除后旧类名会失效，建议先在文章里清掉对应覆盖。',
+      'info',
+      'appearance-breakpoints',
+    );
+  }
+  draft.breakpoints = draft.breakpoints.filter((bp) => bp.id !== id);
+}
+
+function resetBreakpoints(): void {
+  draft.breakpoints = DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp }));
+}
+
+function sortBreakpoints(): void {
+  draft.breakpoints.sort((a, b) => a.maxWidth - b.maxWidth);
+}
 
 const activePreset = computed<PresetDef | null>(() =>
   draft.preset ? (presetOf(draft.preset) ?? null) : null,
@@ -880,6 +982,19 @@ function buildConfig(): Record<string, unknown> | null {
   theme.contentWidth = draft.contentWidth;
   theme.shadow = draft.shadow;
   theme.motion = draft.motion;
+  const breakpoints = draft.breakpoints.map((bp) => ({
+    id: bp.id,
+    label: bp.label.trim() || bp.id,
+    maxWidth: Math.round(bp.maxWidth),
+  }));
+  const sameAsDefault =
+    breakpoints.length === DEFAULT_BREAKPOINTS.length &&
+    breakpoints.every((bp, index) => {
+      const base = DEFAULT_BREAKPOINTS[index];
+      return base ? bp.id === base.id && bp.maxWidth === base.maxWidth : false;
+    });
+  if (sameAsDefault) delete theme.breakpoints;
+  else theme.breakpoints = breakpoints;
   next.theme = theme;
   return next;
 }
@@ -904,6 +1019,10 @@ async function load(): Promise<void> {
   rawConfig.value = config;
   const normalized = normalizeTheme(config.theme);
   copyTheme(draft, normalized);
+  lockedBpIds.value = normalized.breakpoints.filter((bp) =>
+    DEFAULT_BREAKPOINTS.some((item) => item.id === bp.id),
+  ).map((bp) => bp.id);
+  lockedBpIds.value = normalized.breakpoints.map((bp) => bp.id);
   savedSnapshot.value = snapshotOf(normalized);
   previewScheme.value = normalized.colorScheme === 'dark' ? 'dark' : 'light';
   loaded.value = true;
@@ -913,6 +1032,10 @@ async function load(): Promise<void> {
 
 async function save(): Promise<void> {
   if (saving.value || !loaded.value || !session.siteDir) return;
+  if (bpErrors.value.length > 0) {
+    notify(`断点没填对：${bpErrors.value[0]}。改好后再保存。`, 'error', 'appearance-save');
+    return;
+  }
   const next = buildConfig();
   if (!next) return;
   // 写盘期间用户可能继续改令牌；用开始写盘时的快照，避免把后续改动误标成已保存。
@@ -1156,6 +1279,55 @@ onBeforeUnmount(() => {
           </div>
         </UiPanel>
 
+        <UiPanel title="断点">
+          <p class="section-lead">
+            断点决定「平板 / 手机」这类样式在哪些宽度生效。默认：平板 ≤1023、手机 ≤767。改成自己的数值后
+            <strong>保存并重新构建</strong>才生效。标识会写进样式类名（如 <code>x-md-pad-lg</code>），
+            已保存的标识不要改；删掉断点后，内容里它的旧类名会失效（不会自动清理）。
+          </p>
+          <div class="bp-list">
+            <div v-for="bp in draft.breakpoints" :key="bp.id" class="bp-row">
+              <UiField label="名称">
+                <UiInput v-model="bp.label" />
+              </UiField>
+              <UiField label="最大宽度 (px)">
+                <UiInput
+                  v-model.number="bp.maxWidth"
+                  type="number"
+                  :min="320"
+                  :max="3840"
+                  @change="sortBreakpoints"
+                />
+              </UiField>
+              <UiField label="标识" hint="类名前缀">
+                <UiInput v-model="bp.id" :disabled="lockedBpIds.includes(bp.id)" />
+              </UiField>
+              <UiButton
+                variant="ghost"
+                size="sm"
+                :icon="icons.trash"
+                :disabled="draft.breakpoints.length <= 1"
+                aria-label="删除断点"
+                :title="`删除断点 ${bp.label}`"
+                @click="removeBreakpoint(bp.id)"
+              />
+            </div>
+          </div>
+          <div class="bp-actions">
+            <UiButton
+              size="sm"
+              :icon-left="icons.plus"
+              :disabled="draft.breakpoints.length >= MAX_BREAKPOINTS"
+              @click="addBreakpoint"
+            >
+              添加断点
+            </UiButton>
+            <UiButton size="sm" variant="ghost" @click="resetBreakpoints">恢复默认</UiButton>
+            <span class="bp-count">{{ draft.breakpoints.length }} / {{ MAX_BREAKPOINTS }}</span>
+          </div>
+          <p v-if="bpErrors.length" class="bp-errors">{{ bpErrors.join('；') }}</p>
+        </UiPanel>
+
         <UiPanel title="高级 CSS" collapsible :default-open="false">
           <template v-if="session.mode === 'develop'">
             <p class="section-lead">
@@ -1324,6 +1496,45 @@ onBeforeUnmount(() => {
   background: var(--ui-raise);
   font-family: var(--ui-mono);
   font-size: var(--ui-fs-1);
+}
+
+.bp-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s3);
+}
+
+.bp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 120px 32px;
+  gap: var(--ui-s2);
+  align-items: end;
+  padding-bottom: var(--ui-s3);
+  border-bottom: 1px dashed var(--ui-line);
+}
+
+.bp-row:last-child {
+  border-bottom: 0;
+}
+
+.bp-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s2);
+  margin-top: var(--ui-s2);
+}
+
+.bp-count {
+  margin-left: auto;
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+}
+
+.bp-errors {
+  margin-top: var(--ui-s2);
+  color: var(--ui-danger);
+  font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
 }
 
 .preset-grid {

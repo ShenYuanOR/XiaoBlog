@@ -1,12 +1,4 @@
-import {
-  copyFileSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isValidSlug, slugFromTitle } from '@xiao/core/site';
 
@@ -100,12 +92,27 @@ export function createPost(siteDir: string, title: string, category: string): Po
   return readPost(siteDir, safe);
 }
 
+/** 布局从 src/layouts 拷到 src/layouts/posts 时，相对路径要再往上走一层。 */
+export function deepenRelativeSpecifier(spec: string): string {
+  if (spec.startsWith('./')) return `.${spec}`;
+  if (spec.startsWith('../')) return `../${spec}`;
+  return spec;
+}
+
+export function rewriteCopiedLayout(source: string): string {
+  return source.replace(
+    /(from\s+['"])(\.\.?\/[^'"]+)(['"])/g,
+    (_whole, start, spec, end) => `${start}${deepenRelativeSpecifier(spec)}${end}`,
+  );
+}
+
 export function customizePost(siteDir: string, slug: string): string {
   if (!isValidSlug(slug)) throw new Error('slug 只允许小写字母、数字和连字符');
   const dest = path.join(siteDir, 'src', 'layouts', 'posts', `${slug}.astro`);
   if (!existsSync(dest)) {
     mkdirSync(path.dirname(dest), { recursive: true });
-    copyFileSync(path.join(siteDir, 'src', 'layouts', 'PostLayout.astro'), dest);
+    const raw = readFileSync(path.join(siteDir, 'src', 'layouts', 'PostLayout.astro'), 'utf8');
+    writeFileSync(dest, rewriteCopiedLayout(raw));
   }
   return path.join('src', 'layouts', 'posts', `${slug}.astro`);
 }
