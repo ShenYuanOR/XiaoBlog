@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { isValidSlug, slugFromTitle } from '@xiao/core/site';
 
@@ -163,6 +172,82 @@ export function writePostFile(
   const target = resolveFormat(format ?? detectPostFormat(siteDir, slug) ?? 'markdown');
   writeFileSync(postFile(siteDir, slug, target), content);
   return target;
+}
+
+/* ---------- 格式转换（MD ⇄ HTML） ---------- */
+
+export interface ConvertResult {
+  format: ContentFormat;
+  /** 备份文件的站点相对路径（`/` 分隔），展示给用户。 */
+  backup: string;
+}
+
+function backupStamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+/**
+ * 显式单向格式转换：
+ * 1. 先备份原文件到 `.xiao/backups/<slug>-<ts>.<原扩展名>`（不进 git 的站点本地目录）；
+ * 2. 用同一份 frontmatter + 新正文写目标文件；
+ * 3. 删除原文件，保证 `index.md` XOR `index.html`。
+ * 内容转换本身在渲染层完成（Markdown→HTML 用编辑器 DOM 清洗，HTML→Markdown 有损转换），
+ * 这里只负责备份/落盘/删除与一致性校验。
+ */
+export function convertPostFile(
+  siteDir: string,
+  slug: string,
+  target: ContentFormat,
+  body: string,
+): ConvertResult {
+  if (!isValidSlug(slug)) throw new Error('文章地址不合法，不能转换');
+  if (!body.trim()) throw new Error('正文为空，不能转换');
+  const source = detectPostFormat(siteDir, slug);
+  if (!source) throw new Error('找不到这篇文章：index.md 和 index.html 都不存在');
+  if (source === target) {
+    throw new Error(`这篇已经是 ${target === 'html' ? 'HTML' : 'Markdown'} 格式，不需要转换`);
+  }
+  const sourcePath = postFile(siteDir, slug, source);
+  const targetPath = postFile(siteDir, slug, target);
+  if (existsSync(targetPath)) {
+    throw new Error('目标格式文件已存在，为避免覆盖已取消转换');
+  }
+
+  const raw = readFileSync(sourcePath, 'utf8');
+  const { fmRaw } = splitFrontmatter(raw);
+  const backupRel = path.join(
+    '.xiao',
+    'backups',
+    `${slug}-${backupStamp()}.${source === 'html' ? 'html' : 'md'}`,
+  );
+  const backupAbs = path.join(siteDir, backupRel);
+  mkdirSync(path.dirname(backupAbs), { recursive: true });
+  // 备份是站点本地资料，不随 git 发布；模板不在本任务范围，用目录内 .gitignore 自忽略。
+  const backupIgnore = path.join(siteDir, '.xiao', 'backups', '.gitignore');
+  if (!existsSync(backupIgnore)) writeFileSync(backupIgnore, '*\n');
+  copyFileSync(sourcePath, backupAbs);
+
+  const separator = fmRaw && !fmRaw.endsWith('\n') ? '\n' : '';
+  const normalizedBody = body.endsWith('\n') ? body : `${body}\n`;
+  try {
+    writeFileSync(targetPath, `${fmRaw}${separator}${normalizedBody}`);
+    unlinkSync(sourcePath);
+  } catch (error) {
+    // 删旧文件失败时回滚目标文件，避免两种格式并存。
+    try {
+      unlinkSync(targetPath);
+    } catch {
+      // 目标文件可能没写成功，忽略。
+    }
+    const reason = error instanceof Error ? error.message : '未知错误';
+    throw new Error(`写入新格式失败：${reason}。已回滚，原文件未变`);
+  }
+
+  const check = detectPostFormat(siteDir, slug);
+  if (check !== target || existsSync(sourcePath)) {
+    throw new Error('转换后文件状态异常（两种格式并存或目标缺失），请检查文章目录');
+  }
+  return { format: target, backup: backupRel.split(path.sep).join('/') };
 }
 
 export function saveImage(siteDir: string, slug: string, name: string, bytes: Uint8Array): string {

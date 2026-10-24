@@ -212,6 +212,16 @@ export interface XiaoApi {
     /** 双格式：返回正文全文与格式（format 由实际存在 index.md / index.html 决定）。 */
     readPost: (siteDir: string, slug: string) => Promise<IpcResult<PostContent>>;
     write: (siteDir: string, slug: string, markdown: string) => Promise<IpcResult<null>>;
+    /**
+     * 显式单向转换：渲染层先转换好正文，主进程备份旧文件后写入新格式并删除旧文件。
+     * backup 是 `.xiao/backups/...` 的站点相对路径。
+     */
+    convert: (
+      siteDir: string,
+      slug: string,
+      format: ContentFormat,
+      body: string,
+    ) => Promise<IpcResult<{ format: ContentFormat; backup: string }>>;
     saveImage: (
       siteDir: string,
       slug: string,

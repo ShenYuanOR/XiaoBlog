@@ -149,6 +149,14 @@ const api = {
       ipcRenderer.invoke('content:read', siteDir, slug),
     write: (siteDir: string, slug: string, markdown: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('content:write', siteDir, slug, markdown),
+    /** 显式单向转换：正文在渲染层转换，主进程负责备份 .xiao/backups 与换文件。 */
+    convert: (
+      siteDir: string,
+      slug: string,
+      format: 'markdown' | 'html',
+      body: string,
+    ): Promise<IpcResult<{ format: 'markdown' | 'html'; backup: string }>> =>
+      ipcRenderer.invoke('content:convert', siteDir, slug, format, body),
     saveImage: (
       siteDir: string,
       slug: string,

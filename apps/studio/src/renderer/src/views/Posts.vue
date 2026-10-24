@@ -208,8 +208,15 @@ function selectAll(event: Event): void {
   if (event.target instanceof HTMLInputElement) event.target.select();
 }
 
-function openRename(post: Post, close: () => void): void {
+/** 转换格式由 Editor 完成（它才拿得到当前正文/DOM）；这里只发请求并确保选中该文章。 */
+function requestConvert(post: Post, close: () => void): void {
   close();
+  menuSlug.value = '';
+  if (post.slug !== props.active) emit('select', post.slug);
+  window.dispatchEvent(new CustomEvent('xiao:convert-post', { detail: { slug: post.slug } }));
+}
+
+function openRename(post: Post, close: () => void): void {  close();
   menuSlug.value = '';
   renamePost.value = post;
   renameValue.value = post.slug;
@@ -398,6 +405,10 @@ watch(
                     </template>
                     <template #default="{ close }">
                       <div class="menu">
+                        <button class="menu-item" type="button" @click="requestConvert(post, close)">
+                          <UiIcon :path="icons.code" :size="16" />
+                          转换格式（{{ post.format === 'markdown' ? 'MD → HTML' : 'HTML → MD' }}）
+                        </button>
                         <button class="menu-item" type="button" @click="openRename(post, close)">
                           <UiIcon :path="icons.edit" :size="16" />
                           重命名
@@ -624,6 +635,7 @@ watch(
   font-size: var(--ui-fs-2);
   line-height: var(--ui-lh);
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 
