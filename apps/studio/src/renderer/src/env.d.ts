@@ -36,6 +36,26 @@ export interface CanvasField {
   advanced?: boolean;
 }
 
+/** 文章正文格式：index.md 或 index.html。 */
+export type ContentFormat = 'markdown' | 'html';
+
+export interface ContentPost {
+  slug: string;
+  title: string;
+  category: string;
+  description: string;
+  tags: string[];
+  draft: boolean;
+  date: string;
+  cover: string;
+  format: ContentFormat;
+}
+
+export interface PostContent {
+  text: string;
+  format: ContentFormat;
+}
+
 export interface XiaoApi {
   canvas: {
     components: () => Promise<IpcResult<string[]>>;
@@ -173,14 +193,13 @@ export interface XiaoApi {
     write: (siteDir: string, config: unknown) => Promise<IpcResult<string[]>>;
   };
   content: {
-    list: (
-      siteDir: string,
-    ) => Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }[]>>;
+    list: (siteDir: string) => Promise<IpcResult<ContentPost[]>>;
     create: (
       siteDir: string,
       title: string,
       category: string,
-    ) => Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }>>;
+      format?: ContentFormat,
+    ) => Promise<IpcResult<ContentPost>>;
     customize: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
     remove: (siteDir: string, slug: string) => Promise<IpcResult<null>>;
     rename: (
@@ -188,7 +207,10 @@ export interface XiaoApi {
       from: string,
       to: string,
     ) => Promise<IpcResult<{ from: string; to: string }>>;
+    /** 兼容旧调用方：只返回全文。 */
     read: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
+    /** 双格式：返回正文全文与格式（format 由实际存在 index.md / index.html 决定）。 */
+    readPost: (siteDir: string, slug: string) => Promise<IpcResult<PostContent>>;
     write: (siteDir: string, slug: string, markdown: string) => Promise<IpcResult<null>>;
     saveImage: (
       siteDir: string,

@@ -1,6 +1,6 @@
 ---
 import PostLayout from '../../layouts/PostLayout.astro';
-import { neighbors, publishedPosts } from '../../lib/posts';
+import { neighbors, publishedPosts, type PostEntry } from '../../lib/posts';
 import { render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -12,8 +12,15 @@ export async function getStaticPaths() {
   }));
 }
 
+interface Props {
+  post: PostEntry;
+  posts: PostEntry[];
+}
 const { post, posts } = Astro.props;
-const { Content, headings } = await render(post);
+// md 走 Astro 的 Markdown 渲染（<Content/>）；html 正文原样输出（set:html）。
+const rendered = post.format === 'md' && post.entry ? await render(post.entry) : null;
+const Content = rendered?.Content;
+const headings = rendered?.headings ?? [];
 const { prev, next } = neighbors(posts, post.id);
 const layouts = import.meta.glob('../../layouts/posts/*.astro', { eager: true });
 const custom = layouts[`../../layouts/posts/${post.id}.astro`] as
@@ -22,5 +29,5 @@ const Layout = custom?.default ?? PostLayout;
 ---
 
 <Layout post={post} headings={headings} prev={prev} next={next} page={post.id}>
-  <Content />
+  {post.format === 'html' ? <Fragment set:html={post.body} /> : Content ? <Content /> : null}
 </Layout>

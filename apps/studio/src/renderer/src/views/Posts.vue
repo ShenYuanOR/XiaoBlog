@@ -22,10 +22,15 @@ interface Post {
   title: string;
   category: string;
   draft: boolean;
+  format: 'markdown' | 'html';
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DEFAULT_CATEGORY = '生活';
+const CREATE_FORMATS: { value: string; label: string }[] = [
+  { value: 'markdown', label: 'Markdown 文章' },
+  { value: 'html', label: 'HTML 文章' },
+];
 
 /** Shell 依赖这个接口：props.active + select 事件都不能改。 */
 const props = defineProps<{ active?: string }>();
@@ -43,7 +48,13 @@ const menuSlug = ref('');
 const createOpen = ref(false);
 const createTitle = ref('');
 const createCategory = ref(DEFAULT_CATEGORY);
-const createTouched = ref(false);
+const createFormat = ref<'markdown' | 'html'>('markdown');
+const createFormatKey = computed({
+  get: () => createFormat.value,
+  set: (value: string | number) => {
+    createFormat.value = value === 'html' ? 'html' : 'markdown';
+  },
+});const createTouched = ref(false);
 const creating = ref(false);
 
 const renameOpen = ref(false);
@@ -153,6 +164,7 @@ function setMenu(slug: string, open: boolean): void {
 function openCreate(): void {
   menuSlug.value = '';
   createTitle.value = '';
+  createFormat.value = 'markdown';
   createCategory.value = categoryOptions.value.some((option) => option.value === DEFAULT_CATEGORY)
     ? DEFAULT_CATEGORY
     : (categoryOptions.value[0]?.value ?? DEFAULT_CATEGORY);
@@ -174,13 +186,15 @@ async function submitCreate(): Promise<void> {
       session.siteDir,
       title,
       createCategory.value || DEFAULT_CATEGORY,
+      createFormat.value,
     );
     if (!result.ok) {
       notify(`没能新建文章：${result.message}。检查站点文件夹权限后重试。`, 'error');
       return;
     }
     createOpen.value = false;
-    notify(`已新建《${result.data.title}》`, 'info', 'post-create');
+    const kind = createFormat.value === 'html' ? 'HTML 文章' : 'Markdown 文章';
+    notify(`已新建${kind}《${result.data.title}》`, 'info', 'post-create');
     emit('select', result.data.slug);
     await load();
   } catch (cause) {
@@ -365,6 +379,7 @@ watch(
             <UiRow :selected="post.slug === active" @click="emit('select', post.slug)">
               <span class="post-title" :title="post.title">{{ post.title }}</span>
               <template #meta>
+                <UiBadge v-if="post.format === 'html'" tone="accent">HTML</UiBadge>
                 <UiBadge v-if="post.draft" tone="warn">草稿</UiBadge>
                 <span class="more-wrap" @click.stop @keydown.stop>
                   <UiPopover
@@ -419,6 +434,9 @@ watch(
             :invalid="!!createTitleError"
             @keydown.enter="submitCreate"
           />
+        </UiField>
+        <UiField label="格式" hint="Markdown 用所见即所得；HTML 用源码编辑，正文按原样保存。">
+          <UiSelect v-model="createFormatKey" :options="CREATE_FORMATS" />
         </UiField>
         <UiField label="分类" hint="分类决定左侧列表的分组，默认「生活」。">
           <UiSelect v-model="createCategory" :options="categoryOptions" />

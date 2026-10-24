@@ -7,7 +7,7 @@ import type {
   RuntimeLogEvent,
   RuntimeStart,
 } from '@xiao/core/ipc';
-import type { ConflictEvent, ReloadEvent } from './watch.ts';
+import type { ConflictEvent, ReloadEvent } from '../main/watch.ts';
 
 function listen<T>(channel: string, callback: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => callback(payload);
@@ -99,10 +99,31 @@ const api = {
   content: {
     list: (
       siteDir: string,
-    ): Promise<IpcResult<{ slug: string; title: string; category: string; draft: boolean }[]>> =>
-      ipcRenderer.invoke('content:list', siteDir),
-    create: (siteDir: string, title: string, category: string) =>
-      ipcRenderer.invoke('content:create', siteDir, title, category),
+    ): Promise<
+      IpcResult<
+        {
+          slug: string;
+          title: string;
+          category: string;
+          description: string;
+          tags: string[];
+          draft: boolean;
+          date: string;
+          cover: string;
+          format: 'markdown' | 'html';
+        }[]
+      >
+    > => ipcRenderer.invoke('content:list', siteDir),
+    /**
+     * 主进程 content:create handler 目前只转发 3 个参数；HTML 新建时把
+     * `{ category, format }` 放进 category 位，content.ts 两种入参都兼容。
+     */
+    create: (
+      siteDir: string,
+      title: string,
+      category: string,
+      format: 'markdown' | 'html' = 'markdown',
+    ) => ipcRenderer.invoke('content:create', siteDir, title, category, format),
     customize: (siteDir: string, slug: string) =>
       ipcRenderer.invoke('content:customize', siteDir, slug),
     remove: (siteDir: string, slug: string): Promise<IpcResult<null>> =>
@@ -113,7 +134,18 @@ const api = {
       to: string,
     ): Promise<IpcResult<{ from: string; to: string }>> =>
       ipcRenderer.invoke('content:rename', siteDir, from, to),
-    read: (siteDir: string, slug: string): Promise<IpcResult<string>> =>
+    /** 兼容旧调用方（SEO 等）：只返回全文。新代码请用 readPost 拿格式。 */
+    read: async (siteDir: string, slug: string): Promise<IpcResult<string>> => {
+      const result = (await ipcRenderer.invoke('content:read', siteDir, slug)) as IpcResult<{
+        text: string;
+        format: 'markdown' | 'html';
+      }>;
+      return result.ok ? { ok: true, data: result.data.text } : result;
+    },
+    readPost: (
+      siteDir: string,
+      slug: string,
+    ): Promise<IpcResult<{ text: string; format: 'markdown' | 'html' }>> =>
       ipcRenderer.invoke('content:read', siteDir, slug),
     write: (siteDir: string, slug: string, markdown: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('content:write', siteDir, slug, markdown),

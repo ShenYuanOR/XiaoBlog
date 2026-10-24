@@ -6,63 +6,13 @@ import type { IpcResult } from '@xiao/core/ipc';
 import {
   markDirty,
   openMarkdown,
+  patchFrontmatter,
   saveMarkdown,
   type MarkdownSession,
   type SaveResult,
 } from '@xiao/core/markdown';
 import * as monaco from 'monaco-editor';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import '../../../../../../packages/template/src/styles/xiao.css';
-import { breakpointCss } from '../../../../../../packages/template/src/lib/breakpoints.ts';
-import {
-  ALIGN_OPTIONS,
-  applyXiaoHtml,
-  ASTRO_BLOCKS,
-  ASTRO_CATEGORY_LABEL,
-  ASTRO_CATEGORY_ORDER,
-  attachHtmlNodeViews,
-  BG_OPTIONS,
-  BORDER_OPTIONS,
-  breakpointsDesc,
-  clearHtmlSelection,
-  COLOR_OPTIONS,
-  COL_OPTIONS,
-  DEFAULT_BREAKPOINTS,
-  DIR_OPTIONS,
-  dropPosition,
-  EMPTY_STYLE,
-  HEADING_OPTIONS,
-  hasStyleField,
-  hideOptions,
-  INHERIT_OPTION,
-  insertXiaoBlock,
-  insertXiaoBlockAt,
-  JUSTIFY_OPTIONS,
-  parseXiaoHtml,
-  RADIUS_OPTIONS,
-  registerAstroSlashGroups,
-  resolveBreakpoints,
-  setBreakpoints,
-  setCanvasScale,
-  setHtmlPickHandler,
-  SHADOW_OPTIONS,
-  SPACE_OPTIONS,
-  TALIGN_OPTIONS,
-  TEXT_OPTIONS,
-  textSlotLabel,
-  tokensFor,
-  TYPE_OPTIONS,
-  WEIGHT_OPTIONS,
-  WIDTH_OPTIONS,
-  writeHtmlNode,
-  type AstroBlock,
-  type AstroBlockCategory,
-  type Breakpoint,
-  type StyleBreakpoint,
-  type XiaoBlockPatch,
-  type XiaoBlockState,
-  type XiaoStyleTokens,
-} from '../astro-blocks.ts';
 import { copy } from '../copy.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -95,13 +45,17 @@ const props = defineProps<{ siteDir: string; slug: string }>();
 const sessionStore = useSession();
 
 type ViewState = 'loading' | 'ready' | 'empty' | 'error';
-type FieldKey = 'title' | 'category' | 'summary' | 'draft';
+type ContentFormat = 'markdown' | 'html';
+type FieldKey = 'title' | 'category' | 'summary' | 'tags' | 'cover' | 'date';
 
 interface FieldSnapshot {
   title: string;
   category: string;
   description: string;
   draft: boolean;
+  tags: string[];
+  cover: string;
+  date: string;
 }
 
 const crepeRoot = ref<HTMLElement | null>(null);
@@ -110,104 +64,24 @@ const bodyElement = ref<HTMLElement | null>(null);
 const viewState = ref<ViewState>('loading');
 const loadError = ref('');
 const errorKind = ref<'read' | 'mount'>('read');
+const format = ref<ContentFormat>('markdown');
 const sourceMode = ref(false);
 const inspectorHost = ref(false);
 
 const title = ref('');
 const category = ref('');
 const summary = ref('');
+const tagsText = ref('');
+const cover = ref('');
+const date = ref('');
 const draft = ref(false);
 const categoryList = ref<string[]>([]);
-/** 检查器里展示的 slug；跟着已加载的文章走，而不是跟着可能已经变了的 props。 */
 const currentSlug = ref(props.slug);
+const hasFrontmatter = ref(false);
 /** frontmatter 里用 `>` / `|` 多行写法的字段不能在表单里改，否则会把 YAML 改坏。 */
 const blockedFields = ref<FieldKey[]>([]);
 const summaryKey = ref<'description' | 'summary'>('description');
-const hasFrontmatter = ref(false);
 const charCount = ref(0);
-const selectedBlock = ref<XiaoBlockState | null>(null);
-const paletteSearch = ref('');
-const collapsedListForEditor = ref(false);
-const styleBp = ref<StyleBreakpoint>('base');
-const dragGhost = ref<{ label: string; x: number; y: number } | null>(null);
-const dropHint = ref('');
-
-/** 站点断点表（来自 xiao.config.json 的 theme.breakpoints；没有则用默认 md/sm）。 */
-const breakpoints = ref<Breakpoint[]>(
-  DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp })).sort((left, right) => left.maxWidth - right.maxWidth),
-);
-const artboardEl = ref<HTMLElement | null>(null);
-const frameEl = ref<HTMLElement | null>(null);
-const zoom = ref(1);
-const zoomMode = ref<'fit' | 'manual'>('fit');
-const panX = ref(24);
-const panY = ref(24);
-const spaceHeld = ref(false);
-const panning = ref(false);
-const hoveringCanvas = ref(false);
-
-let dragArmed: { x: number; y: number; block: AstroBlock } | null = null;
-let dragBlock: AstroBlock | null = null;
-let skipPaletteClick = false;
-let breakpointsSite = '';
-let breakpointsAt = 0;
-let artboardObserver: ResizeObserver | undefined;
-let frameObserver: ResizeObserver | undefined;
-let layoutFrame = 0;
-let panOrigin = { x: 0, y: 0, panX: 0, panY: 0 };
-
-const CANVAS_PAD = 24;
-const MIN_MANUAL_ZOOM = 0.5;
-const MAX_CANVAS_ZOOM = 2;
-
-/** 设备按钮决定画布框宽：电脑 1280、平板=最宽断点、手机=最窄断点。 */
-const frameWidth = computed(() => {
-  const device = sessionStore.previewDevice;
-  if (device === 'phone') return breakpoints.value[0]?.maxWidth ?? 767;
-  if (device === 'tablet') {
-    const sorted = breakpointsDesc(breakpoints.value);
-    return sorted[0]?.maxWidth ?? 1023;
-  }
-  return 1280;
-});
-
-const zoomPercent = computed(() => `${Math.round(zoom.value * 100)}%`);
-
-const stageStyle = computed(() => ({
-  transform: `translate(${panX.value}px, ${panY.value}px) scale(${zoom.value})`,
-}));
-
-/**
- * 画布预览断点样式：模板生成的 CSS 是 @media（按窗口宽），画板里换成 @container，
- * 让 `.frame` 的宽度决定命中哪一档。选择器再补上 `.frame .xiao-html` 前缀，
- * 保证断点覆盖能压过画板里给组件块兜底的样式（同特异性时后注入的生效）。
- */
-const canvasCss = computed(() =>
-  breakpointCss(breakpoints.value)
-    .replace(/@media/g, '@container')
-    .replace(/\.x-([a-z0-9-]+)/g, '.frame .xiao-html .x-$1'),
-);
-
-const paletteGroups = computed(() => {
-  const query = paletteSearch.value.trim().toLowerCase();
-  return ASTRO_CATEGORY_ORDER.map((category) => ({
-    category,
-    label: ASTRO_CATEGORY_LABEL[category],
-    items: ASTRO_BLOCKS.filter(
-      (item) =>
-        item.category === category &&
-        (!query || item.label.includes(query) || item.name.toLowerCase().includes(query)),
-    ),
-  })).filter((group) => group.items.length > 0);
-});
-
-const categoryIcon: Record<AstroBlockCategory, string> = {
-  structure: icons.pages,
-  container: icons.files,
-  content: icons.edit,
-  blog: icons.posts,
-  embed: icons.image,
-};
 
 let session: MarkdownSession | undefined;
 /** 当前 session 对应的文章身份。props 可能在 flush 之前就变了，写盘必须用这对值。 */
@@ -217,7 +91,15 @@ let crepe: Crepe | undefined;
 let crepeReady = false;
 let sourceEditor: monaco.editor.IStandaloneCodeEditor | undefined;
 let sourceModel: monaco.editor.ITextModel | undefined;
-let baseline: FieldSnapshot = { title: '', category: '', description: '', draft: false };
+let baseline: FieldSnapshot = {
+  title: '',
+  category: '',
+  description: '',
+  draft: false,
+  tags: [],
+  cover: '',
+  date: '',
+};
 let syncingFields = false;
 /** 源码模式打开时的初始文本；用来判断用户是否真的改过源码。 */
 let sourceInitial = '';
@@ -246,6 +128,11 @@ const modeKey = computed({
     else enterVisual();
   },
 });
+
+/** HTML 文章直接进 Monaco；Markdown 只有在源码模式才显示 Monaco。 */
+const showMonaco = computed(
+  () => viewState.value !== 'loading' && (format.value === 'html' || sourceMode.value),
+);
 
 const saveTone = computed<'ok' | 'warn' | 'neutral' | 'danger'>(() => {
   switch (sessionStore.saveState) {
@@ -288,7 +175,9 @@ const saveIcon = computed(() => {
 
 const fieldsEditable = computed(() => hasFrontmatter.value && viewState.value !== 'error');
 
-const showEmptyHint = computed(() => viewState.value === 'empty' && !sourceMode.value);
+const showEmptyHint = computed(
+  () => format.value === 'markdown' && viewState.value === 'empty' && !sourceMode.value,
+);
 
 const errorTitle = computed(() => (errorKind.value === 'mount' ? '编辑器没能加载' : '没能打开这篇'));
 
@@ -308,487 +197,7 @@ const categoryOptions = computed<{ value: string; label: string }[]>(() => {
   return options;
 });
 
-const sortedBps = computed(() => breakpointsDesc(breakpoints.value));
-
-/** 检查器断点 tabs：电脑 + 各断点（宽 → 窄），前缀「样式：」避免和设备按钮混淆。 */
-const bpItems = computed<{ key: string; label: string }[]>(() => [
-  { key: 'base', label: '样式：电脑' },
-  ...sortedBps.value.map((bp) => ({ key: bp.id, label: `样式：${bp.label}` })),
-]);
-
-const bpKey = computed({
-  get: () => styleBp.value,
-  set: (value: string) => setStyleBp(value as StyleBreakpoint),
-});
-
-const overrideCount = computed(() => {
-  const block = selectedBlock.value;
-  if (!block || styleBp.value === 'base') return 0;
-  return Object.values(tokensFor(block, styleBp.value)).filter(Boolean).length;
-});
-
-const hideSelectOptions = computed<{ value: string; label: string }[]>(() => {
-  const options = [{ value: '', label: '不隐藏' }, ...hideOptions(breakpoints.value)];
-  const current = selectedBlock.value?.hide ?? '';
-  if (current && !options.some((option) => option.value === current)) {
-    // 老内容里的 x-hide-mobile / x-hide-tablet 没有丢，先保留原值。
-    options.push({ value: current, label: `${current}（旧写法）` });
-  }
-  return options;
-});
-
-interface StyleFieldDef {
-  key: keyof XiaoStyleTokens;
-  label: string;
-  options: { value: string; label: string }[];
-  group: 'layout' | 'appearance';
-}
-
-const STYLE_FIELDS: StyleFieldDef[] = [
-  { key: 'width', label: '宽度', options: WIDTH_OPTIONS, group: 'layout' },
-  { key: 'pad', label: '内边距', options: SPACE_OPTIONS, group: 'layout' },
-  { key: 'gap', label: '间距', options: SPACE_OPTIONS, group: 'layout' },
-  { key: 'cols', label: '列数', options: COL_OPTIONS, group: 'layout' },
-  { key: 'direction', label: '方向', options: DIR_OPTIONS, group: 'layout' },
-  { key: 'align', label: '交叉轴对齐', options: ALIGN_OPTIONS, group: 'layout' },
-  { key: 'justify', label: '主轴分布', options: JUSTIFY_OPTIONS, group: 'layout' },
-  { key: 'talign', label: '文字对齐', options: TALIGN_OPTIONS, group: 'layout' },
-  { key: 'bg', label: '填充', options: BG_OPTIONS, group: 'appearance' },
-  { key: 'radius', label: '圆角', options: RADIUS_OPTIONS, group: 'appearance' },
-  { key: 'shadow', label: '阴影', options: SHADOW_OPTIONS, group: 'appearance' },
-  { key: 'border', label: '描边', options: BORDER_OPTIONS, group: 'appearance' },
-  { key: 'text', label: '字号', options: TEXT_OPTIONS, group: 'appearance' },
-  { key: 'weight', label: '字重', options: WEIGHT_OPTIONS, group: 'appearance' },
-  { key: 'color', label: '文字色', options: COLOR_OPTIONS, group: 'appearance' },
-];
-
-const layoutStyleFields = computed(() => {
-  const block = selectedBlock.value;
-  if (!block) return [];
-  return STYLE_FIELDS.filter((field) => field.group === 'layout' && hasStyleField(block, field.key));
-});
-
-const appearanceStyleFields = computed(() => {
-  const block = selectedBlock.value;
-  if (!block) return [];
-  return STYLE_FIELDS.filter((field) => field.group === 'appearance' && hasStyleField(block, field.key));
-});
-
-function widestBreakpoint(): Breakpoint | undefined {
-  return sortedBps.value[0];
-}
-
-function narrowestBreakpoint(): Breakpoint | undefined {
-  return sortedBps.value[sortedBps.value.length - 1];
-}
-
-/** 断点 → 设备：电脑=base，平板=最宽断点，手机=最窄断点。 */
-function deviceForBp(bp: StyleBreakpoint): 'pc' | 'tablet' | 'phone' | null {
-  if (bp === 'base') return 'pc';
-  const narrow = narrowestBreakpoint();
-  if (narrow && narrow.id === bp) return 'phone';
-  const wide = widestBreakpoint();
-  if (wide && wide.id === bp) return 'tablet';
-  return null;
-}
-
-/** 设备 → 断点：电脑=base，平板=最宽断点，手机=最窄断点。 */
-function bpForDevice(device: string): StyleBreakpoint {
-  if (device === 'tablet') return widestBreakpoint()?.id ?? 'md';
-  if (device === 'phone') return narrowestBreakpoint()?.id ?? 'sm';
-  return 'base';
-}
-
-function bpLabel(bp: StyleBreakpoint): string {
-  if (bp === 'base') return '电脑';
-  return breakpoints.value.find((item) => item.id === bp)?.label ?? bp;
-}
-
-function setStyleBp(bp: StyleBreakpoint): void {
-  styleBp.value = bp;
-  const device = deviceForBp(bp);
-  if (device) sessionStore.setPreviewDevice(device);
-  scheduleLayout();
-}
-
-function bpOptions<T extends { value: string; label: string }>(options: T[]): { value: string; label: string }[] {
-  return styleBp.value === 'base' ? options : [INHERIT_OPTION, ...options];
-}
-
-function styleValue(field: keyof XiaoStyleTokens): string {
-  const block = selectedBlock.value;
-  return block ? tokensFor(block, styleBp.value)[field] : '';
-}
-
-function isOverridden(field: keyof XiaoStyleTokens): boolean {
-  const block = selectedBlock.value;
-  if (!block || styleBp.value === 'base') return false;
-  return Boolean(tokensFor(block, styleBp.value)[field]);
-}
-
-function patchStyle(field: keyof XiaoStyleTokens, value: string): void {
-  const current = selectedBlock.value;
-  if (!current) return;
-  const bp = styleBp.value;
-  if (bp === 'base') {
-    patchSelectedBlock({ base: { ...current.base, [field]: value } });
-    return;
-  }
-  patchSelectedBlock({ breakpoints: { [bp]: { ...tokensFor(current, bp), [field]: value } } });
-}
-
-function clearStyle(field: keyof XiaoStyleTokens): void {
-  patchStyle(field, '');
-}
-
-function clearBreakpointOverrides(): void {
-  const current = selectedBlock.value;
-  if (!current || styleBp.value === 'base') return;
-  patchSelectedBlock({ breakpoints: { [styleBp.value]: { ...EMPTY_STYLE } } });
-}
-
-function paintDrop(target: ReturnType<typeof dropPosition>): void {
-  document.querySelectorAll('.xiao-html.is-drop, .xiao-html.is-drop-before, .xiao-html.is-drop-after').forEach((el) => {
-    el.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
-  });
-  if (!target || target.mode === 'doc') {
-    dropHint.value = target ? '插入到此处' : '';
-    return;
-  }
-  const host = [...(crepeRoot.value?.querySelectorAll('.xiao-html') ?? [])].find(
-    (el) => Number((el as HTMLElement).dataset.pos) === target.htmlPos,
-  );
-  if (!(host instanceof HTMLElement)) return;
-  if (target.mode === 'into') {
-    host.classList.add('is-drop');
-    dropHint.value = '放入容器内';
-  } else if (target.mode === 'before') {
-    host.classList.add('is-drop-before');
-    dropHint.value = '插到这块前面';
-  } else {
-    host.classList.add('is-drop-after');
-    dropHint.value = '插到这块后面';
-  }
-}
-
-function onPickBlock(block: XiaoBlockState | null): void {
-  selectedBlock.value = block;
-  if (block && !sessionStore.inspectorOpen) sessionStore.inspectorOpen = true;
-}
-
-function insertBlock(block: AstroBlock, at: ReturnType<typeof dropPosition> = null): void {
-  if (sourceMode.value || viewState.value !== 'ready') return;
-  const ok = at ? insertXiaoBlockAt(block.snippet, at) : insertXiaoBlock(block.snippet);
-  if (!ok) {
-    notify('编辑器还没准备好，等正文出现后再插入。', 'error', 'editor-insert');
-    return;
-  }
-  bodyEdited = true;
-  touchEdits();
-  void nextTick(() => {
-    const nodes = crepeRoot.value?.querySelectorAll('.xiao-html');
-    const last = nodes?.[nodes.length - 1]?.querySelector('.xiao-html__body');
-    last?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-  });
-}
-
-function onPalettePointerDown(event: PointerEvent, block: AstroBlock): void {
-  if (event.button !== 0) return;
-  dragArmed = { x: event.clientX, y: event.clientY, block };
-}
-
-function onWindowPointerMove(event: PointerEvent): void {
-  if (!dragArmed && !dragBlock) return;
-  if (dragArmed && !dragBlock) {
-    const dx = event.clientX - dragArmed.x;
-    const dy = event.clientY - dragArmed.y;
-    if (dx * dx + dy * dy < 36) return;
-    dragBlock = dragArmed.block;
-    skipPaletteClick = true;
-  }
-  if (!dragBlock) return;
-  dragGhost.value = { label: dragBlock.label, x: event.clientX, y: event.clientY };
-  paintDrop(dropPosition(event.clientX, event.clientY));
-}
-
-function onWindowPointerUp(event: PointerEvent): void {
-  const block = dragBlock;
-  const at = block ? dropPosition(event.clientX, event.clientY) : null;
-  dragArmed = null;
-  dragBlock = null;
-  dragGhost.value = null;
-  dropHint.value = '';
-  paintDrop(null);
-  if (block) insertBlock(block, at);
-}
-
-function onPaletteClick(block: AstroBlock): void {
-  if (skipPaletteClick) {
-    skipPaletteClick = false;
-    return;
-  }
-  insertBlock(block);
-}
-
-function patchSelectedBlock(patch: XiaoBlockPatch): void {
-  const current = selectedBlock.value;
-  if (!current || sourceMode.value) return;
-  const html = applyXiaoHtml(current.html, patch);
-  const written = writeHtmlNode(current.pos, html);
-  if (written == null) return;
-  selectedBlock.value = parseXiaoHtml(html, written);
-  bodyEdited = true;
-  touchEdits();
-}
-
-function setBlockText(index: number, value: string): void {
-  const current = selectedBlock.value;
-  if (!current) return;
-  const texts = current.texts.slice();
-  texts[index] = value;
-  patchSelectedBlock({ texts });
-}
-
-function onCrepeMouseDown(event: MouseEvent): void {
-  const target = event.target;
-  if (target instanceof Element && target.closest('.xiao-html')) return;
-  clearHtmlSelection();
-}
-
-/* ---------- 画布缩放 / 平移 ---------- */
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function clampZoom(value: number): number {
-  return clampNumber(value, MIN_MANUAL_ZOOM, MAX_CANVAS_ZOOM);
-}
-
-/** 适应宽度：按画板可视宽度算缩放，允许小于 50%，但不放大超过 100%。 */
-function fitZoom(): number {
-  const element = artboardEl.value;
-  if (!element) return 1;
-  const width = Math.max(120, element.clientWidth - CANVAS_PAD * 2);
-  return clampNumber(width / frameWidth.value, 0.25, 1);
-}
-
-/** 变换不改排版尺寸，所以平移只做边界限制，不做滚动。 */
-function clampPan(): void {
-  const element = artboardEl.value;
-  if (!element) return;
-  const width = element.clientWidth;
-  const height = element.clientHeight;
-  const scaledWidth = frameWidth.value * zoom.value;
-  const scaledHeight = (frameEl.value?.offsetHeight ?? 0) * zoom.value;
-  if (scaledWidth <= width - CANVAS_PAD * 2) {
-    panX.value = (width - scaledWidth) / 2;
-  } else {
-    panX.value = clampNumber(panX.value, width - scaledWidth - CANVAS_PAD, CANVAS_PAD);
-  }
-  if (scaledHeight <= height - CANVAS_PAD * 2) {
-    panY.value = CANVAS_PAD;
-  } else {
-    panY.value = clampNumber(panY.value, height - scaledHeight - CANVAS_PAD, CANVAS_PAD);
-  }
-}
-
-/** 以画板内某个点为中心缩放（Ctrl/⌘+滚轮用）。 */
-function applyZoom(next: number, focusX?: number, focusY?: number): void {
-  const previous = zoom.value;
-  const target = clampZoom(next);
-  if (Math.abs(target - previous) < 0.001) return;
-  if (focusX !== undefined && focusY !== undefined) {
-    const worldX = (focusX - panX.value) / previous;
-    const worldY = (focusY - panY.value) / previous;
-    zoom.value = target;
-    panX.value = focusX - worldX * target;
-    panY.value = focusY - worldY * target;
-  } else {
-    zoom.value = target;
-  }
-  setCanvasScale(target);
-  clampPan();
-}
-
-function layoutCanvas(): void {
-  if (!artboardEl.value || sourceMode.value || viewState.value !== 'ready') return;
-  if (zoomMode.value === 'fit') {
-    zoom.value = fitZoom();
-    setCanvasScale(zoom.value);
-  }
-  clampPan();
-}
-
-function scheduleLayout(): void {
-  cancelAnimationFrame(layoutFrame);
-  layoutFrame = requestAnimationFrame(() => {
-    layoutFrame = 0;
-    layoutCanvas();
-  });
-}
-
-function setZoomPreset(preset: 'fit' | 'actual' | 'half'): void {
-  const element = artboardEl.value;
-  if (preset === 'fit') {
-    zoomMode.value = 'fit';
-    layoutCanvas();
-    return;
-  }
-  zoomMode.value = 'manual';
-  applyZoom(preset === 'actual' ? 1 : 0.5);
-  if (element) {
-    panX.value = (element.clientWidth - frameWidth.value * zoom.value) / 2;
-    panY.value = CANVAS_PAD;
-  }
-  clampPan();
-}
-
-function onCanvasWheel(event: WheelEvent): void {
-  if (sourceMode.value || viewState.value !== 'ready') return;
-  const element = artboardEl.value;
-  if (!element) return;
-  const target = event.target;
-  // 让代码块自己的滚动条工作，不抢滚轮。
-  if (!event.ctrlKey && !event.metaKey && target instanceof Element && target.closest('.cm-scroller')) {
-    return;
-  }
-  event.preventDefault();
-  if (event.ctrlKey || event.metaKey) {
-    const rect = element.getBoundingClientRect();
-    zoomMode.value = 'manual';
-    applyZoom(
-      zoom.value * Math.exp(-event.deltaY * 0.0015),
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-    );
-    return;
-  }
-  // 不按 Ctrl 时滚轮 = 平移画布（保持“正文可滚动”）。
-  panX.value -= event.deltaX;
-  panY.value -= event.deltaY;
-  clampPan();
-}
-
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"], .cm-editor'));
-}
-
-function onCanvasKeyDown(event: KeyboardEvent): void {
-  if (event.code !== 'Space' || event.repeat) return;
-  if (sourceMode.value || viewState.value !== 'ready') return;
-  // 只在鼠标悬停画板时接管空格，避免影响列表/其它区域的滚动和按钮。
-  if (!hoveringCanvas.value || isInteractiveTarget(event.target)) return;
-  spaceHeld.value = true;
-  event.preventDefault();
-}
-
-function onCanvasKeyUp(event: KeyboardEvent): void {
-  if (event.code === 'Space') spaceHeld.value = false;
-}
-
-function onCanvasPointerDown(event: PointerEvent): void {
-  if (!(spaceHeld.value || event.button === 1)) return;
-  const element = artboardEl.value;
-  if (!element) return;
-  event.preventDefault();
-  event.stopPropagation();
-  panning.value = true;
-  panOrigin = { x: event.clientX, y: event.clientY, panX: panX.value, panY: panY.value };
-  element.setPointerCapture(event.pointerId);
-}
-
-function onCanvasPointerMove(event: PointerEvent): void {
-  if (!panning.value) return;
-  event.preventDefault();
-  panX.value = panOrigin.panX + (event.clientX - panOrigin.x);
-  panY.value = panOrigin.panY + (event.clientY - panOrigin.y);
-  clampPan();
-}
-
-function onCanvasPointerUp(event: PointerEvent): void {
-  if (!panning.value) return;
-  panning.value = false;
-  const element = artboardEl.value;
-  if (element?.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
-}
-
-/** 输入时把光标带回可视区（transform 画布没有原生滚动容器，这个要自己补）。 */
-function ensureCaretVisible(): void {
-  if (sourceMode.value || viewState.value !== 'ready') return;
-  const board = artboardEl.value;
-  const root = crepeRoot.value;
-  if (!board || !root) return;
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0) return;
-  const range = selection.getRangeAt(0);
-  if (!root.contains(range.commonAncestorContainer)) return;
-  const rect = range.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) return;
-  const box = board.getBoundingClientRect();
-  const margin = 32;
-  let deltaY = 0;
-  let deltaX = 0;
-  if (rect.bottom > box.bottom - margin) deltaY = box.bottom - margin - rect.bottom;
-  else if (rect.top < box.top + margin) deltaY = box.top + margin - rect.top;
-  if (rect.right > box.right - margin) deltaX = box.right - margin - rect.right;
-  else if (rect.left < box.left + margin) deltaX = box.left + margin - rect.left;
-  if (deltaX === 0 && deltaY === 0) return;
-  panX.value += deltaX;
-  panY.value += deltaY;
-  clampPan();
-}
-
-/* ---------- 断点配置 ---------- */
-
-function applyBreakpoints(next: Breakpoint[]): void {
-  const sorted = [...next].sort((left, right) => left.maxWidth - right.maxWidth);
-  // 先同步 astro-blocks 的模块级断点表：它跨 Editor 实例存在，切站点后必须重置。
-  setBreakpoints(sorted);
-  const unchanged =
-    sorted.length === breakpoints.value.length &&
-    sorted.every((bp, index) => {
-      const current = breakpoints.value[index];
-      return (
-        current !== undefined &&
-        current.id === bp.id &&
-        current.label === bp.label &&
-        current.maxWidth === bp.maxWidth
-      );
-    });
-  if (unchanged) return;
-  breakpoints.value = sorted;
-  // 断点表变了：检查器档位跟当前设备重新对齐，旧覆盖状态按新表重新解析。
-  styleBp.value = bpForDevice(sessionStore.previewDevice);
-  setCanvasScale(zoom.value);
-  if (selectedBlock.value) {
-    selectedBlock.value = parseXiaoHtml(selectedBlock.value.html, selectedBlock.value.pos, sorted);
-  }
-  scheduleLayout();
-}
-
-async function loadBreakpoints(siteDir: string): Promise<void> {
-  let result: IpcResult<Record<string, unknown>>;
-  try {
-    result = await window.xiao.settings.read(siteDir);
-  } catch {
-    return;
-  }
-  if (!result.ok || siteDir !== activeSiteDir) return;
-  const theme = result.data['theme'];
-  const value =
-    theme && typeof theme === 'object' ? (theme as Record<string, unknown>)['breakpoints'] : undefined;
-  applyBreakpoints(resolveBreakpoints(value));
-}
-
-function refreshBreakpoints(): void {
-  if (!activeSiteDir) return;
-  const now = Date.now();
-  if (now - breakpointsAt < 800) return;
-  breakpointsAt = now;
-  void loadBreakpoints(activeSiteDir);
-}
+const formatLabel = computed(() => (format.value === 'html' ? 'HTML' : 'Markdown'));
 
 function hintFor(key: FieldKey, normal: string): string {
   if (!hasFrontmatter.value) return '这篇没有 frontmatter，属性改动暂时不会写回文件。';
@@ -820,6 +229,10 @@ function yamlString(value: string): string {
   return JSON.stringify(value).replace(/\$/g, () => '$$');
 }
 
+function yamlJson(value: unknown): string {
+  return JSON.stringify(value).replace(/\$/g, () => '$$');
+}
+
 function rawField(source: string, key: string): string {
   const match = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(source);
   return match?.[1]?.trim() ?? '';
@@ -827,6 +240,39 @@ function rawField(source: string, key: string): string {
 
 function readField(source: string, key: string): string {
   return scalarValue(rawField(source, key));
+}
+
+/** tags 支持内联 `tags: ["a","b"]` 和块列表 `tags:\n  - a` 两种写法。 */
+function readTagList(source: string): string[] {
+  const inline = new RegExp(`^tags:[ \\t]*\\[(.*)\\][ \\t]*$`, 'm').exec(source);
+  if (inline) {
+    return (
+      (inline[1] ?? '')
+        .match(/"[^"]*"|'[^']*'|[^,]+/g)
+        ?.map((row) => scalarValue(row.trim()))
+        .filter(Boolean) ?? []
+    );
+  }
+  const block = new RegExp(`^tags:[ \\t]*\\r?\\n((?:[ \\t]+-[^\\r\\n]*(?:\\r?\\n|$))*)`, 'm').exec(source);
+  if (!block) return [];
+  return (block[1] ?? '')
+    .split(/\r?\n/)
+    .map((line) => /^[ \t]+-[ \t]*(.*)$/.exec(line)?.[1] ?? '')
+    .map((row) => scalarValue(row.trim()))
+    .filter(Boolean);
+}
+
+/** 改 tags 前先删掉旧块列表，否则 patchFrontmatter 只替换首行会留下孤立列表项。 */
+function stripBlockList(frontmatter: string, key: string): string {
+  return frontmatter.replace(
+    new RegExp(`^${key}:[ \\t]*\\r?\\n(?:[ \\t]+-[^\\r\\n]*(?:\\r?\\n|$))*`, 'm'),
+    '',
+  );
+}
+
+function applyMetaPatch(frontmatter: string, patch: Record<string, string>): string {
+  const next = 'tags' in patch ? stripBlockList(frontmatter, 'tags') : frontmatter;
+  return patchFrontmatter(next, patch);
 }
 
 function detectSummaryKey(frontmatter: string): 'description' | 'summary' {
@@ -837,14 +283,33 @@ function detectSummaryKey(frontmatter: string): 'description' | 'summary' {
 
 function detectBlockedFields(frontmatter: string): FieldKey[] {
   const blocked: FieldKey[] = [];
-  if (/^[>|]/.test(rawField(frontmatter, 'title'))) blocked.push('title');
-  if (/^[>|]/.test(rawField(frontmatter, 'category'))) blocked.push('category');
-  if (/^[>|]/.test(rawField(frontmatter, summaryKey.value))) blocked.push('summary');
+  const blockedKeys: [FieldKey, string][] = [
+    ['title', 'title'],
+    ['category', 'category'],
+    ['summary', summaryKey.value],
+    ['cover', 'cover'],
+    ['date', 'date'],
+  ];
+  for (const [field, key] of blockedKeys) {
+    if (/^[>|]/.test(rawField(frontmatter, key))) blocked.push(field);
+  }
   return blocked;
 }
 
 function countChars(text: string): number {
   return text.replace(/\s+/g, '').length;
+}
+
+function parseTagsText(text: string): string[] {
+  const rows = text
+    .split(/[,，]/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+  return [...new Set(rows)];
+}
+
+function tagsEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function snapshotFields(): FieldSnapshot {
@@ -853,6 +318,9 @@ function snapshotFields(): FieldSnapshot {
     category: category.value,
     description: summary.value,
     draft: draft.value,
+    tags: parseTagsText(tagsText.value),
+    cover: cover.value,
+    date: date.value,
   };
 }
 
@@ -865,6 +333,9 @@ function fieldPatch(fields: FieldSnapshot): Record<string, string> {
   }
   if (fields.category !== baseline.category) patch.category = yamlString(fields.category);
   if (fields.draft !== baseline.draft) patch.draft = fields.draft ? 'true' : 'false';
+  if (!tagsEqual(fields.tags, baseline.tags)) patch.tags = yamlJson(fields.tags);
+  if (fields.cover !== baseline.cover) patch.cover = yamlString(fields.cover);
+  if (fields.date !== baseline.date) patch.date = yamlString(fields.date);
   return patch;
 }
 
@@ -878,7 +349,12 @@ function describeError(error: unknown): string {
 
 /* ---------- 保存 ---------- */
 
+function htmlFilePath(slug: string): string {
+  return `src/content/posts/${slug}/index.html`;
+}
+
 function currentBody(): string | undefined {
+  if (format.value === 'html') return sourceEditor ? sourceEditor.getValue() : undefined;
   if (sourceMode.value) return sourceEditor?.getValue() ?? pendingSourceText;
   if (crepeReady && crepe) return crepe.getMarkdown();
   return pendingVisualText || undefined;
@@ -930,6 +406,20 @@ function notifySaveFailure(saved: SaveResult): void {
   );
 }
 
+/** 保存成功（或无需写盘）后统一更新 session / 保存态；写盘期间有新编辑就回到 dirty 继续存。 */
+function afterSave(text: string, fields: FieldSnapshot, seq: number): void {
+  session = openMarkdown(text);
+  baseline = fields;
+  if (seq === editSeq) {
+    bodyEdited = false;
+    sessionStore.setSaveState('saved');
+  } else {
+    session = markDirty(session);
+    sessionStore.setSaveState('dirty');
+    scheduleSave();
+  }
+}
+
 /**
  * 保存顺序上串行执行，避免两次写盘互相覆盖。
  * 正文和属性在调用时同步抓取快照——卸载时 crepe 可能已经被销毁，晚一步就抓不到了。
@@ -938,8 +428,8 @@ function persist(): Promise<void> {
   if (!session) return Promise.resolve();
   const body = currentBody();
   if (body === undefined) {
-    // Crepe 正在挂载：稍等再存，但别无限重试成死循环。
-    if (viewState.value === 'ready' && !sourceMode.value && bodyRetries < 10) {
+    // 编辑器正在挂载：稍等再存，但别无限重试成死循环。
+    if (viewState.value === 'ready' && bodyRetries < 10) {
       bodyRetries += 1;
       scheduleSave(150);
     }
@@ -950,25 +440,44 @@ function persist(): Promise<void> {
   const patch = fieldPatch(fields);
   const seq = editSeq;
   const bodyChanged = bodyEdited;
+  const capturedFormat = format.value;
   const target = { siteDir: activeSiteDir, slug: activeSlug };
   return enqueue(async () => {
     const current = session;
     if (!current) return;
     try {
-      // 没动正文时用磁盘上的正文做输入，避免只改标题也把整篇 Markdown 重新序列化。
-      const saved = saveMarkdown(current, bodyChanged ? body : current.body, patch);
+      if (capturedFormat === 'html') {
+        const changed = bodyChanged || Object.keys(patch).length > 0 || current.dirty;
+        if (!changed) {
+          sessionStore.setSaveState('saved');
+          return;
+        }
+        const text = `${applyMetaPatch(current.fmRaw, patch)}${bodyChanged ? body : current.body}`;
+        if (text === current.original) {
+          afterSave(text, fields, seq);
+          return;
+        }
+        sessionStore.setSaveState('saving');
+        const result = await window.xiao.dev.write(target.siteDir, htmlFilePath(target.slug), text);
+        if (!result.ok) {
+          sessionStore.setSaveState('dirty');
+          notify(
+            `保存失败：${result.message}。请确认这篇还在，或按 Ctrl+S 重试；一直失败的话回到文章列表刷新一次。`,
+            'error',
+            'editor-save',
+          );
+          return;
+        }
+        afterSave(text, fields, seq);
+        return;
+      }
+      // Markdown：正文走保真写回层，元数据只 patch 改动键。
+      const working: MarkdownSession =
+        patch.tags !== undefined ? { ...current, fmRaw: stripBlockList(current.fmRaw, 'tags') } : current;
+      const saved = saveMarkdown(working, bodyChanged ? body : current.body, patch);
       if (!saved.write) {
         if (saved.reason === 'clean' || saved.reason === 'unchanged' || saved.reason === 'identical') {
-          session = openMarkdown(saved.text);
-          baseline = fields;
-          if (seq === editSeq) {
-            bodyEdited = false;
-            sessionStore.setSaveState('saved');
-          } else {
-            session = markDirty(session);
-            sessionStore.setSaveState('dirty');
-            scheduleSave();
-          }
+          afterSave(saved.text, fields, seq);
           return;
         }
         sessionStore.setSaveState('dirty');
@@ -986,24 +495,10 @@ function persist(): Promise<void> {
         );
         return;
       }
-      session = openMarkdown(saved.text);
-      baseline = fields;
-      if (seq === editSeq) {
-        bodyEdited = false;
-        sessionStore.setSaveState('saved');
-      } else {
-        // 写盘期间又有新编辑：内容还在编辑器里，标回 dirty 让自动保存接着写。
-        session = markDirty(session);
-        sessionStore.setSaveState('dirty');
-        scheduleSave();
-      }
+      afterSave(saved.text, fields, seq);
     } catch (error) {
       sessionStore.setSaveState('dirty');
-      notify(
-        `保存时出错了：${describeError(error)}。请按 Ctrl+S 重试。`,
-        'error',
-        'editor-save',
-      );
+      notify(`保存时出错了：${describeError(error)}。请按 Ctrl+S 重试。`, 'error', 'editor-save');
     }
   });
 }
@@ -1027,13 +522,10 @@ function onSaveShortcut(): void {
   saveNow();
 }
 
-/* ---------- Crepe（所见即所得） ---------- */
+/* ---------- 编辑器（Crepe / Monaco） ---------- */
 
 async function destroyEditors(): Promise<void> {
-  selectedBlock.value = null;
-  setHtmlPickHandler(undefined);
-  crepeRoot.value?.removeEventListener('mousedown', onCrepeMouseDown);
-  clearHtmlSelection();
+  clearBlockDrag();
   crepeReady = false;
   const current = crepe;
   crepe = undefined;
@@ -1047,10 +539,6 @@ async function destroyEditors(): Promise<void> {
   disposeSource();
 }
 
-function resetScroll(): void {
-  if (bodyElement.value) bodyElement.value.scrollTop = 0;
-}
-
 function disposeSource(): void {
   sourceEditor?.dispose();
   sourceEditor = undefined;
@@ -1060,9 +548,40 @@ function disposeSource(): void {
   sourceMode.value = false;
 }
 
+function resetScroll(): void {
+  if (bodyElement.value) bodyElement.value.scrollTop = 0;
+}
+
 function focusVisual(): void {
   const editable = crepeRoot.value?.querySelector<HTMLElement>('.ProseMirror');
   editable?.focus();
+}
+
+function createMonacoEditor(text: string, language: string): monaco.editor.IStandaloneCodeEditor | undefined {
+  const host = sourceRoot.value;
+  if (!host) return undefined;
+  const model = monaco.editor.createModel(text, language);
+  sourceModel = model;
+  const editor = monaco.editor.create(host, {
+    model,
+    automaticLayout: true,
+    wordWrap: 'on',
+    minimap: { enabled: false },
+    fontSize: 14,
+    lineNumbers: 'on',
+    renderWhitespace: 'selection',
+    scrollBeyondLastLine: false,
+    fixedOverflowWidgets: true,
+    padding: { top: 16, bottom: 48 },
+    theme: sessionStore.theme === 'dark' ? 'vs-dark' : 'vs',
+  });
+  model.onDidChangeContent(() => {
+    charCount.value = countChars(model.getValue());
+    bodyEdited = true;
+    touchEdits();
+  });
+  sourceEditor = editor;
+  return editor;
 }
 
 async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
@@ -1076,8 +595,9 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
   const instance = new Crepe({
     root: rootElement,
     defaultValue: body,
+    features: { [Crepe.Feature.Latex]: false },
     featureConfigs: {
-      [Crepe.Feature.Placeholder]: { text: '写点什么，或按 / 插入标题、列表、图片…' },
+      [Crepe.Feature.Placeholder]: { text: '写点什么，或按 / 插入 Markdown 块…' },
       [Crepe.Feature.BlockEdit]: {
         textGroup: {
           label: '文本',
@@ -1102,10 +622,6 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
           image: { label: '图片' },
           codeBlock: { label: '代码块' },
           table: { label: '表格' },
-          math: { label: '公式' },
-        },
-        buildMenu: (builder) => {
-          registerAstroSlashGroups(builder);
         },
       },
       [Crepe.Feature.ImageBlock]: {
@@ -1142,11 +658,6 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
   });
   crepe = instance;
   await instance.create();
-  instance.editor.action((ctx: unknown) => {
-    attachHtmlNodeViews(ctx);
-  });
-  setHtmlPickHandler(onPickBlock);
-  rootElement.addEventListener('mousedown', onCrepeMouseDown);
   if (gen !== generation || crepe !== instance) {
     await instance.destroy();
     return;
@@ -1160,10 +671,8 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
       charCount.value = countChars(markdown);
       bodyEdited = true;
       touchEdits();
-      requestAnimationFrame(ensureCaretVisible);
     });
   });
-  scheduleLayout();
 }
 
 /** Crepe 初始化失败时给出中文错误页，内容仍可在源码模式里查看。 */
@@ -1193,48 +702,36 @@ async function mountCrepe(body: string, gen = generation): Promise<void> {
   }
 }
 
-/* ---------- Monaco（源码模式） ---------- */
-
 function syncMonacoTheme(): void {
   monaco.editor.setTheme(sessionStore.theme === 'dark' ? 'vs-dark' : 'vs');
 }
 
+/** HTML 文章：默认用 Monaco 直接编辑正文（frontmatter 已切走，保存时再拼回去）。 */
+async function mountHtmlEditor(text: string, gen = generation): Promise<void> {
+  await nextTick();
+  if (gen !== generation) return;
+  disposeSource();
+  createMonacoEditor(text, 'html');
+  bodyRetries = 0;
+  await nextTick();
+  if (gen !== generation) return;
+  sourceEditor?.layout();
+  sourceEditor?.focus();
+}
+
 async function enterSource(): Promise<void> {
-  if (!session || sourceMode.value) return;
-  selectedBlock.value = null;
-  clearHtmlSelection();
+  if (!session || format.value !== 'markdown' || sourceMode.value) return;
   const text = currentBody() ?? session.body;
   pendingSourceText = text;
   sourceMode.value = true;
   await nextTick();
   resetScroll();
   if (!session || !sourceMode.value || sourceEditor) return;
-  const host = sourceRoot.value;
-  if (!host) return;
-  const model = monaco.editor.createModel(text, 'markdown');
-  sourceModel = model;
+  const editor = createMonacoEditor(text, 'markdown');
   sourceInitial = text;
-  sourceEditor = monaco.editor.create(host, {
-    model,
-    automaticLayout: true,
-    wordWrap: 'on',
-    minimap: { enabled: false },
-    fontSize: 14,
-    lineNumbers: 'on',
-    renderWhitespace: 'selection',
-    scrollBeyondLastLine: false,
-    fixedOverflowWidgets: true,
-    padding: { top: 16, bottom: 48 },
-    theme: sessionStore.theme === 'dark' ? 'vs-dark' : 'vs',
-  });
-  model.onDidChangeContent(() => {
-    charCount.value = countChars(model.getValue());
-    bodyEdited = true;
-    touchEdits();
-  });
   await nextTick();
-  sourceEditor.layout();
-  sourceEditor.focus();
+  editor?.layout();
+  editor?.focus();
 }
 
 /**
@@ -1258,7 +755,6 @@ function enterVisual(): void {
     return;
   }
   viewState.value = 'ready';
-  zoomMode.value = 'fit';
   resetScroll();
   void mountCrepe(text);
 }
@@ -1266,11 +762,151 @@ function enterVisual(): void {
 async function beginWriting(): Promise<void> {
   if (!session || viewState.value !== 'empty') return;
   viewState.value = 'ready';
-  zoomMode.value = 'fit';
   await mountCrepe(session.body);
-  await nextTick();
-  layoutCanvas();
   focusVisual();
+}
+
+/* ---------- 块拖拽排序（Crepe 自带的拖柄图标没接排序，这里用 ProseMirror 事务补） ---------- */
+
+interface PmNodeLike {
+  nodeSize: number;
+  type: { name: string };
+}
+
+interface PmTrLike {
+  delete: (from: number, to: number) => PmTrLike;
+  insert: (pos: number, node: unknown) => PmTrLike;
+  scrollIntoView: () => PmTrLike;
+}
+
+interface PmViewLike {
+  state: { doc: { forEach: (fn: (node: PmNodeLike, offset: number) => void) => void }; tr: PmTrLike };
+  dispatch: (tr: unknown) => void;
+  posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null;
+  nodeDOM: (pos: number) => Node | null;
+  focus: () => void;
+}
+
+interface BlockDrag {
+  view: PmViewLike;
+  from: number;
+  to: number;
+  node: PmNodeLike;
+  source: HTMLElement | null;
+  target: HTMLElement | null;
+  targetFrom: number;
+  targetTo: number;
+  after: boolean;
+}
+
+let blockDrag: BlockDrag | null = null;
+
+function proseMirrorView(): PmViewLike | undefined {
+  let view: PmViewLike | undefined;
+  try {
+    crepe?.editor.action((ctx: unknown) => {
+      const bag = ctx as { get: (name: string) => unknown };
+      view = bag.get('editorView') as PmViewLike | undefined;
+    });
+  } catch {
+    view = undefined;
+  }
+  return view;
+}
+
+function blockAt(view: PmViewLike, pos: number): { from: number; to: number; node: PmNodeLike } | null {
+  let found: { from: number; to: number; node: PmNodeLike } | null = null;
+  view.state.doc.forEach((node, offset) => {
+    if (found) return;
+    const end = offset + node.nodeSize;
+    if (pos >= offset && pos <= end) found = { from: offset, to: end, node };
+  });
+  return found;
+}
+
+function clearBlockDrop(): void {
+  crepeRoot.value
+    ?.querySelectorAll('.is-xiao-block-drop-before, .is-xiao-block-drop-after')
+    .forEach((el) => el.classList.remove('is-xiao-block-drop-before', 'is-xiao-block-drop-after'));
+}
+
+function clearBlockDrag(): void {
+  clearBlockDrop();
+  crepeRoot.value?.querySelectorAll('.is-xiao-block-drag').forEach((el) => el.classList.remove('is-xiao-block-drag'));
+  document.body.classList.remove('xiao-block-dragging');
+  blockDrag = null;
+}
+
+function onBlockHandleDown(event: PointerEvent): void {
+  if (format.value !== 'markdown' || sourceMode.value) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const item = target.closest('.milkdown-block-handle .operation-item');
+  if (!(item instanceof HTMLElement) || !item.parentElement) return;
+  // Crepe 的块手柄有两个图标：第一个是加号，第二个才是拖柄。
+  if (item.parentElement.children[1] !== item) return;
+  const view = proseMirrorView();
+  if (!view) return;
+  const rect = item.getBoundingClientRect();
+  const hit = view.posAtCoords({ left: rect.right + 24, top: rect.top + rect.height / 2 });
+  if (!hit) return;
+  const range = blockAt(view, hit.pos);
+  if (!range) return;
+  const dom = view.nodeDOM(range.from);
+  event.preventDefault();
+  event.stopPropagation();
+  blockDrag = {
+    view,
+    ...range,
+    source: dom instanceof HTMLElement ? dom : null,
+    target: null,
+    targetFrom: -1,
+    targetTo: -1,
+    after: false,
+  };
+  if (dom instanceof HTMLElement) dom.classList.add('is-xiao-block-drag');
+  document.body.classList.add('xiao-block-dragging');
+}
+
+function onBlockPointerMove(event: PointerEvent): void {
+  const drag = blockDrag;
+  if (!drag) return;
+  const hit = drag.view.posAtCoords({ left: event.clientX, top: event.clientY });
+  clearBlockDrop();
+  drag.target = null;
+  drag.targetFrom = -1;
+  drag.targetTo = -1;
+  if (!hit) return;
+  const range = blockAt(drag.view, hit.pos);
+  if (!range || range.from === drag.from) return;
+  const dom = drag.view.nodeDOM(range.from);
+  if (!(dom instanceof HTMLElement)) return;
+  const rect = dom.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2;
+  drag.target = dom;
+  drag.targetFrom = range.from;
+  drag.targetTo = range.to;
+  drag.after = after;
+  dom.classList.add(after ? 'is-xiao-block-drop-after' : 'is-xiao-block-drop-before');
+}
+
+function onBlockPointerUp(): void {
+  const drag = blockDrag;
+  if (!drag) return;
+  blockDrag = null;
+  if (drag.source) drag.source.classList.remove('is-xiao-block-drag');
+  document.body.classList.remove('xiao-block-dragging');
+  clearBlockDrop();
+  if (!drag.target || drag.targetFrom < 0 || drag.targetTo < 0) return;
+  if (drag.targetFrom === drag.from) return;
+  try {
+    let dest = drag.after ? drag.targetTo : drag.targetFrom;
+    if (dest > drag.from) dest -= drag.to - drag.from;
+    drag.view.dispatch(drag.view.state.tr.delete(drag.from, drag.to).insert(dest, drag.node).scrollIntoView());
+    drag.view.focus();
+  } catch (error) {
+    notify(`块移动失败：${describeError(error)}。可以撤销后重试。`, 'error', 'editor-block-move');
+  }
 }
 
 /* ---------- 打开 / 关闭 ---------- */
@@ -1305,17 +941,17 @@ async function open(): Promise<void> {
   session = undefined;
   bodyEdited = false;
   pendingVisualText = '';
-  zoomMode.value = 'fit';
-  zoom.value = 1;
   hasFrontmatter.value = false;
   blockedFields.value = [];
   if (gen !== generation) return;
 
-  let result: IpcResult<string>;
+  let result: IpcResult<{ text: string; format: ContentFormat }>;
   try {
-    result = await window.xiao.content.read(siteDir, slug);
+    result = await window.xiao.content.readPost(siteDir, slug);
   } catch (error) {
     if (gen !== generation) return;
+    format.value = 'markdown';
+    sourceMode.value = false;
     loadError.value = describeError(error);
     viewState.value = 'error';
     sessionStore.setSaveState('saved');
@@ -1323,23 +959,17 @@ async function open(): Promise<void> {
   }
   if (gen !== generation) return;
   if (!result.ok) {
+    format.value = 'markdown';
+    sourceMode.value = false;
     loadError.value = result.message;
     viewState.value = 'error';
     sessionStore.setSaveState('saved');
     return;
   }
 
-  // 断点表跟着站点走；切文章不重复读配置。
-  if (breakpointsSite !== siteDir) {
-    breakpointsSite = siteDir;
-    await loadBreakpoints(siteDir);
-    if (gen !== generation) return;
-  }
-  // 打开文章时把检查器档位对齐到当前设备（设备可能在别的视图里被改过）。
-  styleBp.value = bpForDevice(sessionStore.previewDevice);
-
-  const opened = openMarkdown(result.data);
+  const opened = openMarkdown(result.data.text);
   session = opened;
+  format.value = result.data.format;
   hasFrontmatter.value = opened.fmRaw.length > 0;
   summaryKey.value = detectSummaryKey(opened.fmRaw);
   blockedFields.value = detectBlockedFields(opened.fmRaw);
@@ -1349,21 +979,24 @@ async function open(): Promise<void> {
   title.value = readField(opened.fmRaw, 'title');
   category.value = readField(opened.fmRaw, 'category');
   summary.value = readField(opened.fmRaw, summaryKey.value);
+  tagsText.value = readTagList(opened.fmRaw).join(', ');
+  cover.value = readField(opened.fmRaw, 'cover');
+  date.value = readField(opened.fmRaw, 'date');
   draft.value = /^draft:[ \t]*true/m.test(opened.fmRaw);
   baseline = snapshotFields();
   syncingFields = false;
 
   charCount.value = countChars(opened.body);
-  viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
-  sessionStore.setSaveState('saved');
-
-  if (viewState.value === 'ready') {
-    await mountCrepe(opened.body, gen);
-    if (gen === generation) {
-      zoomMode.value = 'fit';
-      await nextTick();
-      layoutCanvas();
-    }
+  if (format.value === 'html') {
+    viewState.value = 'ready';
+    sessionStore.setSaveState('saved');
+    await nextTick();
+    if (gen !== generation) return;
+    await mountHtmlEditor(opened.body, gen);
+  } else {
+    viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
+    sessionStore.setSaveState('saved');
+    if (viewState.value === 'ready') await mountCrepe(opened.body, gen);
   }
   void loadCategories(siteDir, gen);
 }
@@ -1375,19 +1008,6 @@ async function reload(): Promise<void> {
 
 /* ---------- 顶栏动作 ---------- */
 
-async function customize(): Promise<void> {
-  const result = await window.xiao.content.customize(activeSiteDir, activeSlug);
-  if (!result.ok) {
-    notify(
-      `没能为这篇生成独立布局：${result.message}。确认文章还在、磁盘可写后再试。`,
-      'error',
-      'editor-customize',
-    );
-    return;
-  }
-  notify('已为这篇生成独立布局，之后可以只改这一篇的排版，不影响其他文章。', 'info', 'editor-customize');
-}
-
 async function openPreview(): Promise<void> {
   sessionStore.setPreviewMode('dock');
   if (sessionStore.previewUrl || sessionStore.building) return;
@@ -1396,7 +1016,7 @@ async function openPreview(): Promise<void> {
     const result = await window.xiao.runtime.start('dev', activeSiteDir || props.siteDir);
     if (!result.ok) {
       notify(
-        `预览没能启动：${result.message}。先确认站点依赖已经装好，再点一次「打开预览」。`,
+        `预览没能启动：${result.message}。先确认站点依赖已经装好，再点一次「预览」。`,
         'error',
         'editor-preview',
       );
@@ -1408,7 +1028,7 @@ async function openPreview(): Promise<void> {
   }
 }
 
-/* ---------- 浮层越界修正（沿用旧实现） ---------- */
+/* ---------- 浮层越界修正 ---------- */
 
 const menuSelector = '.milkdown-slash-menu, .milkdown-toolbar, .milkdown-link-preview, .milkdown-link-edit';
 let menuObserver: MutationObserver | undefined;
@@ -1427,18 +1047,14 @@ function resetClampedMenu(element: HTMLElement): void {
   if (groups) groups.style.maxHeight = '';
 }
 
-function writeStyle(element: HTMLElement, prop: 'position' | 'top' | 'left' | 'right' | 'bottom' | 'zIndex' | 'maxHeight', value: string): void {
-  if (element.style[prop] !== value) element.style[prop] = value;
-}
-
 function applyClamp(element: HTMLElement, top: number, left: number): void {
   element.dataset.clamped = '1';
-  writeStyle(element, 'position', 'fixed');
-  writeStyle(element, 'top', `${top}px`);
-  writeStyle(element, 'left', `${left}px`);
-  writeStyle(element, 'right', 'auto');
-  writeStyle(element, 'bottom', 'auto');
-  writeStyle(element, 'zIndex', '80');
+  element.style.position = 'fixed';
+  element.style.top = `${top}px`;
+  element.style.left = `${left}px`;
+  element.style.right = 'auto';
+  element.style.bottom = 'auto';
+  element.style.zIndex = '80';
 }
 
 function clampMenus(): void {
@@ -1464,16 +1080,14 @@ function clampMenus(): void {
     }
     if (left < margin) left = margin;
     if (top < margin) top = margin;
-
     if (element.classList.contains('milkdown-slash-menu')) {
       const tab = element.querySelector<HTMLElement>('.tab-group');
       const groups = element.querySelector<HTMLElement>('.menu-groups');
-      const tabH = tab ? tab.getBoundingClientRect().height : 0;
+      const tabHeight = tab ? tab.getBoundingClientRect().height : 0;
       const spaceBelow = window.innerHeight - top - margin;
-      const groupsMax = Math.max(160, Math.min(420, spaceBelow - tabH));
-      if (groups) writeStyle(groups, 'maxHeight', `${Math.round(groupsMax)}px`);
+      const groupsMax = Math.max(160, Math.min(420, spaceBelow - tabHeight));
+      if (groups) groups.style.maxHeight = `${Math.round(groupsMax)}px`;
     }
-
     applyClamp(element, Math.round(top), Math.round(left));
   });
   if (retry) {
@@ -1486,50 +1100,14 @@ function detectInspectorHost(): void {
   inspectorHost.value = Boolean(document.querySelector('#inspector-host'));
 }
 
-watch(
-  () => sessionStore.previewDevice,
-  (device) => {
-    // 设备按钮 → 断点：电脑=base、平板=最宽、手机=最窄。
-    styleBp.value = bpForDevice(device);
-    scheduleLayout();
-  },
-);
-
-watch(zoom, (value) => {
-  setCanvasScale(value);
-});
-
-watch(styleBp, () => {
-  scheduleLayout();
-});
-
-watch(breakpoints, () => {
-  scheduleLayout();
-});
-
-watch(sourceMode, (value) => {
-  if (!value) scheduleLayout();
-});
-
 onMounted(() => {
-  if (!sessionStore.listCollapsed) {
-    sessionStore.listCollapsed = true;
-    collapsedListForEditor.value = true;
-  }
   window.addEventListener('xiao:save', onSaveShortcut);
   window.addEventListener('resize', clampMenus);
-  window.addEventListener('pointermove', onWindowPointerMove);
-  window.addEventListener('pointerup', onWindowPointerUp);
-  window.addEventListener('keydown', onCanvasKeyDown);
-  window.addEventListener('keyup', onCanvasKeyUp);
-  window.addEventListener('focus', refreshBreakpoints);
-  setCanvasScale(zoom.value);
-  artboardObserver = new ResizeObserver(() => scheduleLayout());
-  if (artboardEl.value) artboardObserver.observe(artboardEl.value);
-  frameObserver = new ResizeObserver(() => clampPan());
-  if (frameEl.value) frameObserver.observe(frameEl.value);
+  window.addEventListener('pointermove', onBlockPointerMove);
+  window.addEventListener('pointerup', onBlockPointerUp);
   const scope = crepeRoot.value;
   if (scope) {
+    scope.addEventListener('pointerdown', onBlockHandleDown);
     menuObserver = new MutationObserver(() => {
       cancelAnimationFrame(menuFrame);
       menuFrame = requestAnimationFrame(clampMenus);
@@ -1540,29 +1118,21 @@ onMounted(() => {
       attributeFilter: ['data-show', 'class', 'style'],
     });
   }
-  void nextTick().then(() => {
-    detectInspectorHost();
-    layoutCanvas();
-  });
+  void nextTick().then(detectInspectorHost);
 });
 
 onBeforeUnmount(() => {
-  if (collapsedListForEditor.value) sessionStore.listCollapsed = false;
   window.removeEventListener('xiao:save', onSaveShortcut);
   window.removeEventListener('resize', clampMenus);
-  window.removeEventListener('pointermove', onWindowPointerMove);
-  window.removeEventListener('pointerup', onWindowPointerUp);
-  window.removeEventListener('keydown', onCanvasKeyDown);
-  window.removeEventListener('keyup', onCanvasKeyUp);
-  window.removeEventListener('focus', refreshBreakpoints);
-  artboardObserver?.disconnect();
-  frameObserver?.disconnect();
-  cancelAnimationFrame(layoutFrame);
+  window.removeEventListener('pointermove', onBlockPointerMove);
+  window.removeEventListener('pointerup', onBlockPointerUp);
+  crepeRoot.value?.removeEventListener('pointerdown', onBlockHandleDown);
+  clearBlockDrag();
   clearSaveTimer();
   cancelAnimationFrame(menuFrame);
   menuObserver?.disconnect();
   generation += 1;
-  // 旧实现漏了这一步：带着未保存改动切走/关闭会丢内容。persist 会先同步抓正文再异步写盘。
+  // 带未保存改动切走/关闭前先 flush；persist 会先同步抓正文再异步写盘。
   if (session && (session.dirty || hasFieldChanges())) void persist();
   void destroyEditors();
 });
@@ -1576,10 +1146,14 @@ watch(
   },
 );
 
-watch([title, category, summary, draft], () => {
-  if (syncingFields || !session) return;
-  touchEdits();
-}, { flush: 'sync' });
+watch(
+  [title, category, summary, tagsText, cover, date, draft],
+  () => {
+    if (syncingFields || !session) return;
+    touchEdits();
+  },
+  { flush: 'sync' },
+);
 
 watch(
   () => sessionStore.theme,
@@ -1596,13 +1170,13 @@ watch(
 </script>
 
 <template>
-  <div class="editor-view" :class="{ 'is-source': sourceMode }">
+  <div class="editor-view" :class="{ 'is-source': showMonaco }">
     <div class="editor-bar">
       <button
         type="button"
         class="save-chip"
         :class="sessionStore.saveState"
-        :disabled="(viewState === 'loading' || viewState === 'error') && !sourceMode"
+        :disabled="(viewState === 'loading' || viewState === 'error') && !showMonaco"
         :aria-label="`保存状态：${saveText}，点击立即保存`"
         @click="saveNow"
       >
@@ -1611,74 +1185,35 @@ watch(
         <span>{{ saveText }}</span>
       </button>
 
+      <UiBadge :tone="format === 'html' ? 'accent' : 'neutral'">{{ formatLabel }}</UiBadge>
+
       <div class="bar-grow" />
 
-      <div v-if="!sourceMode && viewState === 'ready'" class="bar-group">
-        <UiTooltip label="适应宽度（默认）">
-          <UiButton
-            size="sm"
-            variant="ghost"
-            :class="{ on: zoomMode === 'fit' }"
-            aria-label="适应宽度"
-            @click="setZoomPreset('fit')"
-          >
-            适应
-          </UiButton>
-        </UiTooltip>
-        <UiTooltip label="缩放到 100%">
-          <UiButton
-            size="sm"
-            variant="ghost"
-            :class="{ on: zoomMode === 'manual' && Math.abs(zoom - 1) < 0.01 }"
-            aria-label="缩放到百分之百"
-            @click="setZoomPreset('actual')"
-          >
-            100%
-          </UiButton>
-        </UiTooltip>
-        <UiTooltip label="缩放到 50%">
-          <UiButton
-            size="sm"
-            variant="ghost"
-            :class="{ on: zoomMode === 'manual' && Math.abs(zoom - 0.5) < 0.01 }"
-            aria-label="缩放到百分之五十"
-            @click="setZoomPreset('half')"
-          >
-            50%
-          </UiButton>
-        </UiTooltip>
-        <span class="zoom-readout" :title="`框宽 ${frameWidth}px`">{{ zoomPercent }}</span>
-      </div>
+      <UiSegmented
+        v-if="format === 'markdown'"
+        v-model="modeKey"
+        :items="modeItems"
+        aria-label="编辑模式"
+      />
 
-      <UiTooltip label="切换所见即所得与源码；来回切换不会写盘">
-        <UiSegmented v-model="modeKey" :items="modeItems" aria-label="编辑模式" />
-      </UiTooltip>
+      <UiButton variant="primary" :icon="icons.preview" aria-label="打开预览" @click="openPreview">
+        <span class="bar-label">预览</span>
+      </UiButton>
 
-      <UiTooltip label="自定义此页：复制一份只属于这篇的布局">
-        <UiButton
-          :icon="icons.edit"
-          :disabled="viewState === 'error' && !sourceMode"
-          aria-label="自定义此页"
-          @click="customize"
-        >
-          <span class="bar-label">自定义此页</span>
-        </UiButton>
-      </UiTooltip>
-
-      <UiTooltip label="打开停靠预览；需要时自动启动 dev 服务器">
-        <UiButton variant="primary" :icon="icons.preview" aria-label="打开预览" @click="openPreview">
-          <span class="bar-label">打开预览</span>
+      <UiTooltip label="版式编辑：下一步支持">
+        <UiButton :icon="icons.pages" disabled aria-label="版式（下一步支持）">
+          <span class="bar-label">版式</span>
         </UiButton>
       </UiTooltip>
     </div>
 
     <div ref="bodyElement" class="editor-body">
-      <div v-if="viewState === 'loading' && !sourceMode" class="state-loading">
+      <div v-if="viewState === 'loading' && !showMonaco" class="state-loading">
         <UiSpinner :size="20" />
         <p>正在打开这篇…</p>
       </div>
 
-      <div v-else-if="viewState === 'error' && !sourceMode" class="state-panel">
+      <div v-else-if="viewState === 'error' && !showMonaco" class="state-panel">
         <UiEmpty :title="errorTitle" :description="errorHint" :icon="icons.alert">
           <template #action>
             <UiButton :icon-left="icons.refresh" @click="reload">重新加载</UiButton>
@@ -1689,7 +1224,7 @@ watch(
       <div v-else-if="showEmptyHint" class="state-panel">
         <UiEmpty
           title="这篇还没有正文"
-          description="从第一段写起；标题、分类和摘要可以在右侧检查器里改。"
+          description="从第一段写起；标题、分类、标签等属性可以在右侧检查器里改。"
           :icon="icons.edit"
         >
           <template #action>
@@ -1698,72 +1233,18 @@ watch(
         </UiEmpty>
       </div>
 
-      <div v-show="!sourceMode && viewState === 'ready'" class="editor-workspace">
-        <aside class="palette" aria-label="组件">
-          <div class="palette-head">
-            <UiInput v-model="paletteSearch" size="sm" :icon="icons.seo" placeholder="搜索组件" aria-label="搜索组件" />
-          </div>
-          <div class="palette-scroll">
-            <div v-for="group in paletteGroups" :key="group.category" class="palette-group">
-              <p class="palette-group__title">{{ group.label }}</p>
-              <button
-                v-for="block in group.items"
-                :key="block.name"
-                type="button"
-                class="palette-item"
-                :title="`拖到画板上，或点一下插入`"
-                @pointerdown="onPalettePointerDown($event, block)"
-                @click="onPaletteClick(block)"
-              >
-                <span class="palette-item__icon">
-                  <UiIcon :path="categoryIcon[group.category]" :size="16" />
-                </span>
-                <span class="palette-item__label">{{ block.label }}</span>
-              </button>
-            </div>
-          </div>
-          <div class="palette-foot">{{ dropHint || '拖到画板落点；容器可套进去' }}</div>
-        </aside>
-        <div
-          ref="artboardEl"
-          class="artboard"
-          :class="{ 'is-pan-ready': spaceHeld, 'is-panning': panning }"
-          @wheel="onCanvasWheel"
-          @pointerdown.capture="onCanvasPointerDown"
-          @pointermove="onCanvasPointerMove"
-          @pointerup="onCanvasPointerUp"
-          @pointercancel="onCanvasPointerUp"
-          @pointerenter="hoveringCanvas = true"
-          @pointerleave="hoveringCanvas = false"
-        >
-          <div class="canvas-stage" :style="stageStyle">
-            <div ref="frameEl" class="frame" :style="{ width: `${frameWidth}px` }">
-              <div ref="crepeRoot" class="crepe" />
-            </div>
-          </div>
-          <div class="canvas-hint">
-            <span>框宽 {{ frameWidth }}px</span>
-            <span class="canvas-hint__sep">·</span>
-            <span>{{ zoomPercent }}</span>
-            <span class="canvas-hint__sep">·</span>
-            <span>Ctrl+滚轮缩放，空格或中键拖动</span>
-          </div>
-        </div>
-      </div>
-      <div v-show="sourceMode" ref="sourceRoot" class="source" />
-    </div>
-    <div
-      v-if="dragGhost"
-      class="drag-ghost"
-      :style="{ left: `${dragGhost.x + 12}px`, top: `${dragGhost.y + 12}px` }"
-    >
-      {{ dragGhost.label }}
+      <div
+        v-show="format === 'markdown' && viewState === 'ready' && !sourceMode"
+        ref="crepeRoot"
+        class="crepe"
+      />
+      <div v-show="showMonaco" ref="sourceRoot" class="source" />
     </div>
 
     <Teleport v-if="inspectorHost" to="#inspector-host">
       <section class="inspector">
         <header class="inspector-head">
-          <h3>{{ selectedBlock && !sourceMode ? selectedBlock.label : '文章属性' }}</h3>
+          <h3>文章属性</h3>
           <div class="inspector-head-actions">
             <UiBadge :tone="saveTone" dot>{{ saveText }}</UiBadge>
             <UiTooltip label="收起文章属性">
@@ -1779,141 +1260,6 @@ watch(
         </header>
 
         <div class="inspector-body">
-          <section v-if="selectedBlock && !sourceMode" class="block-edit">
-            <h4>选中组件</h4>
-            <p class="block-edit-name">{{ selectedBlock.label }}</p>
-            <div class="bp-tabs">
-              <UiSegmented v-model="bpKey" :items="bpItems" aria-label="样式断点" />
-            </div>
-            <div v-if="styleBp !== 'base'" class="bp-summary">
-              <span>本断点已覆盖 {{ overrideCount }} 项</span>
-              <UiTooltip v-if="overrideCount > 0" label="清除本断点的全部覆盖">
-                <UiButton
-                  variant="ghost"
-                  size="sm"
-                  :icon="icons.trash"
-                  aria-label="清除本断点的全部覆盖"
-                  @click="clearBreakpointOverrides"
-                />
-              </UiTooltip>
-            </div>
-            <p class="inspector-note">
-              {{
-                styleBp === 'base'
-                  ? '电脑默认样式。断点样式没填就跟着这里走。'
-                  : `只改「${bpLabel(styleBp)}」这个断点；留空表示跟随电脑。画布宽度用顶部设备按钮切换。`
-              }}
-            </p>
-
-            <h5 class="block-edit-group">内容</h5>
-            <UiField
-              v-for="(text, index) in selectedBlock.texts"
-              :key="index"
-              :label="textSlotLabel(selectedBlock.key, index, selectedBlock.texts.length)"
-            >
-              <UiTextarea
-                :model-value="text"
-                :rows="selectedBlock.texts.length > 1 ? 2 : 3"
-                @update:model-value="setBlockText(index, String($event))"
-              />
-            </UiField>
-            <UiField v-if="hasStyleField(selectedBlock, 'href')" label="链接">
-              <UiInput
-                :model-value="selectedBlock.href"
-                placeholder="/posts/hello/"
-                @update:model-value="patchSelectedBlock({ href: String($event) })"
-              />
-            </UiField>
-            <p v-if="selectedBlock.texts.length === 0 && !hasStyleField(selectedBlock, 'href')" class="inspector-note">
-              这个组件的内容来自站点数据，下面只改外观。
-            </p>
-
-            <h5 class="block-edit-group">布局</h5>
-            <UiField v-for="field in layoutStyleFields" :key="field.key" :label="field.label">
-              <template #action>
-                <span v-if="styleBp !== 'base'" class="field-state">
-                  <UiBadge :tone="isOverridden(field.key) ? 'accent' : 'neutral'">
-                    {{ isOverridden(field.key) ? '已覆盖' : '继承' }}
-                  </UiBadge>
-                  <UiTooltip v-if="isOverridden(field.key)" label="清除这一项的断点覆盖">
-                    <UiButton
-                      variant="ghost"
-                      size="sm"
-                      :icon="icons.close"
-                      :aria-label="`清除${field.label}在本断点的覆盖`"
-                      @click="clearStyle(field.key)"
-                    />
-                  </UiTooltip>
-                </span>
-              </template>
-              <UiSelect
-                class="style-select"
-                :class="{
-                  'is-inherited': styleBp !== 'base' && !isOverridden(field.key),
-                  'is-overridden': isOverridden(field.key),
-                }"
-                :model-value="styleValue(field.key)"
-                :options="bpOptions(field.options)"
-                @update:model-value="patchStyle(field.key, String($event))"
-              />
-            </UiField>
-            <UiField v-if="hasStyleField(selectedBlock, 'hide') && styleBp === 'base'" label="断点隐藏">
-              <UiSelect
-                :model-value="selectedBlock.hide"
-                :options="hideSelectOptions"
-                @update:model-value="patchSelectedBlock({ hide: String($event) })"
-              />
-            </UiField>
-
-            <h5 class="block-edit-group">外观</h5>
-            <UiField v-for="field in appearanceStyleFields" :key="field.key" :label="field.label">
-              <template #action>
-                <span v-if="styleBp !== 'base'" class="field-state">
-                  <UiBadge :tone="isOverridden(field.key) ? 'accent' : 'neutral'">
-                    {{ isOverridden(field.key) ? '已覆盖' : '继承' }}
-                  </UiBadge>
-                  <UiTooltip v-if="isOverridden(field.key)" label="清除这一项的断点覆盖">
-                    <UiButton
-                      variant="ghost"
-                      size="sm"
-                      :icon="icons.close"
-                      :aria-label="`清除${field.label}在本断点的覆盖`"
-                      @click="clearStyle(field.key)"
-                    />
-                  </UiTooltip>
-                </span>
-              </template>
-              <UiSelect
-                class="style-select"
-                :class="{
-                  'is-inherited': styleBp !== 'base' && !isOverridden(field.key),
-                  'is-overridden': isOverridden(field.key),
-                }"
-                :model-value="styleValue(field.key)"
-                :options="bpOptions(field.options)"
-                @update:model-value="patchStyle(field.key, String($event))"
-              />
-            </UiField>
-            <UiField v-if="hasStyleField(selectedBlock, 'type')" label="提示类型">
-              <UiSelect
-                :model-value="selectedBlock.type || 'info'"
-                :options="TYPE_OPTIONS"
-                @update:model-value="patchSelectedBlock({ type: String($event) })"
-              />
-            </UiField>
-            <UiField v-if="hasStyleField(selectedBlock, 'heading')" label="标题级别">
-              <UiSelect
-                :model-value="selectedBlock.heading || '2'"
-                :options="HEADING_OPTIONS"
-                @update:model-value="patchSelectedBlock({ heading: String($event) })"
-              />
-            </UiField>
-          </section>
-          <p v-else-if="!sourceMode" class="inspector-note">
-            把左侧组件拖到画板落点；点容器可以往里套。右侧按电脑/平板/手机改样式。
-          </p>
-
-          <h4 class="inspector-sub">文章属性</h4>
           <UiField label="标题" :hint="hintFor('title', '显示在文章顶部和列表里。')">
             <UiInput v-model="title" :disabled="!fieldsEditable" placeholder="给这篇文章起个标题" />
           </UiField>
@@ -1922,13 +1268,23 @@ watch(
             <UiSelect v-model="category" :options="categoryOptions" :disabled="!fieldsEditable" />
           </UiField>
 
+          <UiField label="标签" :hint="hintFor('tags', '用逗号分隔，例如：随笔, 旅行。')">
+            <UiInput v-model="tagsText" :disabled="!fieldsEditable" placeholder="随笔, 旅行" />
+          </UiField>
+
           <UiField label="摘要" :hint="hintFor('summary', '一两句话概括这篇，用于列表和搜索结果。')">
-            <UiTextarea
-              v-model="summary"
-              :rows="3"
-              :disabled="!fieldsEditable"
-              placeholder="这篇讲了什么？"
-            />
+            <UiTextarea v-model="summary" :rows="3" :disabled="!fieldsEditable" placeholder="这篇讲了什么？" />
+          </UiField>
+
+          <UiField label="封面" :hint="hintFor('cover', '图片地址；留空表示不用封面。')">
+            <UiInput v-model="cover" :disabled="!fieldsEditable" placeholder="./cover.jpg 或站内路径" />
+          </UiField>
+
+          <UiField
+            label="发布日期"
+            :hint="hintFor('date', '例如 2026-10-24 00:00:00；留空使用默认排序。')"
+          >
+            <UiInput v-model="date" :disabled="!fieldsEditable" placeholder="2026-10-24 00:00:00" />
           </UiField>
 
           <UiField
@@ -1944,6 +1300,10 @@ watch(
               <code class="meta-value">{{ currentSlug }}</code>
             </div>
             <div class="meta-row">
+              <span class="meta-key">正文格式</span>
+              <span class="meta-value">{{ formatLabel }}</span>
+            </div>
+            <div class="meta-row">
               <span class="meta-key">正文字数</span>
               <span class="meta-value">{{ charCount }}</span>
             </div>
@@ -1953,15 +1313,15 @@ watch(
             </div>
           </div>
 
+          <p v-if="format === 'html'" class="inspector-note inspector-note--info">
+            HTML 文章的正文按原样保存；这里的元数据只改 frontmatter，不会重排正文。用「预览」看渲染效果。
+          </p>
           <p v-if="viewState !== 'loading' && viewState !== 'error' && !hasFrontmatter" class="inspector-note">
             这篇没有 frontmatter，属性改动暂时不会写回文件；请先切到源码模式补上 frontmatter。
           </p>
         </div>
       </section>
     </Teleport>
-
-    <!-- 断点样式按画板宽度生效：@media 已换成 @container，见 canvasCss。 -->
-    <component :is="'style'">{{ canvasCss }}</component>
   </div>
 </template>
 
@@ -1993,29 +1353,6 @@ watch(
 
 .bar-grow {
   flex: 1;
-}
-
-.bar-group {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s1);
-  padding: 0 var(--ui-s1);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-sm);
-  background: var(--ui-raise);
-}
-
-.zoom-readout {
-  min-width: 38px;
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.on {
-  color: var(--ui-accent);
-  background: var(--ui-accent-weak);
 }
 
 .bar-label {
@@ -2074,206 +1411,19 @@ watch(
 
 .editor-body {
   position: relative;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--ui-bg);
-}
-
-.editor-workspace {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-
-.palette {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--ui-panel);
-  border-right: 1px solid var(--ui-line);
-}
-
-.palette-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--ui-s1);
-  min-height: 36px;
-  padding: var(--ui-s2);
-  border-bottom: 1px solid var(--ui-line);
-}
-
-.palette-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--ui-s2);
-}
-
-.palette-group__title {
-  margin: var(--ui-s2) var(--ui-s1) var(--ui-s1);
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  font-weight: 600;
-}
-
-.palette-item {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s2);
-  width: 100%;
-  padding: var(--ui-s1) var(--ui-s2);
-  border: 0;
-  border-radius: var(--ui-r-sm);
-  background: transparent;
-  color: var(--ui-text);
-  font: inherit;
-  text-align: left;
-  cursor: grab;
-}
-
-.palette-item:hover {
-  background: var(--ui-hover);
-}
-
-.palette-item__icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: var(--ui-s7);
-  height: var(--ui-s7);
-  border-radius: var(--ui-r-sm);
-  background: var(--ui-raise);
-  color: var(--ui-text-2);
-}
-
-.palette-item__label {
-  overflow: hidden;
-  font-size: var(--ui-fs-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.palette-foot {
-  padding: var(--ui-s2);
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-}
-
-.artboard {
-  position: relative;
-  display: block;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: #07090e;
-  touch-action: none;
-  --color-bg: var(--ui-bg);
-  --color-surface: var(--ui-panel);
-  --color-text: var(--ui-text);
-  --color-text-2: var(--ui-text-2);
-  --color-line: var(--ui-line);
-  --color-accent: var(--ui-accent);
-  --color-on-accent: var(--ui-on-accent);
-  --space-1: var(--ui-s1);
-  --space-2: var(--ui-s2);
-  --space-4: var(--ui-s4);
-  --space-5: var(--ui-s6);
-  --space-6: var(--ui-s7);
-  --space-8: var(--ui-s8);
-  --radius-sm: var(--ui-r-sm);
-  --radius-md: var(--ui-r);
-  --radius-lg: var(--ui-r-lg);
-  --shadow-1: var(--ui-shadow-1);
-  --shadow-2: var(--ui-shadow-2);
-  --w-narrow: 560px;
-  --w-prose: 720px;
-  --w-wide: 960px;
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-base: 14px;
-  --font-size-md: 16px;
-  --font-size-lg: 18px;
-  --font-size-xl: 20px;
-  --font-size-2xl: 22px;
-  --font-size-3xl: 30px;
-}
-
-.artboard.is-pan-ready {
-  cursor: grab;
-}
-
-.artboard.is-panning {
-  cursor: grabbing;
-  user-select: none;
-}
-
-/* 缩放/平移只走 transform，不改排版；坐标（拖柄位移）在 astro-blocks 里按缩放换算。 */
-.canvas-stage {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
-  will-change: transform;
-}
-
-.canvas-hint {
-  position: absolute;
-  bottom: var(--ui-s2);
-  left: var(--ui-s3);
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s1);
-  padding: 2px var(--ui-s2);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-lg);
-  background: var(--ui-panel);
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  pointer-events: none;
-}
-
-.canvas-hint__sep {
-  color: var(--ui-line-2);
-}
-
-.frame {
-  container-type: inline-size;
-  min-width: 0;
-  height: auto;
-  overflow: visible;
   background: var(--ui-bg);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 8%);
 }
 
 .crepe {
-  display: block;
-  height: auto;
-  min-height: 0;
-  overflow: visible;
-}
-
-.drag-ghost {
-  position: fixed;
-  z-index: 40;
-  padding: 2px 8px;
-  border-radius: var(--ui-r-sm);
-  background: #3b82f6;
-  color: #fff;
-  font-size: var(--ui-fs-1);
-  pointer-events: none;
+  min-height: 100%;
 }
 
 .source {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-  height: 100%;
+  position: absolute;
+  inset: 0;
 }
 
 .state-loading {
@@ -2321,19 +1471,16 @@ watch(
   --crepe-shadow-1: var(--ui-shadow-1);
   --crepe-shadow-2: var(--ui-shadow-2);
 
-  min-height: 0;
-  height: auto;
-  flex: none;
-  overflow: visible;
+  min-height: 100%;
   background: var(--ui-bg);
   color: var(--ui-text);
 }
 
 .crepe :deep(.ProseMirror) {
   box-sizing: border-box;
-  max-width: none;
-  min-height: 240px;
-  margin: 0;
+  max-width: 780px;
+  min-height: calc(100vh - 220px);
+  margin: 0 auto;
   padding: var(--ui-s5) var(--ui-s6) var(--ui-s8);
   font-family: var(--ui-font);
   font-size: var(--ui-fs-4);
@@ -2397,169 +1544,25 @@ watch(
   overscroll-behavior: contain;
 }
 
-.crepe :deep(.xiao-html) {
-  position: relative;
-  display: block;
-  width: 100%;
-  margin: var(--ui-s4) 0;
-  cursor: pointer;
-}
-
-.crepe :deep(.xiao-html.is-selected) {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
-
-.crepe :deep(.xiao-html.is-drop) {
-  outline: 2px dashed #3b82f6;
-  outline-offset: -2px;
-  background: rgb(59 130 246 / 12%);
-}
-
-.crepe :deep(.xiao-html.is-drop-before) {
-  box-shadow: inset 0 2px 0 #3b82f6;
-}
-
-.crepe :deep(.xiao-html.is-drop-after) {
-  box-shadow: inset 0 -2px 0 #3b82f6;
-}
-
-.crepe :deep(.xiao-html__handle) {
-  position: absolute;
-  z-index: 2;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 2px solid #3b82f6;
-  border-radius: 1px;
-  background: #fff;
-  display: none;
-}
-
-.crepe :deep(.xiao-html.is-selected .xiao-html__handle) {
-  display: block;
-}
-
-.crepe :deep(.xiao-html__handle--drag) {
-  left: -16px;
-  top: 8px;
-  height: 22px;
+/* 块手柄：第二个图标是拖柄；拖拽时给出放置提示。 */
+.crepe :deep(.milkdown-block-handle .operation-item:nth-child(2)) {
   cursor: grab;
 }
 
-.crepe :deep(.xiao-html__handle--width) {
-  right: -5px;
-  top: 50%;
-  margin-top: -5px;
-  cursor: ew-resize;
+:global(body.xiao-block-dragging) {
+  cursor: grabbing;
+  user-select: none;
+}
+.crepe :deep(.is-xiao-block-drag) {
+  opacity: 0.45;
 }
 
-.crepe :deep(.xiao-html__handle--pad) {
-  left: 50%;
-  top: 4px;
-  margin-left: -5px;
-  cursor: ns-resize;
+.crepe :deep(.is-xiao-block-drop-before) {
+  box-shadow: inset 0 3px 0 var(--ui-accent);
 }
 
-.crepe :deep(.xiao-html__body > *) {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: var(--ui-s4);
-  border: 1px solid var(--ui-line-2);
-  border-radius: var(--ui-r);
-  background: var(--ui-panel);
-}
-
-.crepe :deep(.xiao-html .x-card),
-.crepe :deep(.xiao-html .x-callout),
-.crepe :deep(.xiao-html .x-quote),
-.crepe :deep(.xiao-html .x-code) {
-  display: block;
-  padding: var(--ui-s4);
-  border: 1px solid var(--ui-line-2);
-  border-radius: var(--ui-r);
-  background: var(--ui-panel);
-}
-
-.crepe :deep(.xiao-html .x-grid) {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--ui-s3);
-}
-
-.crepe :deep(.xiao-html .x-cols-2) {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.crepe :deep(.xiao-html .x-cols-3) {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.crepe :deep(.xiao-html .x-cols-4) {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.crepe :deep(.xiao-html .x-stack) {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s2);
-}
-
-.crepe :deep(.xiao-html .x-dir-row) {
-  flex-direction: row;
-}
-
-.crepe :deep(.xiao-html .x-dir-column) {
-  flex-direction: column;
-}
-
-.crepe :deep(.xiao-html .x-align-center) {
-  align-items: center;
-}
-
-.crepe :deep(.xiao-html .x-align-end) {
-  align-items: flex-end;
-}
-
-.crepe :deep(.xiao-html .x-justify-center) {
-  justify-content: center;
-}
-
-.crepe :deep(.xiao-html .x-justify-between) {
-  justify-content: space-between;
-}
-
-.crepe :deep(.xiao-html .x-bg-primary) {
-  background: var(--ui-accent);
-  color: var(--ui-on-accent);
-}
-
-.crepe :deep(.xiao-html .x-bg-inverse) {
-  background: var(--ui-text);
-  color: var(--ui-bg);
-}
-
-.crepe :deep(.xiao-html .x-bg-muted) {
-  color: var(--ui-text-2);
-}
-
-.crepe :deep(.xiao-html .x-width-narrow),
-.crepe :deep(.xiao-html .x-width-prose) {
-  max-width: 520px;
-  margin-inline: auto;
-}
-
-.crepe :deep(.xiao-html .x-button) {
-  display: inline-flex;
-  padding: var(--ui-s1) var(--ui-s3);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-sm);
-  background: var(--ui-hover);
-}
-
-.crepe :deep(.xiao-html [data-xiao='text']) {
-  margin: 0;
+.crepe :deep(.is-xiao-block-drop-after) {
+  box-shadow: inset 0 -3px 0 var(--ui-accent);
 }
 
 /* ---------- 检查器 ---------- */
@@ -2592,78 +1595,6 @@ watch(
   color: var(--ui-text);
   font-size: var(--ui-fs-2);
   font-weight: 600;
-}
-
-.block-edit {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s3);
-  margin-bottom: var(--ui-s4);
-  padding-bottom: var(--ui-s4);
-  border-bottom: 1px solid var(--ui-line);
-}
-
-.block-edit h4,
-.inspector-sub {
-  margin: 0 0 var(--ui-s2);
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.block-edit-name {
-  margin: 0;
-  color: var(--ui-text);
-  font-size: var(--ui-fs-3);
-  font-weight: 600;
-}
-
-.block-edit-group {
-  margin: var(--ui-s2) 0 0;
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-/* 断点 tabs：断点多时可横向滚动，不和设备按钮混淆（label 带「样式：」）。 */
-.bp-tabs {
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-}
-
-.bp-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.bp-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-s2);
-  padding: 2px var(--ui-s1) 2px var(--ui-s2);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-sm);
-  background: var(--ui-raise);
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-}
-
-.field-state {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ui-s1);
-}
-
-/* 断点下的「继承」选项弱化显示；已覆盖的项边框带强调色。 */
-.style-select.is-inherited :deep(.ui-select__control) {
-  color: var(--ui-text-3);
-}
-
-.style-select.is-overridden :deep(.ui-select__control) {
-  border-color: var(--ui-accent);
 }
 
 .inspector-body {
@@ -2712,6 +1643,11 @@ code.meta-value {
   color: var(--ui-warn);
   font-size: var(--ui-fs-1);
   line-height: var(--ui-lh);
+}
+
+.inspector-note--info {
+  border-color: var(--ui-line);
+  color: var(--ui-text-2);
 }
 
 @media (max-width: 1180px) {

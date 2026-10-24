@@ -754,14 +754,23 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('content:list', (_event, siteDir: string) => ok(listPosts(siteDir)));
-  ipcMain.handle('content:create', (_event, siteDir: string, title: string, category: string) => {
-    try {
-      const post = createPost(siteDir, title, category);
-      return ok(post);
-    } catch (error) {
-      return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');
-    }
-  });
+  ipcMain.handle(
+    'content:create',
+    (
+      _event,
+      siteDir: string,
+      title: string,
+      category: string,
+      format: 'markdown' | 'html' = 'markdown',
+    ) => {
+      try {
+        const post = createPost(siteDir, title, category, format);
+        return ok(post);
+      } catch (error) {
+        return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');
+      }
+    },
+  );
   ipcMain.handle('content:customize', (_event, siteDir: string, slug: string) => {
     try {
       return ok(customizePost(siteDir, slug));

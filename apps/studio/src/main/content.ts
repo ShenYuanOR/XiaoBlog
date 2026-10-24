@@ -2,6 +2,9 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSy
 import path from 'node:path';
 import { isValidSlug, slugFromTitle } from '@xiao/core/site';
 
+/** 文章正文格式：Markdown（index.md）或 HTML（index.html），二选一，同一目录只放一个。 */
+export type ContentFormat = 'markdown' | 'html';
+
 export interface PostItem {
   slug: string;
   title: string;
@@ -9,32 +12,161 @@ export interface PostItem {
   description: string;
   tags: string[];
   draft: boolean;
+  date: string;
+  cover: string;
+  format: ContentFormat;
 }
+
+export interface PostContent {
+  text: string;
+  format: ContentFormat;
+}
+
+/** 新建接口的兼容形态：主进程 handler 目前只转发 3 个参数。 */
+export interface CreatePostOptions {
+  category?: string;
+  format?: ContentFormat;
+}
+
+const FORMAT_FILE: Record<ContentFormat, string> = {
+  markdown: 'index.md',
+  html: 'index.html',
+};
 
 function postsRoot(siteDir: string): string {
   return path.join(siteDir, 'src', 'content', 'posts');
 }
 
-function readPost(siteDir: string, slug: string): PostItem {
-  const raw = readFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), 'utf8');
-  const title = raw.match(/^title:\s*"?([^"\n]+)"?/m)?.[1] ?? slug;
-  const category = raw.match(/^category:\s*"?([^"\n]+)"?/m)?.[1] ?? '';
-  const description = raw.match(/^description:\s*"?([^"\n]+)"?/m)?.[1] ?? '';
-  const tags = [...raw.matchAll(/^ {2}- "?([^"\n]+)"?/gm)].map((item) => item[1] ?? '');
-  const draft = /^draft:\s*true/m.test(raw);
-  return { slug, title, category, description, tags, draft };
+function postDir(siteDir: string, slug: string): string {
+  return path.join(postsRoot(siteDir), slug);
 }
 
-export function readPostFile(siteDir: string, slug: string): string {
-  return readFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), 'utf8');
+function postFile(siteDir: string, slug: string, format: ContentFormat): string {
+  return path.join(postDir(siteDir, slug), FORMAT_FILE[format]);
 }
 
-export function writePostFile(siteDir: string, slug: string, markdown: string): void {
-  writeFileSync(path.join(postsRoot(siteDir), slug, 'index.md'), markdown);
+function resolveFormat(value: unknown): ContentFormat {
+  return value === 'html' ? 'html' : 'markdown';
+}
+
+function existsSync(file: string): boolean {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** 先 md 后 html；两个都不存在时返回 null（列表里跳过这种目录）。 */
+export function detectPostFormat(siteDir: string, slug: string): ContentFormat | null {
+  if (existsSync(postFile(siteDir, slug, 'markdown'))) return 'markdown';
+  if (existsSync(postFile(siteDir, slug, 'html'))) return 'html';
+  return null;
+}
+
+/**
+ * 切 frontmatter：与 @xiao/core/markdown 的 splitFrontmatter 同规则，
+ * 但这里不引 Markdown 解析器，避免主进程为读列表加载 remark。
+ * 注意正文里的 `---` 不会被误判：只认文件最开头到第一组 `---\n…---\n`。
+ */
+function splitFrontmatter(source: string): { fmRaw: string; body: string } {
+  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(source);
+  if (!match || !source.startsWith('---')) return { fmRaw: '', body: source };
+  return { fmRaw: match[0], body: source.slice(match[0].length) };
+}
+
+/** 拆分结果对外暴露一份：列表/editor 之外的地方（含 node 自检）也用它判断 frontmatter。 */
+export function splitPostFrontmatter(source: string): { fmRaw: string; body: string } {
+  return splitFrontmatter(source);
+}
+
+function unquote(raw: string): string {
+  const value = raw.trim();
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // 不是合法 JSON 的 YAML 转义，退回手工去引号。
+    }
+    return value.slice(1, -1);
+  }
+  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/''/g, "'");
+  }
+  return value;
+}
+
+function scalarField(frontmatter: string, key: string): string {
+  const match = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(frontmatter);
+  return match?.[1] === undefined ? '' : unquote(match[1]);
+}
+
+/** tags 支持内联 `tags: ["a", "b"]` 和块列表 `tags:\n  - a` 两种写法。 */
+function parseTags(frontmatter: string): string[] {
+  const inline = new RegExp(`^tags:[ \\t]*\\[(.*)\\][ \\t]*$`, 'm').exec(frontmatter);
+  if (inline) {
+    const body = inline[1] ?? '';
+    const rows = body.match(/"[^"]*"|'[^']*'|[^,]+/g) ?? [];
+    return rows
+      .map((row) => unquote(row.trim()))
+      .map((row) => row.trim())
+      .filter(Boolean);
+  }
+  const block = new RegExp(`^tags:[ \\t]*\\r?\\n((?:[ \\t]+-[^\\r\\n]*(?:\\r?\\n|$))*)`, 'm').exec(
+    frontmatter,
+  );
+  if (!block) return [];
+  return (block[1] ?? '')
+    .split(/\r?\n/)
+    .map((line) => /^[ \t]+-[ \t]*(.*)$/.exec(line)?.[1] ?? '')
+    .map((row) => unquote(row.trim()))
+    .filter(Boolean);
+}
+
+/** 从原文解析列表/检查器需要的 frontmatter 元数据（纯函数，便于 node 用例）。 */
+export function parsePostMeta(raw: string, slug: string, format: ContentFormat): PostItem {
+  const { fmRaw } = splitFrontmatter(raw);
+  return {
+    slug,
+    title: scalarField(fmRaw, 'title') || slug,
+    category: scalarField(fmRaw, 'category'),
+    description: scalarField(fmRaw, 'description'),
+    tags: parseTags(fmRaw),
+    draft: /^draft:[ \t]*true[ \t]*$/m.test(fmRaw),
+    date: scalarField(fmRaw, 'date'),
+    cover: scalarField(fmRaw, 'cover'),
+    format,
+  };
+}
+
+function readPostMeta(siteDir: string, slug: string, format: ContentFormat): PostItem {
+  return parsePostMeta(readFileSync(postFile(siteDir, slug, format), 'utf8'), slug, format);
+}
+
+/** IPC content:read 的实现：返回正文全文与格式（格式由实际存在的文件决定）。 */
+export function readPostFile(siteDir: string, slug: string): PostContent {
+  const format = detectPostFormat(siteDir, slug);
+  if (!format) {
+    throw new Error('找不到这篇文章：index.md 和 index.html 都不存在');
+  }
+  return { text: readFileSync(postFile(siteDir, slug, format), 'utf8'), format };
+}
+
+/** 写盘；不传 format 时按现有文件自动探测（Markdown 优先）。 */
+export function writePostFile(
+  siteDir: string,
+  slug: string,
+  content: string,
+  format?: ContentFormat,
+): ContentFormat {
+  const target = resolveFormat(format ?? detectPostFormat(siteDir, slug) ?? 'markdown');
+  writeFileSync(postFile(siteDir, slug, target), content);
+  return target;
 }
 
 export function saveImage(siteDir: string, slug: string, name: string, bytes: Uint8Array): string {
-  const dir = path.join(postsRoot(siteDir), slug);
+  const dir = postDir(siteDir, slug);
   const ext = path.extname(name) || '.png';
   const base = path.basename(name, ext).replace(/[^\w.-]+/g, '-') || 'image';
   let file = `${base}${ext}`;
@@ -47,49 +179,81 @@ export function saveImage(siteDir: string, slug: string, name: string, bytes: Ui
   return `./${file}`;
 }
 
-function existsSync(file: string): boolean {
-  try {
-    return statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
-
 export function listPosts(siteDir: string): PostItem[] {
   const root = postsRoot(siteDir);
   let names: string[] = [];
   try {
-    names = readdirSync(root).filter((name) => statSync(path.join(root, name)).isDirectory());
+    names = readdirSync(root).filter((name) => {
+      try {
+        return statSync(path.join(root, name)).isDirectory();
+      } catch {
+        return false;
+      }
+    });
   } catch {
     return [];
   }
-  return names
-    .filter((name) => name !== '.xiao-recycle')
-    .map((slug) => readPost(siteDir, slug))
-    .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+  const rows: PostItem[] = [];
+  for (const slug of names) {
+    if (slug === '.xiao-recycle') continue;
+    const format = detectPostFormat(siteDir, slug);
+    if (!format) continue;
+    try {
+      rows.push(readPostMeta(siteDir, slug, format));
+    } catch {
+      // 某个目录读失败（权限/坏文件）时跳过，不要让整张列表挂掉。
+    }
+  }
+  return rows.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
 }
 
-export function createPost(siteDir: string, title: string, category: string): PostItem {
+function stampNow(): string {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} 00:00:00`;
+}
+
+/** Markdown 新文章正文留空；HTML 新文章给一个可渲染的最小骨架。 */
+function createPostBody(format: ContentFormat): string {
+  if (format === 'html') {
+    return '<article class="x-post">\n  <p>正文从这里开始…</p>\n</article>\n';
+  }
+  return '';
+}
+
+/**
+ * 新建文章。
+ * 主进程 `content:create` handler 目前只转发 (siteDir, title, category)；
+ * 为了不丢 format，preload 在 HTML 时把 category 位置传成 `{ category, format }`，
+ * 这里两种入参都接受，将来 handler 补第 4 个参数时可直接透传。
+ */
+export function createPost(
+  siteDir: string,
+  title: string,
+  category: string | CreatePostOptions,
+  format: ContentFormat = 'markdown',
+): PostItem {
+  const input: CreatePostOptions = typeof category === 'string' ? { category } : (category ?? {});
+  const targetFormat = resolveFormat(input.format ?? format);
+  const categoryName = (input.category ?? '').trim();
   const slug = slugFromTitle(title.trim() || 'note');
   const safe = isValidSlug(slug) ? slug : `note-${Date.now().toString(36)}`;
-  const dir = path.join(postsRoot(siteDir), safe);
+  const dir = postDir(siteDir, safe);
   mkdirSync(dir, { recursive: true });
-  const date = new Date();
-  const stamp = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} 00:00:00`;
-  const markdown = [
+  const frontmatter = [
     '---',
     `title: ${JSON.stringify(title.trim() || safe)}`,
-    `date: ${JSON.stringify(stamp)}`,
-    category.trim() ? `category: ${JSON.stringify(category.trim())}` : null,
+    `date: ${JSON.stringify(stampNow())}`,
+    categoryName ? `category: ${JSON.stringify(categoryName)}` : null,
+    'description: ""',
     'draft: true',
     '---',
     '',
-    '',
+    createPostBody(targetFormat),
   ]
     .filter((line) => line !== null)
     .join('\n');
-  writeFileSync(path.join(dir, 'index.md'), markdown);
-  return readPost(siteDir, safe);
+  writeFileSync(postFile(siteDir, safe, targetFormat), frontmatter);
+  return readPostMeta(siteDir, safe, targetFormat);
 }
 
 /** 布局从 src/layouts 拷到 src/layouts/posts 时，相对路径要再往上走一层。 */
@@ -118,7 +282,7 @@ export function customizePost(siteDir: string, slug: string): string {
 }
 
 export function deletePost(siteDir: string, slug: string): void {
-  const from = path.join(postsRoot(siteDir), slug);
+  const from = postDir(siteDir, slug);
   const bin = path.join(siteDir, '.xiao-recycle');
   mkdirSync(bin, { recursive: true });
   renameSync(from, path.join(bin, `${slug}-${Date.now().toString(36)}`));
