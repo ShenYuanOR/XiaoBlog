@@ -32,8 +32,8 @@ import { UiButton, UiIcon } from '../ui/index.ts';
 <style scoped>
 .toasts {
   position: fixed;
+  top: 56px;
   right: var(--ui-s6);
-  bottom: var(--ui-s6);
   z-index: var(--ui-z-toast);
   display: flex;
   flex-direction: column;

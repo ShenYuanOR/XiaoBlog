@@ -2,7 +2,10 @@ import { parse } from '@astrojs/compiler-rs';
 import { describe, expect, it } from 'vitest';
 import { parseAstro } from '../ast/index';
 import { injectLoc } from './inject';
-import { injectLoc as studioInject } from '../../../../apps/studio/resources/xiao-loc.mjs';
+import {
+  injectLoc as studioInject,
+  stampHtmlPost,
+} from '../../../../apps/studio/resources/xiao-loc.mjs';
 
 describe('injectLoc', () => {
   it('包装插件与核心注入一致，偏移就是大纲节点 id', () => {
@@ -35,6 +38,28 @@ describe('injectLoc', () => {
   it('已有标记时不重复注入', () => {
     const source = '<p data-xiao-loc="a.astro:0">文</p>\n';
     expect(injectLoc(source, 'a.astro')).toBe(source);
+  });
+
+  it('HTML 文章预览标记指向正文偏移，和画布节点 id 相同', () => {
+    const source = [
+      '---',
+      'title: "123"',
+      'date: "2026-10-24 00:00:00"',
+      '---',
+      '<article class="x-post">',
+      '  <p>正文从这里开始…</p>',
+      '</article>',
+      '',
+    ].join('\n');
+    const file = 'src/content/posts/123/index.html';
+    const stamped = stampHtmlPost(source, file, parse);
+    const match = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(source);
+    const body = source.slice(match?.[0].length ?? 0);
+    const doc = parseAstro(body);
+    const paragraph = doc.tree[0]?.children.find((node) => node.name === 'p');
+    expect(stamped).toContain(`data-xiao-loc="${file}:${paragraph?.id}"`);
+    expect(stamped.startsWith('---\ntitle: "123"')).toBe(true);
+    expect(source).not.toContain('data-xiao-loc');
   });
 
   it('CRLF 与中文路径的偏移仍指向小于号', () => {

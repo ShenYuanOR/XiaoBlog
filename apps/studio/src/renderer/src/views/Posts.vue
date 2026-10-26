@@ -151,9 +151,15 @@ async function load(): Promise<void> {
   }
 }
 
+function pick(slug: string): void {
+  const post = posts.value.find((item) => item.slug === slug);
+  session.activePostFormat = post?.format ?? 'markdown';
+  emit('select', slug);
+}
+
 /** 只有在没有选中文章时才自动选中第一篇，避免覆盖用户刚做的选择。 */
 function ensureSelection(): void {
-  if (!props.active && posts.value[0]) emit('select', posts.value[0].slug);
+  if (!props.active && posts.value[0]) pick(posts.value[0].slug);
 }
 
 function setMenu(slug: string, open: boolean): void {
@@ -195,6 +201,7 @@ async function submitCreate(): Promise<void> {
     createOpen.value = false;
     const kind = createFormat.value === 'html' ? 'HTML 文章' : 'Markdown 文章';
     notify(`已新建${kind}《${result.data.title}》`, 'info', 'post-create');
+    session.activePostFormat = result.data.format ?? createFormat.value;
     emit('select', result.data.slug);
     await load();
   } catch (cause) {
@@ -212,7 +219,7 @@ function selectAll(event: Event): void {
 function requestConvert(post: Post, close: () => void): void {
   close();
   menuSlug.value = '';
-  if (post.slug !== props.active) emit('select', post.slug);
+  if (post.slug !== props.active) pick(post.slug);
   window.dispatchEvent(new CustomEvent('xiao:convert-post', { detail: { slug: post.slug } }));
 }
 
@@ -248,7 +255,7 @@ async function submitRename(): Promise<void> {
     }
     renameOpen.value = false;
     notify(`地址已从 ${result.data.from} 改成 ${result.data.to}`, 'info', 'post-rename');
-    if (props.active === result.data.from) emit('select', result.data.to);
+    if (props.active === result.data.from) pick(result.data.to);
     await load();
   } catch (cause) {
     notify(`重命名时出错：${describeError(cause)}。确认站点文件夹可写后重试。`, 'error');
@@ -283,7 +290,11 @@ async function confirmDelete(): Promise<void> {
     deletePost.value = null;
     notify(`已把「${post.title}」移入回收区`, 'info', 'post-delete');
     await load();
-    if (wasActive) emit('select', posts.value[0]?.slug ?? '');
+    if (wasActive) {
+      const next = posts.value[0]?.slug ?? '';
+      if (next) pick(next);
+      else emit('select', '');
+    }
   } catch (cause) {
     notify(`删除时出错：${describeError(cause)}。确认站点文件夹可写后重试。`, 'error');
   } finally {
@@ -383,7 +394,7 @@ watch(
             class="row-wrap"
             :class="{ 'is-menu-open': menuSlug === post.slug }"
           >
-            <UiRow :selected="post.slug === active" @click="emit('select', post.slug)">
+            <UiRow :selected="post.slug === active" @click="pick(post.slug)">
               <span class="post-title" :title="post.title">{{ post.title }}</span>
               <template #meta>
                 <UiBadge v-if="post.format === 'html'" tone="accent">HTML</UiBadge>
@@ -446,7 +457,7 @@ watch(
             @keydown.enter="submitCreate"
           />
         </UiField>
-        <UiField label="格式" hint="Markdown 用所见即所得；HTML 用源码编辑，正文按原样保存。">
+        <UiField label="格式" hint="两种格式都能在本页切「编辑 / 源码」。HTML 正文按原样保存。">
           <UiSelect v-model="createFormatKey" :options="CREATE_FORMATS" />
         </UiField>
         <UiField label="分类" hint="分类决定左侧列表的分组，默认「生活」。">

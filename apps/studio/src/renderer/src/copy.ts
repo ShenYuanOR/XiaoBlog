@@ -10,8 +10,8 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { key: 'posts', label: '文章', icon: 'posts', hint: '写文章、改属性、看草稿' },
-  { key: 'pages', label: '页面', icon: 'pages', hint: '首页、关于页、落地页的布局' },
+  { key: 'posts', label: '文章', icon: 'posts', hint: '写这篇。Markdown 用基础块，HTML 更丰富' },
+  { key: 'pages', label: '页面', icon: 'pages', hint: '首页、404、导航页脚等站点外壳' },
   { key: 'media', label: '媒体', icon: 'image', hint: '站点图片、引用计数与清理' },
   { key: 'appearance', label: '外观', icon: 'appearance', hint: '主题、颜色、字体、预设' },
   { key: 'seo', label: 'SEO', icon: 'seo', hint: '标题、摘要、分享卡片、死链' },
@@ -64,9 +64,7 @@ export const copy = {
   outline: '大纲',
   properties: '属性',
   pageStyle: '页面样式',
-  dockOn: '停靠预览',
-  dockOff: '收起预览',
-  windowPreview: '独立窗口',
+  windowPreview: '在独立窗口打开预览',
   developTitle: '开发者模式',
   files: '文件',
   output: '输出',
@@ -74,8 +72,6 @@ export const copy = {
   emptyTitle: '这里还是空的',
   emptyPost: '选一篇文章，或新建一篇开始写。',
   emptyPage: '选一个页面开始搭，或新建一个页面。',
-  emptyPreview: '启动预览后才能看到页面。',
-  startPreview: '启动预览',
   media: '媒体',
   mediaEmpty: '还没有图片。上传一张，或把图片拖进这个页面。',
   mediaUnused: '未引用',

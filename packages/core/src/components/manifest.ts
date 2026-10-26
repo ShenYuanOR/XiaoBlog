@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export { htmlNodeComponent, htmlSnippet } from './html-snippet.ts';
+
 export const COMPONENT_VERSION = '1.0.0';
 
 export type PropType =

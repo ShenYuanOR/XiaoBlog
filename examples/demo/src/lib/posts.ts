@@ -26,6 +26,8 @@ export interface PostData {
   draft: boolean;
   noindex: boolean;
   license?: string;
+  /** 仅 HTML 文章：true 时正文自己成页，不套文章模板。 */
+  standalone?: boolean;
 }
 
 export interface PostEntry {
@@ -135,6 +137,7 @@ function toPostData(raw: Record<string, unknown>): PostData {
     draft: raw.draft === true,
     noindex: raw.noindex === true,
     license: textOf(raw.license),
+    standalone: raw.standalone === true,
   };
 }
 

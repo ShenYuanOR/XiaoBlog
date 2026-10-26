@@ -15,12 +15,15 @@ import {
   destroyDock,
   hideDock,
   hidePageEditor,
+  isPreviewWindowOpen,
   hitPreview,
   hintDrop,
   setDockZoom,
   showDock,
   showPageEditor,
   showPreview,
+  rememberCatalog,
+  sendToPreview,
   type PreviewMode,
   type DockInput,
   type StageHit,
@@ -59,9 +62,11 @@ import {
 import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
 import { seoRows } from './seo.ts';
 import {
+  duplicateComponent,
   insertComponent,
   moveComponent,
   nestingAllowed,
+  removeComponent,
   readOutline,
   redoPage,
   safePage,
@@ -364,6 +369,7 @@ app.whenReady().then(() => {
       return ok(widths);
     },
   );
+  ipcMain.handle('preview:windowOpen', () => ok(isPreviewWindowOpen()));
   ipcMain.handle(
     'preview:editor',
     (
@@ -399,6 +405,22 @@ app.whenReady().then(() => {
       if (win.webContents !== event.sender) win.webContents.send('preview:onText', payload);
     }
   });
+  ipcMain.on('preview:catalog', (_event, items: { name: string; label: string }[]) => {
+    rememberCatalog(Array.isArray(items) ? items : []);
+  });
+  ipcMain.on(
+    'preview:insertBlock',
+    (
+      event,
+      payload: { file: string; offset: string; name: string; place: 'before' | 'after' | 'into' },
+    ) => {
+      if (!isPreviewContents(event.sender)) return;
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.webContents !== event.sender)
+          win.webContents.send('preview:onInsertBlock', payload);
+      }
+    },
+  );
   ipcMain.on('preview:pick', (event, payload: { file: string; offset: string }) => {
     if (!isPreviewContents(event.sender)) return;
     for (const win of BrowserWindow.getAllWindows()) {
@@ -508,6 +530,28 @@ app.whenReady().then(() => {
         return ok(null);
       } catch (error) {
         return fail('CANVAS_MOVE', error instanceof Error ? error.message : '移不动');
+      }
+    },
+  );
+  ipcMain.handle(
+    'canvas:remove',
+    (_event, siteDir: string, nodeId: string, file?: string) => {
+      try {
+        removeComponent(siteDir, nodeId, safePage(file));
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_REMOVE', error instanceof Error ? error.message : '删不掉');
+      }
+    },
+  );
+  ipcMain.handle(
+    'canvas:duplicate',
+    (_event, siteDir: string, nodeId: string, file?: string) => {
+      try {
+        duplicateComponent(siteDir, nodeId, safePage(file));
+        return ok(null);
+      } catch (error) {
+        return fail('CANVAS_DUPLICATE', error instanceof Error ? error.message : '复制不了');
       }
     },
   );

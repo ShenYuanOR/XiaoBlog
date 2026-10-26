@@ -123,6 +123,180 @@ function selectedBox(): HTMLElement {
   return frame;
 }
 
+let catalog: { name: string; label: string }[] = [];
+let typingEl: HTMLElement | null = null;
+
+function onTypeKey(event: KeyboardEvent): void {
+  if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+}
+
+function onTypeBlur(event: FocusEvent): void {
+  const el = event.currentTarget;
+  if (!(el instanceof HTMLElement) || !selectedLoc) return;
+  ipcRenderer.send('preview:text', {
+    file: selectedLoc.file,
+    offset: selectedLoc.offset,
+    text: el.textContent ?? '',
+  });
+}
+
+function releaseTyping(): void {
+  if (!typingEl) return;
+  typingEl.contentEditable = 'false';
+  typingEl.removeEventListener('blur', onTypeBlur);
+  typingEl.removeEventListener('keydown', onTypeKey);
+  typingEl = null;
+}
+
+function isArticleFile(file: string): boolean {
+  const normalized = file.replaceAll('\\', '/');
+  return normalized.includes('/content/posts/') && normalized.endsWith('/index.html');
+}
+
+function armTyping(target: LocTarget): void {
+  if (!(target instanceof HTMLElement) || !selectedLoc || !isArticleFile(selectedLoc.file)) {
+    releaseTyping();
+    return;
+  }
+  const nested = [...target.children].some((child) => !child.id.startsWith('xiao-'));
+  if (nested) {
+    releaseTyping();
+    return;
+  }
+  if (typingEl === target) return;
+  releaseTyping();
+  target.contentEditable = 'plaintext-only';
+  target.spellcheck = false;
+  target.addEventListener('blur', onTypeBlur);
+  target.addEventListener('keydown', onTypeKey);
+  typingEl = target;
+}
+
+function centerGuide(): HTMLElement {
+  const existing = document.getElementById('xiao-loc-center');
+  if (existing) return existing;
+  const element = document.createElement('div');
+  element.id = 'xiao-loc-center';
+  element.style.cssText = [
+    'position:fixed',
+    'pointer-events:none',
+    'z-index:2147483645',
+    'display:none',
+    'width:0',
+    'border-left:1px dashed #e3b341',
+  ].join(';');
+  document.documentElement.append(element);
+  return element;
+}
+
+function inserterMenu(): HTMLElement {
+  const existing = document.getElementById('xiao-insert-menu');
+  if (existing) return existing;
+  const menu = document.createElement('div');
+  menu.id = 'xiao-insert-menu';
+  menu.style.cssText = [
+    'position:absolute',
+    'left:50%',
+    'top:calc(100% + 8px)',
+    'transform:translateX(-50%)',
+    'width:180px',
+    'max-height:220px',
+    'overflow:auto',
+    'padding:4px',
+    'border-radius:8px',
+    'background:#1a212d',
+    'color:#e8ecf4',
+    'box-shadow:0 8px 24px rgb(0 0 0 / 35%)',
+    'font:12px/1.4 system-ui,sans-serif',
+    'pointer-events:auto',
+    'display:none',
+    'z-index:2',
+  ].join(';');
+  document.documentElement.append(menu);
+  return menu;
+}
+
+function closeInserter(): void {
+  const menu = document.getElementById('xiao-insert-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+function openInserter(anchor: HTMLElement): void {
+  const menu = inserterMenu();
+  menu.replaceChildren();
+  if (catalog.length === 0) return;
+  for (const item of catalog) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = item.label;
+    button.style.cssText = [
+      'display:block',
+      'width:100%',
+      'height:28px',
+      'border:0',
+      'border-radius:6px',
+      'background:transparent',
+      'color:inherit',
+      'text-align:left',
+      'padding:0 8px',
+      'cursor:pointer',
+    ].join(';');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!selectedLoc) return;
+      ipcRenderer.send('preview:insertBlock', {
+        file: selectedLoc.file,
+        offset: selectedLoc.offset,
+        name: item.name,
+        place: 'after',
+      });
+      closeInserter();
+    });
+    menu.append(button);
+  }
+  if (menu.parentElement !== anchor) anchor.append(menu);
+  menu.style.display = 'block';
+}
+
+function ensureInserter(frame: HTMLElement): void {
+  let button = document.getElementById('xiao-insert-btn');
+  if (!button) {
+    button = document.createElement('button');
+    button.id = 'xiao-insert-btn';
+    button.type = 'button';
+    button.textContent = '+';
+    button.setAttribute('aria-label', '在这块后面插入');
+    button.style.cssText = [
+      'position:absolute',
+      'left:50%',
+      'bottom:-14px',
+      'width:22px',
+      'height:22px',
+      'margin-left:-11px',
+      'border:0',
+      'border-radius:11px',
+      'background:#3b82f6',
+      'color:#fff',
+      'font:16px/22px system-ui,sans-serif',
+      'cursor:pointer',
+      'pointer-events:auto',
+      'z-index:3',
+    ].join(';');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const menu = document.getElementById('xiao-insert-menu');
+      if (menu && menu.style.display === 'block') closeInserter();
+      else openInserter(frame);
+    });
+    frame.append(button);
+  } else if (button.parentElement !== frame) {
+    frame.append(button);
+  }
+  button.style.display = catalog.length > 0 ? 'block' : 'none';
+}
+
 function dropLine(): HTMLElement {
   const existing = document.getElementById('xiao-loc-drop');
   if (existing) return existing;
@@ -191,6 +365,9 @@ function paintSelected(): void {
   }
   if (east) east.style.display = handles.width ? 'block' : 'none';
   if (pad) pad.style.display = handles.pad ? 'block' : 'none';
+  ensureInserter(frame);
+  if (selectedTarget) armTyping(selectedTarget);
+  else releaseTyping();
 }
 
 function refreshBoxes(): void {
@@ -235,18 +412,23 @@ function hitAt(x: number, y: number): StageHit | null {
   if (!loc) return null;
   const rect = locEl.getBoundingClientRect();
   const relY = (y - rect.top) / Math.max(1, rect.height);
+  const relX = (x - rect.left) / Math.max(1, rect.width);
   const hasChildLoc =
     [...locEl.querySelectorAll(':scope > [data-xiao-loc], :scope > * [data-xiao-loc]')].length > 0;
   let place: StageHit['place'] =
-    relY < 0.3 ? 'before' : relY > 0.7 ? 'after' : hasChildLoc ? 'into' : 'after';
-  if (!hasChildLoc && relY >= 0.3 && relY <= 0.7) place = relY < 0.5 ? 'before' : 'after';
+    relY < 0.28 ? 'before' : relY > 0.72 ? 'after' : hasChildLoc ? 'into' : 'after';
+  if (!hasChildLoc && relY >= 0.28 && relY <= 0.72) place = relY < 0.5 ? 'before' : 'after';
+  // 靠近中线时吸进容器，而不是停在缝上。
+  if (hasChildLoc && Math.abs(relX - 0.5) < 0.12 && relY > 0.2 && relY < 0.8) place = 'into';
   return { ...loc, place, tag: locEl.tagName.toLowerCase() };
 }
 
 function showDrop(hit: StageHit | null): void {
   const line = dropLine();
+  const guide = centerGuide();
   if (!hit) {
     hide(line);
+    guide.style.display = 'none';
     return;
   }
   const el = document.querySelector(locSelector(hit.file, hit.offset));
@@ -258,6 +440,10 @@ function showDrop(hit: StageHit | null): void {
   line.style.display = 'block';
   line.style.left = `${rect.left}px`;
   line.style.width = `${rect.width}px`;
+  guide.style.display = 'block';
+  guide.style.left = `${rect.left + rect.width / 2}px`;
+  guide.style.top = `${rect.top}px`;
+  guide.style.height = `${rect.height}px`;
   if (hit.place === 'into') {
     line.style.top = `${rect.top + rect.height / 2}px`;
     line.style.height = '0';
@@ -276,6 +462,8 @@ function showDrop(hit: StageHit | null): void {
 function applyZoom(next: number): void {
   zoom = Math.min(2, Math.max(0.5, Math.round(next * 20) / 20));
   document.documentElement.style.zoom = String(zoom);
+  // 窄画布里 1px 溢出就会挤出横向滚动条，条本身画在原生层边缘，会压住底栏。
+  document.documentElement.style.overflowX = 'hidden';
   ipcRenderer.send('preview:camera', { zoom });
   refreshBoxes();
 }
@@ -298,10 +486,23 @@ function bindChrome(): void {
         ignoreClick = false;
         return;
       }
-      if (event.target instanceof HTMLElement && event.target.dataset.edge) return;
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.dataset.edge || event.target.closest('#xiao-insert-btn, #xiao-insert-menu'))
+      ) {
+        return;
+      }
       const element = asHtml(event.target);
       const loc = locOf(event.target);
       if (!element || !loc) return;
+      const leaf = ![...element.children].some((child) => !child.id.startsWith('xiao-'));
+      if (isArticleFile(loc.file) && leaf) {
+        ipcRenderer.send('preview:pick', loc);
+        setSelected(loc, '');
+        requestAnimationFrame(() => typingEl?.focus());
+        return;
+      }
+      if (element === selectedTarget && element.isContentEditable) return;
       event.preventDefault();
       event.stopPropagation();
       ipcRenderer.send('preview:pick', loc);
@@ -400,11 +601,23 @@ function bindChrome(): void {
   ipcRenderer.on('preview:camera', (_event, payload: { zoom?: number }) => {
     if (typeof payload?.zoom === 'number') applyZoom(payload.zoom);
   });
+  ipcRenderer.on('preview:catalog', (_event, items: { name: string; label: string }[]) => {
+    catalog = Array.isArray(items) ? items : [];
+    paintSelected();
+  });
+}
+
+function keepInside(): void {
+  document.documentElement.style.overflowX = 'hidden';
 }
 
 if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', bindChrome);
+  window.addEventListener('DOMContentLoaded', () => {
+    keepInside();
+    bindChrome();
+  });
 } else {
+  keepInside();
   bindChrome();
 }
 

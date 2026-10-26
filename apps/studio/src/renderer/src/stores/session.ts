@@ -4,7 +4,7 @@ import { navLabel, type NavKey } from '../copy.ts';
 import { setThemeMode, themeMode, type ThemeMode } from '../theme.ts';
 
 export type PreviewDevice = 'phone' | 'tablet' | 'pc' | 'side';
-export type PreviewMode = 'off' | 'dock' | 'window';
+export type PreviewMode = 'off' | 'window';
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict';
 export type StudioMode = 'write' | 'develop';
 
@@ -32,9 +32,12 @@ export const useSession = defineStore('session', () => {
   const compare = ref(false);
   const reloaded = ref('');
   const previewUrl = ref('');
+  const previewSiteDir = ref('');
   const previewMode = ref<PreviewMode>('off');
+  const previewWindowOpen = ref(false);
   const previewDevice = ref<PreviewDevice>('pc');
   const activePost = ref('');
+  const activePostFormat = ref<'markdown' | 'html'>('markdown');
   const activePage = ref('src/pages/index.astro');
   /** 正在编辑的文章版式：只做标题/返回写作的来源，模式由 activePage 是否 layouts/posts 决定。 */
   const layoutSlug = ref('');
@@ -44,13 +47,14 @@ export const useSession = defineStore('session', () => {
   const saveState = ref<SaveState>('saved');
   const inspectorOpen = ref(true);
   const listCollapsed = ref(false);
+  /** 编辑台正在看源码：页面画布收起真页面，不占工作区。 */
+  const workbenchSource = ref(false);
   const chromeOpen = ref(false);
   const building = ref(false);
   const theme = ref<ThemeMode>(themeMode.value);
 
   const navTitle = computed(() => navLabel(nav.value));
   const devDrawer = computed(() => mode.value === 'develop');
-  const previewDocked = computed(() => previewMode.value === 'dock');
 
   async function load(): Promise<void> {
     const result = await window.xiao.app.getInfo();
@@ -70,15 +74,23 @@ export const useSession = defineStore('session', () => {
   }
 
   function setNav(next: NavKey): void {
+    workbenchSource.value = false;
+    if (next !== 'posts') {
+      closeLayout();
+      const page = activePage.value.replaceAll('\\', '/');
+      if (page.startsWith('src/layouts/posts/') || page.includes('/content/posts/')) {
+        activePage.value = 'src/pages/index.astro';
+      }
+    }
     nav.value = next;
+  }
+
+  function setWorkbenchSource(next: boolean): void {
+    workbenchSource.value = next;
   }
 
   function setPreviewMode(next: PreviewMode): void {
     previewMode.value = next;
-  }
-
-  function togglePreview(): void {
-    previewMode.value = previewMode.value === 'dock' ? 'off' : 'dock';
   }
 
   function setPreviewDevice(next: PreviewDevice): void {
@@ -144,10 +156,12 @@ export const useSession = defineStore('session', () => {
     compare,
     reloaded,
     previewUrl,
+    previewSiteDir,
     previewMode,
+    previewWindowOpen,
     previewDevice,
-    previewDocked,
     activePost,
+    activePostFormat,
     activePage,
     layoutSlug,
     layoutTitle,
@@ -157,6 +171,7 @@ export const useSession = defineStore('session', () => {
     saveState,
     inspectorOpen,
     listCollapsed,
+    workbenchSource,
     chromeOpen,
     building,
     theme,
@@ -165,7 +180,6 @@ export const useSession = defineStore('session', () => {
     toggleMode,
     setNav,
     setPreviewMode,
-    togglePreview,
     setPreviewDevice,
     setSaveState,
     pushLog,
@@ -177,5 +191,6 @@ export const useSession = defineStore('session', () => {
     setDrag,
     setConflict,
     setTheme,
+    setWorkbenchSource,
   };
 });

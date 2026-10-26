@@ -22,14 +22,41 @@ window.addEventListener('securitypolicyviolation', (event) => {
 const pinia = createPinia();
 createApp(App).use(pinia).use(router).mount('#app');
 const session = useSession(pinia);
+let liveTaskId = '';
+window.xiao.preview.onWindow((event) => {
+  session.previewWindowOpen = event.open;
+  if (!event.open) session.setPreviewMode('off');
+});
+void window.xiao.preview.windowOpen().then((result) => {
+  if (result.ok) session.previewWindowOpen = result.data;
+});
 window.xiao.runtime.onLog((event) => session.pushLog(event.text));
 window.xiao.runtime.onReady((event) => {
+  if (event.taskId !== liveTaskId) return;
+  session.building = false;
   session.previewUrl = event.url;
+  session.previewSiteDir = session.siteDir;
   session.pushLog(`预览已就绪 ${event.url}\n`);
 });
+window.xiao.runtime.onStart((event) => {
+  liveTaskId = event.taskId;
+  session.building = true;
+  session.previewUrl = '';
+  session.previewSiteDir = '';
+});
 window.xiao.runtime.onExit((event) => {
+  if (event.taskId !== liveTaskId) return;
   session.building = false;
+  session.previewUrl = '';
+  session.previewSiteDir = '';
   session.pushLog(event.message ? `${event.message}\n` : `进程结束 ${event.code}\n`);
+  if (event.code !== 0) {
+    notify(
+      '站点预览停了。点顶栏「预览」再开独立窗口；页面画布也会一起停。若刚换过站点，等依赖装好后再试。',
+      'error',
+      'preview-exit',
+    );
+  }
 });
 let reloadCount = 0;
 let reloadTimer = 0;

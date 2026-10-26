@@ -50,6 +50,22 @@ function isAstroModule(id) {
   return !clean.replaceAll('\\', '/').includes('/node_modules/');
 }
 
+function isHtmlPostModule(id) {
+  if (!id.includes('raw')) return false;
+  const clean = (id.split('?')[0] ?? id).replaceAll('\\', '/');
+  return /\/src\/content\/posts\/[a-z0-9]+(?:-[a-z0-9]+)*\/index\.html$/.test(clean);
+}
+
+/** 只改预览里读到的正文，不写回磁盘。标记偏移和画布节点 id 用的是同一段正文。 */
+export function stampHtmlPost(source, relativePath, parse) {
+  const text = source.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const match = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(text);
+  if (!match) return source;
+  const head = match[0];
+  const body = text.slice(match[0].length);
+  return `${head}${injectLoc(body, relativePath, parse)}`;
+}
+
 export function xiaoLocPlugin(siteDir) {
   let parse;
   let root = siteDir;
@@ -65,7 +81,20 @@ export function xiaoLocPlugin(siteDir) {
       parse = (await import(pathToFileURL(id).href)).parse;
     },
     load(id) {
-      if (!parse || !isAstroModule(id)) return null;
+      if (!parse) return null;
+      if (isHtmlPostModule(id)) {
+        const clean = id.split('?')[0] ?? id;
+        let source;
+        try {
+          source = readFileSync(clean, 'utf8');
+        } catch {
+          return null;
+        }
+        const relative = path.relative(root, clean).split(path.sep).join('/');
+        const stamped = stampHtmlPost(source, relative, parse);
+        return `export default ${JSON.stringify(stamped)}`;
+      }
+      if (!isAstroModule(id)) return null;
       const clean = id.split('?')[0] ?? id;
       let source;
       try {

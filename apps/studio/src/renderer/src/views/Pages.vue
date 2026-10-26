@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { groupStudioPages, pageLabel } from '@xiao/core/site';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
@@ -65,24 +66,11 @@ const slugError = computed(() => {
   return '';
 });
 
-/** 首页排最前，其余按路径排序，找页面更顺手。 */
-const sortedPages = computed(() =>
-  [...pages.value].sort((a, b) => {
-    const aHome = /(^|\/)index\.astro$/.test(a);
-    const bHome = /(^|\/)index\.astro$/.test(b);
-    if (aHome !== bHome) return aHome ? -1 : 1;
-    return a.localeCompare(b);
-  }),
-);
+const groupedPages = computed(() => groupStudioPages(pages.value));
 
 function describeError(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
   return '未知错误';
-}
-
-/** 文件名：列表主行。 */
-function fileName(file: string): string {
-  return file.split(/[\\/]/).at(-1) ?? file;
 }
 
 /** 相对路径：列表次行（相对站点根目录）。 */
@@ -242,7 +230,7 @@ watch(
       </UiEmpty>
     </div>
 
-    <div v-else-if="pages.length === 0" class="state">
+    <div v-else-if="groupedPages.site.length === 0 && groupedPages.system.length === 0" class="state">
       <UiEmpty
         :icon="icons.pages"
         title="还没有页面"
@@ -257,22 +245,52 @@ watch(
     </div>
 
     <div v-else class="list">
-      <UiRow
-        v-for="file in sortedPages"
-        :key="file"
-        :selected="session.activePage === file"
-        :title="filePath(file)"
-        @click="choose(file)"
-      >
-        <template #icon>
-          <UiIcon :path="icons.files" :size="16" />
-        </template>
-        <span class="file-name">{{ fileName(file) }}</span>
-        <template #meta>
-          <span class="file-path" :title="filePath(file)">{{ filePath(file) }}</span>
-        </template>
-      </UiRow>
-      <p class="total">共 {{ pages.length }} 个页面</p>
+      <section v-if="groupedPages.site.length" class="group">
+        <header class="group-head">
+          <span class="group-name">站点页面</span>
+          <span class="group-count">{{ groupedPages.site.length }}</span>
+        </header>
+        <UiRow
+          v-for="file in groupedPages.site"
+          :key="file"
+          :selected="session.activePage === file"
+          :title="filePath(file)"
+          @click="choose(file)"
+        >
+          <template #icon>
+            <UiIcon :path="icons.files" :size="16" />
+          </template>
+          <span class="file-name">{{ pageLabel(file) }}</span>
+          <template #meta>
+            <span class="file-path" :title="filePath(file)">{{ filePath(file) }}</span>
+          </template>
+        </UiRow>
+      </section>
+      <section v-if="groupedPages.system.length" class="group">
+        <header class="group-head">
+          <span class="group-name">系统容器</span>
+          <span class="group-count">{{ groupedPages.system.length }}</span>
+        </header>
+        <p class="group-hint">站点外壳和范式页：改这里会影响很多文章，不是改某一篇正文。</p>
+        <UiRow
+          v-for="file in groupedPages.system"
+          :key="file"
+          :selected="session.activePage === file"
+          :title="filePath(file)"
+          @click="choose(file)"
+        >
+          <template #icon>
+            <UiIcon :path="icons.pages" :size="16" />
+          </template>
+          <span class="file-name">{{ pageLabel(file) }}</span>
+          <template #meta>
+            <span class="file-path" :title="filePath(file)">{{ filePath(file) }}</span>
+          </template>
+        </UiRow>
+      </section>
+      <p class="total">
+        共 {{ groupedPages.site.length + groupedPages.system.length }} 项
+      </p>
     </div>
   </div>
 </template>
@@ -312,10 +330,34 @@ watch(
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--ui-s3);
   min-height: 0;
   overflow: auto;
   padding-right: var(--ui-s1);
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s2);
+  padding: var(--ui-s1) var(--ui-s2);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.group-count {
+  font-weight: 400;
+}
+
+.group-hint {
+  margin: 0 0 var(--ui-s2);
+  padding: 0 var(--ui-s2);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
 }
 
 .file-name {

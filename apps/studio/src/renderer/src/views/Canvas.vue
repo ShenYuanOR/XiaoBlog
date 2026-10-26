@@ -11,8 +11,18 @@ import {
   mdiViewDashboardOutline,
   mdiWidgetsOutline,
 } from '@mdi/js';
+import * as monaco from 'monaco-editor';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import HtmlBlocks from './HtmlBlocks.vue';
+import {
+  groupStudioPages,
+  htmlPostSlugOf,
+  isStudioPageFile,
+  isSystemPage,
+  pageLabel,
+} from '@xiao/core/site';
 import { icons } from '../icons.ts';
+import { installMonaco } from '../monaco-setup.ts';
 import { notify } from '../notice.ts';
 import { layoutSlugOf, useSession } from '../stores/session.ts';
 import {
@@ -32,6 +42,9 @@ import {
   UiTextarea,
   UiTooltip,
 } from '../ui/index.ts';
+import WorkbenchBar from './WorkbenchBar.vue';
+
+installMonaco();
 
 // ---------------------------------------------------------------------------
 // 数据形状（对应 env.d.ts / packages/core 的 canvas、page 类型）
@@ -241,6 +254,19 @@ const pageRoute = ref('');
 const layoutSlug = computed(() => layoutSlugOf(session.activePage));
 const layoutMode = computed(() => Boolean(layoutSlug.value));
 const layoutTitle = computed(() => session.layoutTitle);
+const htmlPostSlug = computed(() => htmlPostSlugOf(session.activePage));
+const htmlPostMode = computed(() => Boolean(htmlPostSlug.value));
+const htmlStandalone = ref(false);
+const htmlChromeItems = [
+  { key: 'template', label: '套用模板' },
+  { key: 'page', label: '独立成页' },
+];
+const htmlChromeKey = computed({
+  get: () => (htmlStandalone.value ? 'page' : 'template'),
+  set: (value: string) => {
+    void setHtmlChrome(value === 'page');
+  },
+});
 
 const selectedId = ref('');
 const expanded = ref<string[]>([]);
@@ -288,6 +314,13 @@ const specCache = new Map<string, PropSpec[]>();
 const nestCache = new Map<string, boolean>();
 const hostReady = ref(false);
 const boardEl = ref<HTMLElement | null>(null);
+const sourceRoot = ref<HTMLElement | null>(null);
+const sourceMode = ref(false);
+let sourceEditor: monaco.editor.IStandaloneCodeEditor | undefined;
+let sourceModel: monaco.editor.ITextModel | undefined;
+let sourceSaved = '';
+let sourceTimer = 0;
+let sourceGen = 0;
 const layersCollapsed = ref(false);
 const collapsedListForStage = ref(false);
 const stageZoom = ref(1);
@@ -311,6 +344,8 @@ let propsToken = 0;
 let reloadToken = 0;
 let nestToken = 0;
 let stopPick: () => void = () => undefined;
+let stopInsert: () => void = () => undefined;
+let stopText: () => void = () => undefined;
 let stopResize: () => void = () => undefined;
 let stopCamera: () => void = () => undefined;
 let stageFrame = 0;
@@ -551,6 +586,20 @@ const groupedProps = computed(() => {
   }));
 });
 
+/** HTML 即时编辑先看样式和布局，内容属性放后面。图层只指 z-index，不指 DOM。 */
+const inspectorGroups = computed(() => {
+  const groups = groupedProps.value;
+  if (!htmlPostMode.value) return groups;
+  const front = groups.filter((group) => group.key === 'style' || group.key === 'layout');
+  const rest = groups.filter((group) => group.key !== 'style' && group.key !== 'layout');
+  return [...front, ...rest];
+});
+
+function specLabel(spec: PropSpec): string {
+  if (spec.name === 'z' || spec.name === 'zIndex' || spec.name === 'layer') return '图层';
+  return spec.label;
+}
+
 // ---------------------------------------------------------------------------
 // 展示辅助
 // ---------------------------------------------------------------------------
@@ -605,14 +654,27 @@ function rowIcon(node: OutlineNode): string {
   return mdiCodeTags;
 }
 
-function pageLabel(file: string): string {
-  const normalized = file.replaceAll('\\', '/');
-  const layoutSlug = layoutSlugOf(normalized);
-  if (layoutSlug) return `文章版式 · ${layoutSlug}`;
-  const base = normalized.replace(/^src\/pages\//, '').replace(/\.astro$/, '');
-  if (base === 'index') return '首页';
-  return base.endsWith('/index') ? base.slice(0, -6) : base;
+function canvasHoldsPreview(): boolean {
+  return (
+    !sourceMode.value &&
+    (session.nav === 'pages' ||
+      (session.nav === 'posts' && (layoutMode.value || htmlPostMode.value)))
+  );
 }
+
+const workbenchMode = computed({
+  get: () => (sourceMode.value ? 'source' : 'visual'),
+  set: (value: 'visual' | 'source') => {
+    if (value === 'source') void enterSource();
+    else void enterVisual();
+  },
+});
+
+const kindBadge = computed(() => {
+  if (htmlPostMode.value) return 'HTML';
+  if (layoutMode.value) return '文章版式';
+  return pageLabel(session.activePage);
+});
 
 function friendlyError(message: string): string {
   if (/解析|parse|diagnostic/i.test(message)) {
@@ -669,6 +731,7 @@ function paletteHint(meta: ComponentMeta): string {
 
 const filteredGroups = computed(() => {
   const needle = search.value.trim().toLowerCase();
+  const hideBlog = htmlPostMode.value;
   return CATEGORY_ORDER.map((category) => ({
     category,
     label: CATEGORY_LABEL[category],
@@ -676,6 +739,7 @@ const filteredGroups = computed(() => {
     items: COMPONENTS.filter(
       (meta) =>
         meta.category === category &&
+        !(hideBlog && meta.category === 'blog') &&
         (needle === '' ||
           meta.label.toLowerCase().includes(needle) ||
           meta.name.toLowerCase().includes(needle)),
@@ -684,8 +748,15 @@ const filteredGroups = computed(() => {
 });
 
 const pageOptions = computed(() => {
-  const list = [...pages.value];
-  if (session.activePage && !list.includes(session.activePage)) list.unshift(session.activePage);
+  const grouped = groupStudioPages(pages.value);
+  const list = [...grouped.site, ...grouped.system];
+  if (
+    session.activePage &&
+    !list.includes(session.activePage) &&
+    isStudioPageFile(session.activePage)
+  ) {
+    list.unshift(session.activePage);
+  }
   return list.map((file) => ({ value: file, label: pageLabel(file) }));
 });
 
@@ -861,7 +932,7 @@ function buildPageCss(slug: string, state: PageStyleState): string {
 
 async function loadPageStyle(force = false): Promise<void> {
   // 版式模式没有「页面样式」概念（面板也隐藏），不要拿布局 slug 去匹配站点页面 css。
-  if (layoutMode.value) {
+  if (layoutMode.value || htmlPostMode.value) {
     styleKey = '';
     resetPageStyleDraft();
     return;
@@ -995,19 +1066,22 @@ async function reload(keepId = selectedId.value): Promise<void> {
   loading.value = true;
   const page = session.activePage;
   const isLayout = layoutMode.value;
+  const isHtml = htmlPostMode.value;
   const [outlineResult, hrefResult] = await Promise.all([
     window.xiao.canvas.outline(session.siteDir, page),
-    isLayout
+    isLayout || isHtml
       ? Promise.resolve({ ok: true as const, data: '' })
       : window.xiao.page.href(session.siteDir, page),
   ]);
   if (token !== reloadToken) return;
   loading.value = false;
-  pageRoute.value = isLayout
-    ? `/posts/${encodeURIComponent(layoutSlug.value)}/`
-    : hrefResult.ok && hrefResult.data
-      ? `/${hrefResult.data}`
-      : '';
+  pageRoute.value = isHtml
+    ? `/posts/${encodeURIComponent(htmlPostSlug.value)}/`
+    : isLayout
+      ? `/posts/${encodeURIComponent(layoutSlug.value)}/`
+      : hrefResult.ok && hrefResult.data
+        ? `/${hrefResult.data}`
+        : '';
   if (!outlineResult.ok) {
     outline.value = [];
     error.value = friendlyError(outlineResult.message);
@@ -1412,6 +1486,69 @@ function resetProp(spec: PropSpec): void {
   commitProp(spec, convertDefault(spec));
 }
 
+async function readHtmlChrome(): Promise<void> {
+  if (!htmlPostMode.value || !session.siteDir) {
+    htmlStandalone.value = false;
+    return;
+  }
+  const result = await window.xiao.dev.read(session.siteDir, session.activePage);
+  htmlStandalone.value = result.ok && /^standalone:[ \t]*true[ \t]*$/m.test(result.data);
+}
+
+async function setHtmlChrome(standalone: boolean): Promise<void> {
+  if (!htmlPostMode.value || !session.siteDir || standalone === htmlStandalone.value) return;
+  const result = await window.xiao.dev.read(session.siteDir, session.activePage);
+  if (!result.ok) {
+    notify(`没能读取这篇文章：${result.message}`, 'error', 'html-chrome');
+    return;
+  }
+  const source = result.data.replace(/\r\n/g, '\n');
+  const line = `standalone: ${standalone ? 'true' : 'false'}`;
+  let next = source;
+  if (/^standalone:[ \t]*(true|false)[ \t]*$/m.test(source)) {
+    next = source.replace(/^standalone:[ \t]*(true|false)[ \t]*$/m, line);
+  } else {
+    const close = source.indexOf('\n---', 3);
+    if (close < 0) {
+      notify('这篇 HTML 没有头部，没法切换成独立页面。', 'error', 'html-chrome');
+      return;
+    }
+    next = `${source.slice(0, close)}\n${line}${source.slice(close)}`;
+  }
+  const written = await window.xiao.dev.write(session.siteDir, session.activePage, next);
+  if (!written.ok) {
+    notify(`没能切换页面形态：${written.message}`, 'error', 'html-chrome');
+    return;
+  }
+  htmlStandalone.value = standalone;
+}
+
+function commitPreviewText(payload: { file: string; offset: string; text: string }): void {
+  if (!htmlPostMode.value || !session.siteDir) return;
+  const file = payload.file.replaceAll('\\', '/');
+  if (file !== session.activePage.replaceAll('\\', '/')) return;
+  const row = nodeMap.value.get(payload.offset);
+  if (!row) return;
+  const target = row.node.kind === 'text' ? row.node : singleTextNode(row.node);
+  if (!target || target.text === payload.text) return;
+  void sequenced(async () => {
+    session.setSaveState('saving');
+    const result = await window.xiao.canvas.setText(
+      session.siteDir,
+      target.id,
+      payload.text,
+      session.activePage,
+    );
+    if (!result.ok) {
+      notify(`文字没写进去：${result.message}。在页面上再改一次。`, 'error', 'canvas-text');
+      session.setSaveState('dirty');
+      return;
+    }
+    session.setSaveState('saved');
+    await reload(row.node.id);
+  });
+}
+
 function commitText(): void {
   const node = selectedNode.value;
   if (!node || !session.siteDir) return;
@@ -1497,10 +1634,103 @@ async function createPage(): Promise<void> {
 }
 
 function openSource(): void {
-  if (!session.siteDir || !session.activePage) return;
-  session.devOpen = session.activePage;
-  session.setMode('develop');
-  notify(`已在开发者模式打开 ${session.activePage}`, 'info', 'canvas-source');
+  void enterSource();
+}
+
+async function enterSource(): Promise<void> {
+  if (sourceMode.value || !session.siteDir || !session.activePage) return;
+  sourceMode.value = true;
+  session.setWorkbenchSource(true);
+  await nextTick();
+  await mountPageSource();
+}
+
+async function enterVisual(): Promise<void> {
+  if (!sourceMode.value) return;
+  await flushSource();
+  disposeSource();
+  sourceMode.value = false;
+  session.setWorkbenchSource(false);
+  await reload();
+  void nextTick(syncStage);
+}
+
+function disposeSource(): void {
+  window.clearTimeout(sourceTimer);
+  sourceTimer = 0;
+  sourceEditor?.dispose();
+  sourceEditor = undefined;
+  sourceModel?.dispose();
+  sourceModel = undefined;
+}
+
+async function mountPageSource(): Promise<void> {
+  const gen = ++sourceGen;
+  const file = session.activePage;
+  const dir = session.siteDir;
+  if (!dir || !file) return;
+  const result = await window.xiao.dev.read(dir, file);
+  if (gen !== sourceGen) return;
+  if (!result.ok) {
+    notify(`没能打开源码：${result.message}。`, 'error', 'canvas-source');
+    sourceMode.value = false;
+    session.setWorkbenchSource(false);
+    return;
+  }
+  disposeSource();
+  await nextTick();
+  if (gen !== sourceGen) return;
+  const host = sourceRoot.value;
+  if (!host) return;
+  const model = monaco.editor.createModel(result.data, 'html');
+  sourceModel = model;
+  sourceSaved = result.data;
+  sourceEditor = monaco.editor.create(host, {
+    model,
+    automaticLayout: true,
+    wordWrap: 'on',
+    minimap: { enabled: false },
+    fontSize: 14,
+    lineNumbers: 'on',
+    scrollBeyondLastLine: false,
+    fixedOverflowWidgets: true,
+    padding: { top: 16, bottom: 48 },
+    theme: session.theme === 'dark' ? 'vs-dark' : 'vs',
+  });
+  model.onDidChangeContent(() => {
+    if (model.getValue() === sourceSaved) {
+      session.setSaveState('saved');
+      return;
+    }
+    session.setSaveState('dirty');
+    window.clearTimeout(sourceTimer);
+    sourceTimer = window.setTimeout(() => {
+      sourceTimer = 0;
+      void flushSource();
+    }, 800);
+  });
+  sourceEditor.layout();
+  sourceEditor.focus();
+}
+
+async function flushSource(): Promise<void> {
+  window.clearTimeout(sourceTimer);
+  sourceTimer = 0;
+  if (!sourceEditor || !session.siteDir || !session.activePage) return;
+  const text = sourceEditor.getValue();
+  if (text === sourceSaved) {
+    session.setSaveState('saved');
+    return;
+  }
+  session.setSaveState('saving');
+  const result = await window.xiao.dev.write(session.siteDir, session.activePage, text);
+  if (!result.ok) {
+    session.setSaveState('dirty');
+    notify(`源码没能保存：${result.message}。`, 'error', 'canvas-source');
+    return;
+  }
+  sourceSaved = text;
+  session.setSaveState('saved');
 }
 
 function switchPage(value: string | number): void {
@@ -1524,6 +1754,9 @@ function stagePreviewUrl(): string {
   const base = session.previewUrl;
   if (!base) return '';
   const root = base.endsWith('/') ? base : `${base}/`;
+  if (htmlPostMode.value && htmlPostSlug.value) {
+    return new URL(`posts/${encodeURIComponent(htmlPostSlug.value)}/`, root).href;
+  }
   if (layoutMode.value && layoutSlug.value) {
     return new URL(`posts/${encodeURIComponent(layoutSlug.value)}/`, root).href;
   }
@@ -1534,7 +1767,8 @@ function stagePreviewUrl(): string {
 const stageLive = computed(
   () =>
     Boolean(session.previewUrl) &&
-    session.previewMode === 'dock' &&
+    canvasHoldsPreview() &&
+    !htmlPostMode.value &&
     !session.chromeOpen &&
     !overwriteStyleOpen.value &&
     !resetStyleOpen.value,
@@ -1543,7 +1777,7 @@ const stageLive = computed(
 function syncStage(): void {
   const hole = boardEl.value;
   if (!hole || !stageLive.value) {
-    if (session.nav === 'pages') void window.xiao.preview.hideDock();
+    void window.xiao.preview.hideDock();
     return;
   }
   const url = stagePreviewUrl();
@@ -1553,8 +1787,8 @@ function syncStage(): void {
   }
   cancelAnimationFrame(stageFrame);
   stageFrame = requestAnimationFrame(() => {
-    const rect = hole.getBoundingClientRect();
-    if (rect.width < 120 || rect.height < 120) {
+    const bounds = clipStageBounds(hole);
+    if (!bounds) {
       void window.xiao.preview.hideDock();
       return;
     }
@@ -1569,32 +1803,62 @@ function syncStage(): void {
       url,
       device,
       zoom: stageZoom.value,
-      bounds: {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      },
+      bounds,
     });
   });
 }
 
+/** 原生预览层永远压在网页上面，所以先裁到画布洞里，再让开检查器、底栏和状态栏。 */
+function clipStageBounds(
+  hole: HTMLElement,
+): { x: number; y: number; width: number; height: number } | null {
+  const rect = hole.getBoundingClientRect();
+  let right = Math.min(rect.right, window.innerWidth);
+  let bottom = Math.min(rect.bottom, window.innerHeight);
+  const block = (selector: string, edge: 'left' | 'top') => {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) return;
+    if (edge === 'left') right = Math.min(right, box.left);
+    else bottom = Math.min(bottom, box.top);
+  };
+  block('aside.inspector', 'left');
+  block('footer.status', 'top');
+  block('.stage-foot', 'top');
+  const x = Math.round(rect.left);
+  const y = Math.round(rect.top);
+  const width = Math.floor(right - rect.left);
+  const height = Math.floor(bottom - rect.top);
+  if (width < 120 || height < 120) return null;
+  return { x, y, width, height };
+}
+
+function openArticlePreview(): void {
+  const slug = htmlPostSlug.value || layoutSlug.value;
+  if (!slug) return;
+  window.dispatchEvent(
+    new CustomEvent('xiao:preview-window', {
+      detail: { path: `posts/${encodeURIComponent(slug)}/` },
+    }),
+  );
+}
+
 async function ensurePreview(): Promise<void> {
-  if (session.previewMode === 'window') return;
-  session.setPreviewMode('dock');
-  if (session.previewUrl || session.building || !session.siteDir) return;
+  if (!session.siteDir || session.building) return;
+  if (session.previewUrl && session.previewSiteDir === session.siteDir) {
+    void nextTick(syncStage);
+    return;
+  }
   session.building = true;
-  try {
-    const result = await window.xiao.runtime.start('dev', session.siteDir);
-    if (!result.ok) {
-      notify(
-        `预览没能启动：${result.message}。先确认站点依赖已经装好。`,
-        'error',
-        'canvas-preview',
-      );
-    }
-  } finally {
+  const result = await window.xiao.runtime.start('dev', session.siteDir);
+  if (!result.ok) {
     session.building = false;
+    notify(
+      `没能打开页面：${result.message}。先确认站点依赖已经装好。`,
+      'error',
+      'canvas-preview',
+    );
   }
 }
 
@@ -1705,6 +1969,115 @@ async function finishDrag(): Promise<void> {
   await moveNode(payload.id, at);
 }
 
+const htmlCatalog = computed(() =>
+  COMPONENTS.filter((meta) => meta.category !== 'blog').map((meta) => ({
+    name: meta.name,
+    label: meta.label,
+    category: meta.category,
+  })),
+);
+const htmlSide = ref<'block' | 'doc'>('block');
+const htmlInspector = computed(() => {
+  if (!htmlPostMode.value) return selectedId.value ? 'block' : 'page';
+  if (htmlSide.value === 'doc') return 'page';
+  return selectedId.value ? 'block' : 'empty';
+});
+
+function onHtmlSelect(id: string): void {
+  htmlSide.value = 'block';
+  const row = nodeMap.value.get(id);
+  if (row) void selectNode(row.node, false);
+}
+
+async function onHtmlRemove(id: string): void {
+  if (!session.siteDir || !id) return;
+  const result = await window.xiao.canvas.remove(session.siteDir, id, session.activePage);
+  if (!result.ok) {
+    notify(`没能删除区块：${result.message}`, 'error', 'canvas-remove');
+    return;
+  }
+  if (selectedId.value === id) clearSelection();
+  await reload('');
+}
+
+async function onHtmlDuplicate(id: string): void {
+  if (!session.siteDir || !id) return;
+  const result = await window.xiao.canvas.duplicate(session.siteDir, id, session.activePage);
+  if (!result.ok) {
+    notify(`没能复制区块：${result.message}`, 'error', 'canvas-duplicate');
+    return;
+  }
+  await reload(id);
+}
+
+async function onHtmlReplace(payload: {
+  id: string;
+  parentId: string;
+  parentName: string;
+  index: number;
+  name: string;
+}): Promise<void> {
+  await onHtmlRemove(payload.id);
+  onHtmlInsert(payload);
+}
+
+function onHtmlInsert(payload: {
+  parentId: string;
+  parentName: string;
+  index: number;
+  name: string;
+}): void {
+  const meta = COMPONENTS.find((item) => item.name === payload.name);
+  if (!meta) return;
+  void insertComponent(meta, {
+    parentId: payload.parentId,
+    parentName: payload.parentName,
+    index: payload.index,
+    label: meta.label,
+  });
+}
+
+function onHtmlMove(payload: {
+  id: string;
+  parentId: string;
+  parentName: string;
+  index: number;
+}): void {
+  void moveNode(payload.id, {
+    parentId: payload.parentId,
+    parentName: payload.parentName,
+    index: payload.index,
+    label: '',
+  });
+}
+
+function onHtmlText(payload: { id: string; text: string }): void {
+  commitPreviewText({ file: session.activePage, offset: payload.id, text: payload.text });
+}
+
+function pushBlockCatalog(): void {
+  const items = htmlPostMode.value
+    ? COMPONENTS.filter((meta) => meta.category !== 'blog').map((meta) => ({
+        name: meta.name,
+        label: meta.label,
+      }))
+    : [];
+  window.xiao.preview.catalog(items);
+}
+
+function onPreviewInsert(payload: {
+  file: string;
+  offset: string;
+  name: string;
+  place: 'before' | 'after' | 'into';
+}): void {
+  if (!htmlPostMode.value) return;
+  const meta = COMPONENTS.find((item) => item.name === payload.name);
+  if (!meta) return;
+  const at = hitToInsert({ ...payload, tag: 'div' });
+  void insertComponent(meta, at);
+}
+
 function onPaletteClick(meta: ComponentMeta): void {
   if (skipPaletteClick) {
     skipPaletteClick = false;
@@ -1739,8 +2112,12 @@ async function onPreviewPick(payload: { file: string; offset: string }): Promise
   const file = payload.file.replaceAll('\\', '/');
   const current = session.activePage.replaceAll('\\', '/');
   if (file !== current) {
+    const htmlArticle = current.includes('/content/posts/') && current.endsWith('/index.html');
+    const fromLayout = file.includes('/layouts/') && file.endsWith('.astro');
     notify(
-      `选中的元素来自 ${file}，当前只编辑页面文件 ${current}；页面文件里的元素才能在这里选中。`,
+      htmlArticle && fromLayout
+        ? '点到的是站点版式（标题、页眉、页脚），不是这篇文章的正文。点正文里的段落或区块才能改。'
+        : `选中的元素来自 ${file}，当前只编辑页面文件 ${current}；页面文件里的元素才能在这里选中。`,
       'info',
       'canvas-pick-file',
     );
@@ -1777,28 +2154,55 @@ function checkInspectorHost(): void {
 function onCanvasRefresh(event: Event): void {
   const detail = (event as CustomEvent<string>).detail;
   if (typeof detail === 'string' && detail) notify(detail, 'info', 'canvas-sync');
+  if (sourceMode.value) return;
   void reload(selectedId.value);
 }
 
 function onSaveRequest(): void {
   if (!session.siteDir) return;
+  if (sourceMode.value) {
+    void flushSource();
+    return;
+  }
   void reload(selectedId.value);
 }
 
 watch(
   () => session.activePage,
-  () => {
+  (file, previous) => {
     // 离开版式文件时清掉「正在编辑哪篇版式」的元数据，避免标题/预览残留。
-    if (!layoutSlugOf(session.activePage)) session.closeLayout();
+    if (!layoutSlugOf(file)) session.closeLayout();
     expanded.value = [];
     clearSelection();
+    const enterHtml = Boolean(htmlPostSlugOf(file)) && !htmlPostSlugOf(previous ?? '');
+    if (enterHtml && sourceMode.value) {
+      sourceMode.value = false;
+      session.setWorkbenchSource(false);
+      disposeSource();
+      void reload('');
+      return;
+    }
+    if (sourceMode.value) {
+      void (async () => {
+        await flushSource();
+        disposeSource();
+        await mountPageSource();
+      })();
+      return;
+    }
     void reload('');
   },
 );
 
-// 进入文章版式时自动打开预览坞，显示 /posts/<slug>/ 的真实页面。
-watch(layoutMode, (value) => {
-  if (!value) return;
+// 进入文章版式时自动把真页面铺到舞台上，显示 /posts/<slug>/。
+watch([layoutMode, htmlPostMode], ([layout, html]) => {
+  pushBlockCatalog();
+  if (html) void readHtmlChrome();
+  if (html && collapsedListForStage.value) {
+    session.listCollapsed = false;
+    collapsedListForStage.value = false;
+  }
+  if (!layout && !html) return;
   void ensurePreview();
   void nextTick(syncStage);
 });
@@ -1833,8 +2237,8 @@ watch(
   () =>
     [
       session.previewUrl,
-      session.previewMode,
       session.previewDevice,
+      sourceMode.value,
       session.chromeOpen,
       session.activePage,
       pageRoute.value,
@@ -1865,9 +2269,15 @@ onMounted(() => {
   stopPick = window.xiao.preview.onPick((payload) => {
     void onPreviewPick(payload);
   });
+  stopInsert = window.xiao.preview.onInsertBlock(onPreviewInsert);
+  stopText = window.xiao.preview.onText((payload) => {
+    void commitPreviewText(payload);
+  });
+  pushBlockCatalog();
+  void readHtmlChrome();
   stopResize = window.xiao.preview.onResize(onPreviewResize);
   stopCamera = window.xiao.preview.onCamera(onPreviewCamera);
-  if (!session.listCollapsed) {
+  if (session.nav === 'pages' && !session.listCollapsed) {
     session.listCollapsed = true;
     collapsedListForStage.value = true;
   }
@@ -1877,23 +2287,108 @@ onMounted(() => {
   void ensurePreview().then(() => nextTick(syncStage));
 });
 
+watch(
+  () => session.theme,
+  () => {
+    monaco.editor.setTheme(session.theme === 'dark' ? 'vs-dark' : 'vs');
+  },
+);
+
 onBeforeUnmount(() => {
   window.removeEventListener('xiao-canvas', onCanvasRefresh);
   window.removeEventListener('xiao:save', onSaveRequest);
   window.removeEventListener('pointermove', onWindowPointerMove);
   window.removeEventListener('pointerup', onWindowPointerUp);
   stopPick();
+  stopInsert();
+  stopText();
   stopResize();
   stopCamera();
   stageObserver?.disconnect();
   cancelAnimationFrame(stageFrame);
+  void flushSource();
+  disposeSource();
+  session.setWorkbenchSource(false);
   if (collapsedListForStage.value) session.listCollapsed = false;
+  void window.xiao.preview.hideDock();
 });
 </script>
 
 <template>
-  <div class="canvas-view">
-    <aside class="palette" aria-label="组件面板">
+  <div class="canvas-view" :class="{ 'is-source': sourceMode, 'is-html': htmlPostMode }">
+    <WorkbenchBar
+      v-model:mode="workbenchMode"
+      :badge="kindBadge"
+      :badge-tone="htmlPostMode || layoutMode || isSystemPage(session.activePage) ? 'accent' : 'neutral'"
+      @save="onSaveRequest"
+    >
+      <UiSegmented
+        v-if="htmlPostMode"
+        v-model="htmlChromeKey"
+        :items="htmlChromeItems"
+        aria-label="HTML 文章怎么放进站点"
+      />
+      <UiTooltip v-if="htmlPostMode || layoutMode" label="在预览窗口打开这篇文章">
+        <UiButton
+          variant="primary"
+          :icon="icons.preview"
+          aria-label="在预览窗口打开这篇文章"
+          @click="openArticlePreview"
+        >
+          <span class="bar-label">预览</span>
+        </UiButton>
+      </UiTooltip>
+      <template v-if="!sourceMode">
+        <span class="zoom-read">{{ Math.round(stageZoom * 100) }}%</span>
+        <UiTooltip label="缩小">
+          <UiButton variant="ghost" size="sm" aria-label="缩小" @click="setStageZoom(stageZoom - 0.1)">
+            −
+          </UiButton>
+        </UiTooltip>
+        <UiTooltip label="100%">
+          <UiButton variant="ghost" size="sm" aria-label="重置缩放" @click="setStageZoom(1)">
+            1:1
+          </UiButton>
+        </UiTooltip>
+        <UiTooltip label="放大">
+          <UiButton variant="ghost" size="sm" aria-label="放大" @click="setStageZoom(stageZoom + 0.1)">
+            +
+          </UiButton>
+        </UiTooltip>
+        <UiTooltip label="撤销（按页面文件）">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            :icon="mdiUndo"
+            aria-label="撤销"
+            :disabled="busy"
+            @click="history('undo')"
+          />
+        </UiTooltip>
+        <UiTooltip label="重做（按页面文件）">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            :icon="mdiRedo"
+            aria-label="重做"
+            :disabled="busy"
+            @click="history('redo')"
+          />
+        </UiTooltip>
+        <UiTooltip label="从磁盘重新读取结构">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            :icon="icons.refresh"
+            aria-label="刷新结构"
+            :loading="loading"
+            @click="reload()"
+          />
+        </UiTooltip>
+      </template>
+    </WorkbenchBar>
+    <div class="canvas-body">
+    <aside v-show="!sourceMode && !htmlPostMode" class="palette" aria-label="组件面板">
       <div class="palette-head">
         <UiInput
           v-model="search"
@@ -1956,9 +2451,13 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="stage" aria-label="页面结构">
-      <header class="stage-bar">
+      <header v-show="!sourceMode" class="stage-bar">
         <div class="stage-bar__left">
-          <template v-if="layoutMode">
+          <template v-if="htmlPostMode">
+            <UiBadge tone="accent" size="sm">HTML 文章</UiBadge>
+            <span class="stage-title">{{ htmlPostSlug }}</span>
+          </template>
+          <template v-else-if="layoutMode">
             <UiButton variant="ghost" size="sm" :icon-left="icons.back" @click="backToWriting">
               返回写作
             </UiButton>
@@ -1983,88 +2482,31 @@ onBeforeUnmount(() => {
             {{ pageRoute }}
           </UiBadge>
         </div>
-        <div class="stage-bar__right">
-          <span class="zoom-read">{{ Math.round(stageZoom * 100) }}%</span>
-          <UiTooltip label="缩小">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              aria-label="缩小"
-              @click="setStageZoom(stageZoom - 0.1)"
-            >
-              −
-            </UiButton>
-          </UiTooltip>
-          <UiTooltip label="100%">
-            <UiButton variant="ghost" size="sm" aria-label="重置缩放" @click="setStageZoom(1)">
-              1:1
-            </UiButton>
-          </UiTooltip>
-          <UiTooltip label="放大">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              aria-label="放大"
-              @click="setStageZoom(stageZoom + 0.1)"
-            >
-              +
-            </UiButton>
-          </UiTooltip>
-          <UiTooltip label="撤销（按页面文件）">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiUndo"
-              aria-label="撤销"
-              :disabled="busy"
-              @click="history('undo')"
-            />
-          </UiTooltip>
-          <UiTooltip label="重做（按页面文件）">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiRedo"
-              aria-label="重做"
-              :disabled="busy"
-              @click="history('redo')"
-            />
-          </UiTooltip>
-          <UiTooltip label="从磁盘重新读取结构">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="icons.refresh"
-              aria-label="刷新结构"
-              :loading="loading"
-              @click="reload()"
-            />
-          </UiTooltip>
-        </div>
       </header>
 
-      <div class="stage-body" :class="{ 'layers-collapsed': layersCollapsed }">
-        <aside class="layers" aria-label="图层">
+      <div v-show="sourceMode" ref="sourceRoot" class="page-source" />
+      <div v-show="!sourceMode" class="stage-body" :class="{ 'layers-collapsed': layersCollapsed }">
+        <aside v-if="!htmlPostMode" class="layers" aria-label="结构">
           <header class="layers-head">
             <template v-if="!layersCollapsed">
               <UiIcon :path="icons.layers" :size="13" />
-              <span>图层</span>
-              <UiTooltip label="收起图层">
+              <span>结构</span>
+              <UiTooltip label="收起结构">
                 <UiButton
                   variant="ghost"
                   size="sm"
                   :icon="icons.chevronLeft"
-                  aria-label="收起图层"
+                  aria-label="收起结构"
                   @click="layersCollapsed = true"
                 />
               </UiTooltip>
             </template>
-            <UiTooltip v-else label="展开图层">
+            <UiTooltip v-else label="展开结构">
               <UiButton
                 variant="ghost"
                 size="sm"
                 :icon="icons.layers"
-                aria-label="展开图层"
+                aria-label="展开结构"
                 @click="layersCollapsed = false"
               />
             </UiTooltip>
@@ -2155,23 +2597,31 @@ onBeforeUnmount(() => {
         </aside>
 
         <div class="board">
-          <div v-if="!stageLive" class="board-empty">
+          <HtmlBlocks
+            v-if="htmlPostMode"
+            root
+            :nodes="outline"
+            :selected-id="selectedId"
+            :catalog="htmlCatalog"
+            @select="onHtmlSelect"
+            @text="onHtmlText"
+            @insert="onHtmlInsert"
+            @move="onHtmlMove"
+            @remove="onHtmlRemove"
+            @duplicate="onHtmlDuplicate"
+            @replace="onHtmlReplace"
+          />
+          <div v-else-if="!stageLive" class="board-empty">
             <UiEmpty
-              v-if="session.previewMode === 'window'"
-              title="预览在独立窗口"
-              description="点顶栏的预览按钮停靠回来，舞台才会显示真页面。"
-              :icon="icons.external"
-            />
-            <UiEmpty
-              v-else-if="session.building"
-              title="正在启动预览"
-              description="站点 dev 起来之后，真页面会出现在这块舞台上。"
+              v-if="session.building"
+              title="正在打开页面"
+              description="站点跑起来之后，真页面会出现在这块舞台上。"
               :icon="icons.preview"
             />
             <UiEmpty
               v-else
               title="舞台还没有页面"
-              description="启动预览后，点页面上的元素就能选中，右侧改属性。"
+              description="打开页面后，点上面的元素就能选中，右侧改属性。"
               :icon="icons.preview"
             >
               <template #action>
@@ -2181,22 +2631,26 @@ onBeforeUnmount(() => {
                   :loading="session.building"
                   @click="ensurePreview"
                 >
-                  启动预览
+                  打开页面
                 </UiButton>
               </template>
             </UiEmpty>
           </div>
-          <div ref="boardEl" class="board-hole" />
+          <div v-if="!htmlPostMode" ref="boardEl" class="board-hole" />
         </div>
       </div>
 
-      <footer class="stage-foot">
+      <footer v-show="!sourceMode" class="stage-foot">
         <span>{{ totalNodes }} 个节点</span>
         <span v-if="selectedRow" class="stage-foot__sep">·</span>
         <span v-if="selectedRow" class="stage-foot__path">{{ selectedPath }}</span>
         <div class="grow"></div>
         <UiIcon :path="icons.preview" :size="13" />
-        <span>{{ dropLabel || '拖组件到页面上；Ctrl+滚轮缩放，空格拖动画布' }}</span>
+        <span>{{
+          htmlPostMode
+            ? '点块即可改字；拖左侧手柄换位置，靠近中线会吸进容器'
+            : dropLabel || '拖组件到页面上；Ctrl+滚轮缩放，空格拖动画布'
+        }}</span>
       </footer>
     </section>
     <div
@@ -2206,16 +2660,21 @@ onBeforeUnmount(() => {
     >
       {{ dragGhost.label }}
     </div>
+    </div>
   </div>
 
   <Teleport v-if="hostReady" to="#inspector-host">
     <div class="inspector">
+      <div v-if="htmlPostMode" class="wp-tabs" role="tablist">
+        <button type="button" :class="{ on: htmlSide === 'block' }" @click="htmlSide = 'block'">区块</button>
+        <button type="button" :class="{ on: htmlSide === 'doc' }" @click="htmlSide = 'doc'">文档</button>
+      </div>
       <header class="inspector-head">
         <span class="inspector-head__icon">
           <UiIcon :path="selectedIcon" :size="15" />
         </span>
         <div class="inspector-head__title">
-          <span>{{ selectedId ? selectedTitle : '页面' }}</span>
+          <span>{{ selectedId ? selectedTitle : htmlPostMode ? '整页' : '页面' }}</span>
           <UiBadge v-if="selectedId" tone="neutral" size="sm">{{ selectedKindLabel }}</UiBadge>
         </div>
         <UiButton
@@ -2237,13 +2696,23 @@ onBeforeUnmount(() => {
           :icon="icons.repo"
         />
 
-        <template v-else-if="selectedId && selectedRow">
+        <UiEmpty
+          v-else-if="htmlInspector === 'empty'"
+          title="未选择区块"
+          description="在编辑区点一个区块，或输入 / 插入。"
+          :icon="icons.pages"
+        />
+
+        <template v-else-if="htmlInspector === 'block' && selectedRow">
           <!-- 文字节点 / 单一文字子节点 -->
-          <UiPanel v-if="selectedTextNode" title="文字" collapsible>
+          <UiPanel v-if="selectedTextNode && !htmlPostMode" title="文字" collapsible>
             <UiField label="文字内容" hint="改完点出输入框即写入源码">
               <UiTextarea v-model="textDraft" :rows="4" @change="commitText" />
             </UiField>
           </UiPanel>
+          <p v-else-if="htmlPostMode && selectedTextNode" class="inspector-tip">
+            文字直接在页面上改，点到别处就写入。
+          </p>
 
           <!-- 模板锁定 -->
           <UiPanel v-if="selectedRow.node.kind === 'locked'" title="模板代码">
@@ -2251,7 +2720,7 @@ onBeforeUnmount(() => {
               这块是模板代码（脚本、样式或表达式），为了不弄坏页面，搭建里不能直接改。
             </p>
             <div class="inspector-actions">
-              <UiButton size="sm" :icon="icons.code" @click="openSource">去源码里改</UiButton>
+              <UiButton size="sm" :icon="icons.code" @click="openSource">切到源码</UiButton>
             </div>
           </UiPanel>
 
@@ -2262,10 +2731,10 @@ onBeforeUnmount(() => {
               不能删除，也不接受组件属性。
             </p>
             <p class="inspector-tip">
-              想把正文放进分栏：先插入「分栏组」，再把图层里的「正文」拖进分栏即可。
+              想把正文放进分栏：先在页面上插入「分栏组」，再把正文拖进分栏。
             </p>
             <div class="inspector-actions">
-              <UiButton size="sm" :icon-left="icons.code" @click="openSource">源码里查看</UiButton>
+              <UiButton size="sm" :icon-left="icons.code" @click="openSource">切到源码</UiButton>
               <UiButton size="sm" :icon-left="icons.posts" @click="backToWriting"
                 >回到写作</UiButton
               >
@@ -2281,11 +2750,11 @@ onBeforeUnmount(() => {
             <UiEmpty
               v-else-if="groupedProps.length === 0"
               title="这个组件没有可编辑属性"
-              description="可以在结构树里继续放子组件，或去源码里定制。"
+              description="在页面上点旁边的加号放入子组件，或切到源码定制。"
               :icon="icons.settings"
             />
             <UiPanel
-              v-for="group in groupedProps"
+              v-for="group in inspectorGroups"
               :key="group.key"
               :title="group.label"
               collapsible
@@ -2294,17 +2763,17 @@ onBeforeUnmount(() => {
               <div class="prop-list">
                 <template v-for="spec in group.specs" :key="spec.name">
                   <div v-if="spec.type === 'boolean'" class="prop-switch">
-                    <span class="prop-switch__label">{{ spec.label }}</span>
+                    <span class="prop-switch__label">{{ specLabel(spec) }}</span>
                     <UiSwitch
                       :model-value="Boolean(draft[spec.name])"
-                      :aria-label="spec.label"
+                      :aria-label="specLabel(spec)"
                       @update:model-value="commitProp(spec, $event)"
                     />
                   </div>
 
                   <UiField
                     v-else-if="spec.type === 'list'"
-                    :label="spec.label"
+                    :label="specLabel(spec)"
                     hint="列表属性请在源码里改"
                   >
                     <div class="prop-readonly">{{ displayValue(spec) }}</div>
@@ -2312,7 +2781,7 @@ onBeforeUnmount(() => {
 
                   <UiField
                     v-else
-                    :label="spec.label"
+                    :label="specLabel(spec)"
                     :hint="spec.type === 'number' ? propRange(spec) : undefined"
                   >
                     <template v-if="canReset(spec)" #action>
@@ -2366,7 +2835,7 @@ onBeforeUnmount(() => {
 
         <!-- 未选中：页面级操作 -->
         <template v-else>
-          <UiPanel title="页面">
+          <UiPanel :title="htmlPostMode ? '整页' : '页面'">
             <div class="page-info">
               <div class="page-info__row">
                 <span class="page-info__key">文件</span>
@@ -2376,7 +2845,7 @@ onBeforeUnmount(() => {
                 <span class="page-info__key">路由</span>
                 <span>{{ pageRoute || '—' }}</span>
               </div>
-              <div class="page-info__row">
+              <div v-if="!htmlPostMode" class="page-info__row">
                 <span class="page-info__key">结构</span>
                 <span>{{ totalNodes }} 个节点</span>
               </div>
@@ -2390,20 +2859,21 @@ onBeforeUnmount(() => {
                 layoutTitle || layoutSlug
               }}》的专属版式：改动只影响这篇文章，其他文章继续用默认版式。
             </p>
+            <p v-else-if="isSystemPage(session.activePage)" class="hint-text">
+              这是共用容器，不是某一篇文章。改动会作用到多篇文章或整个站点。
+            </p>
             <div class="inspector-actions">
               <UiButton size="sm" :icon-left="icons.refresh" :loading="loading" @click="reload()">
                 刷新结构
               </UiButton>
-              <UiButton size="sm" :icon-left="icons.code" @click="openSource"
-                >源码里自定义</UiButton
-              >
+              <UiButton size="sm" :icon-left="icons.code" @click="openSource">切到源码</UiButton>
               <UiButton v-if="layoutMode" size="sm" :icon-left="icons.back" @click="backToWriting">
                 回到写作
               </UiButton>
             </div>
           </UiPanel>
 
-          <UiPanel v-if="!layoutMode" title="页面样式" collapsible>
+          <UiPanel v-if="!layoutMode && pageStyleSupported" :title="htmlPostMode ? '整页样式' : '页面样式'" collapsible>
             <div v-if="!pageStyleSupported" class="hint-text">
               {{ pageStyleUnsupportedReason }}
             </div>
@@ -2487,7 +2957,7 @@ onBeforeUnmount(() => {
             </div>
           </UiPanel>
 
-          <UiPanel v-if="!layoutMode" title="新建页面" collapsible>
+          <UiPanel v-if="!layoutMode && !htmlPostMode" title="新建页面" collapsible>
             <div class="prop-list">
               <UiField label="页面地址" hint="小写字母、数字和连字符，例如 about">
                 <UiInput
@@ -2514,14 +2984,17 @@ onBeforeUnmount(() => {
           </UiPanel>
 
           <UiPanel title="提示" collapsible :default-open="false">
-            <p class="hint-text">
-              中间是真页面。点页面上的块选中它，右侧改属性；左边图层是结构树。组件仍插到选中容器里。
+            <p v-if="htmlPostMode" class="hint-text">
+              文字直接在页面上改。点一块改样式；没选中时，这里设定整页。套用模板会放进文章版式。独立成页没有文章模板，也没有站点顶栏和页脚；正文若已是完整 HTML 文档，就原样输出。
+            </p>
+            <p v-else class="hint-text">
+              中间是真页面。点页面上的块选中它，右侧改属性。左边是结构，不是图层；图层只指样式里的前后关系。
             </p>
           </UiPanel>
         </template>
       </div>
 
-      <footer v-if="selectedId" class="inspector-foot">{{ selectedPath }}</footer>
+      <footer v-if="selectedId && !htmlPostMode" class="inspector-foot">{{ selectedPath }}</footer>
     </div>
   </Teleport>
 
@@ -2560,12 +3033,49 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .canvas-view {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   background: var(--ui-bg);
   color: var(--ui-text);
+}
+
+.bar-label {
+  display: inline;
+}
+
+@media (max-width: 1180px) {
+  .bar-label {
+    display: none;
+  }
+}
+
+.canvas-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.canvas-view.is-source .canvas-body,
+.canvas-view.is-html .canvas-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.canvas-view.is-html .stage-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.canvas-view.is-html .board {
+  overflow: hidden;
+}
+
+.page-source {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .grow {
@@ -2724,6 +3234,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
 }
 
 .stage-bar {
@@ -3052,6 +3563,27 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+}
+
+.wp-tabs {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.wp-tabs button {
+  flex: 1;
+  height: 40px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ui-text-2);
+  cursor: pointer;
+}
+
+.wp-tabs button.on {
+  color: var(--ui-text);
+  border-bottom-color: var(--ui-accent);
 }
 
 .inspector-head {

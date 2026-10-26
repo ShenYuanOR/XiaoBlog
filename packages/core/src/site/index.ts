@@ -19,3 +19,19 @@ export {
 } from './slug.ts';
 export { findDeadLinks, validatePosts, type PostRecord, type ValidationIssue } from './validate.ts';
 export { migratePost, type MigratedFolderPost } from './migrate.ts';
+export {
+  SHARED_LAYOUTS,
+  groupStudioPages,
+  htmlPostFileOf,
+  htmlPostSlugOf,
+  isArticleLayout,
+  isHiddenStudioPage,
+  isHtmlPostFile,
+  isSharedLayout,
+  isStudioPageFile,
+  isSystemPage,
+  normalizePageFile,
+  pageGroup,
+  pageLabel,
+  type PageGroup,
+} from './page-model.ts';

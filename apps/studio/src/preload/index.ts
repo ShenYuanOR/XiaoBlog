@@ -30,6 +30,10 @@ const api = {
       ipcRenderer.invoke('canvas:insert', siteDir, parentId, index, name, file),
     move: (siteDir: string, nodeId: string, parentId: string, index: number, file: string) =>
       ipcRenderer.invoke('canvas:move', siteDir, nodeId, parentId, index, file),
+    remove: (siteDir: string, nodeId: string, file: string) =>
+      ipcRenderer.invoke('canvas:remove', siteDir, nodeId, file),
+    duplicate: (siteDir: string, nodeId: string, file: string) =>
+      ipcRenderer.invoke('canvas:duplicate', siteDir, nodeId, file),
     canNest: (parentName: string, childName: string) =>
       ipcRenderer.invoke('canvas:canNest', parentName, childName),
     undo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:undo', siteDir, file),
@@ -238,6 +242,20 @@ const api = {
       zoom?: number;
     }): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:dock', input),
     hideDock: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:hideDock'),
+    catalog: (items: { name: string; label: string }[]): void => {
+      ipcRenderer.send('preview:catalog', items);
+    },
+    onInsertBlock: (
+      callback: (payload: {
+        file: string;
+        offset: string;
+        name: string;
+        place: 'before' | 'after' | 'into';
+      }) => void,
+    ): (() => void) => listen('preview:onInsertBlock', callback),
+    windowOpen: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('preview:windowOpen'),
+    onWindow: (callback: (payload: { open: boolean }) => void): (() => void) =>
+      listen('preview:onWindow', callback),
   },
   app: {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
@@ -274,6 +292,8 @@ const api = {
       ipcRenderer.invoke('runtime:cancel', taskId),
     onLog: (callback: (payload: RuntimeLogEvent) => void): (() => void) =>
       listen('runtime:onLog', callback),
+    onStart: (callback: (payload: RuntimeStart) => void): (() => void) =>
+      listen('runtime:onStart', callback),
     onReady: (callback: (payload: { taskId: string; url: string }) => void): (() => void) =>
       listen('runtime:onReady', callback),
     onExit: (callback: (payload: RuntimeExitEvent) => void): (() => void) =>

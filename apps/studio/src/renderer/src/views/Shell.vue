@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { copy, navItems, type NavKey } from '../copy.ts';
 import { icons } from '../icons.ts';
@@ -32,8 +32,8 @@ const router = useRouter();
 
 const slug = ref('');
 const commandOpen = ref(false);
-const dockEl = ref<HTMLElement | null>(null);
-const previewNote = ref('');
+const pendingWindow = ref(false);
+const pendingPath = ref('');
 
 const deviceItems = [
   { key: 'phone', label: '手机', icon: icons.phone },
@@ -56,6 +56,25 @@ const navOptions = navItems.map((item) => ({
 const showList = computed(
   () => Boolean(session.siteDir) && (session.nav === 'posts' || session.nav === 'pages'),
 );
+const layoutOpen = computed(() => session.nav === 'posts' && Boolean(session.layoutSlug));
+const htmlCanvas = computed(
+  () =>
+    session.nav === 'posts' &&
+    Boolean(slug.value) &&
+    session.activePostFormat === 'html' &&
+    !layoutOpen.value,
+);
+const showCanvas = computed(
+  () => Boolean(session.siteDir) && (session.nav === 'pages' || layoutOpen.value || htmlCanvas.value),
+);
+const showEditor = computed(
+  () =>
+    Boolean(session.siteDir) &&
+    session.nav === 'posts' &&
+    Boolean(slug.value) &&
+    !layoutOpen.value &&
+    session.activePostFormat !== 'html',
+);
 const showInspector = computed(() => session.inspectorOpen && showList.value);
 const listRail = computed(() => showList.value && session.listCollapsed);
 const hasSite = computed(() => Boolean(session.siteDir));
@@ -67,7 +86,6 @@ const commands = computed(() => [
     group: '视图',
     icon: icons[item.icon],
   })),
-  { id: 'preview:toggle', label: session.previewDocked ? '收起预览坞' : '停靠预览', group: '视图', icon: icons.preview },
   { id: 'preview:window', label: '在独立窗口打开预览', group: '视图', icon: icons.external },
   { id: 'mode:toggle', label: session.mode === 'write' ? '进入开发者模式' : '回到创作模式', group: '视图', icon: icons.code },
   { id: 'theme:toggle', label: session.theme === 'dark' ? '切到浅色' : '切到深色', group: '外观', icon: icons.light },
@@ -82,8 +100,7 @@ watch(commandOpen, (open) => {
 function runCommand(id: string): void {
   commandOpen.value = false;
   if (id.startsWith('nav:')) session.setNav(id.slice(4) as NavKey);
-  else if (id === 'preview:toggle') void togglePreview();
-  else if (id === 'preview:window') void openWindowPreview();
+  else if (id === 'preview:window') void openFormalPreview();
   else if (id === 'mode:toggle') session.toggleMode();
   else if (id === 'theme:toggle') session.setTheme(session.theme === 'dark' ? 'light' : 'dark');
   else if (id === 'site:open') void openSite();
@@ -99,78 +116,73 @@ async function openSite(): Promise<void> {
   }
 }
 
-async function togglePreview(): Promise<void> {
-  if (session.previewMode === 'dock') {
-    session.setPreviewMode('off');
-    await window.xiao.preview.hideDock();
-    return;
-  }
-  session.setPreviewMode('dock');
-  if (!session.previewUrl && session.siteDir) {
-    previewNote.value = '正在启动预览…';
-    session.building = true;
-    await window.xiao.runtime.start('dev', session.siteDir);
-    session.building = false;
-  }
+function previewHref(path = ''): string {
+  const root = session.previewUrl.endsWith('/') ? session.previewUrl : `${session.previewUrl}/`;
+  if (!path) return root;
+  return new URL(path.replace(/^\//, ''), root).href;
 }
 
-async function openWindowPreview(): Promise<void> {
-  if (!session.previewUrl) {
-    notify('预览还没启动，先在主界面停靠预览一次', 'error');
-    return;
-  }
-  session.setPreviewMode('window');
-  await window.xiao.preview.hideDock();
+async function showWindowPreview(path = ''): Promise<void> {
+  if (!session.previewUrl) return;
   const result = await window.xiao.preview.set(
     session.previewDevice === 'side' ? 'side' : session.previewDevice,
-    session.previewUrl,
+    previewHref(path),
   );
   if (!result.ok) notify(result.message, 'error');
 }
 
-function isDesktopWidth(width: number): boolean {
-  return width >= 768;
-}
-
-let frame = 0;
-let observer: ResizeObserver | null = null;
-
-function syncDock(): void {
-  if (session.nav === 'pages' && !commandOpen.value) return;
-  const element = dockEl.value;
-  if (!element) {
-    void window.xiao.preview.hideDock();
+async function openFormalPreview(path: string | Event = ''): Promise<void> {
+  const target = typeof path === 'string' ? path : '';
+  if (!session.siteDir) {
+    notify('先打开一个站点再预览。', 'error');
     return;
   }
-  if (session.previewMode !== 'dock' || !session.previewUrl || commandOpen.value) {
-    void window.xiao.preview.hideDock();
+  session.setPreviewMode('window');
+  if (session.previewUrl && session.previewSiteDir === session.siteDir) {
+    pendingWindow.value = false;
+    pendingPath.value = '';
+    await showWindowPreview(target);
     return;
   }
-  cancelAnimationFrame(frame);
-  frame = requestAnimationFrame(() => {
-    const rect = element.getBoundingClientRect();
-    const device =
-      session.previewDevice === 'side' || !isDesktopWidth(rect.width)
-        ? (session.previewDevice === 'phone' ? 'phone' : session.previewDevice === 'tablet' ? 'tablet' : 'pc')
-        : session.previewDevice;
-    void window.xiao.preview.dock({
-      enabled: true,
-      url: session.previewUrl,
-      device: device === 'side' ? 'pc' : device,
-      bounds: {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      },
-    });
-  });
+  pendingWindow.value = true;
+  pendingPath.value = target;
+  if (session.building) return;
+  session.building = true;
+  const result = await window.xiao.runtime.start('dev', session.siteDir);
+  if (!result.ok) {
+    pendingWindow.value = false;
+    pendingPath.value = '';
+    session.building = false;
+    session.setPreviewMode('off');
+    notify(`预览没能启动：${result.message}`, 'error');
+  }
 }
+
+function htmlPostFile(next: string): string {
+  return `src/content/posts/${next}/index.html`;
+}
+
+function selectPost(next: string): void {
+  if (session.layoutSlug) session.closeLayout();
+  slug.value = next;
+  if (session.activePostFormat === 'html' && next) {
+    session.setPage(htmlPostFile(next));
+  }
+}
+
+// 离开文章时 setNav 会把 HTML 文件换成首页，否则页面画布还停在文章上。
+// 回到文章时要装回这篇 HTML，否则画布继续用页面布局。
+watch(
+  () => session.nav,
+  (nav) => {
+    if (nav !== 'posts' || !slug.value || session.activePostFormat !== 'html') return;
+    const file = htmlPostFile(slug.value);
+    if (session.activePage.replaceAll('\\', '/') !== file) session.setPage(file);
+  },
+);
 
 async function toggleMode(): Promise<void> {
   session.toggleMode();
-  await nextTick();
-  syncDock();
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -197,7 +209,7 @@ function onKeydown(event: KeyboardEvent): void {
   }
   if (mod && event.shiftKey && event.key.toLowerCase() === 'v') {
     event.preventDefault();
-    void togglePreview();
+    void openFormalPreview();
   }
 }
 
@@ -208,37 +220,33 @@ function onOpenPost(event: Event): void {
   slug.value = detail.slug;
 }
 
+function onPreviewWindow(event: Event): void {
+  const path = (event as CustomEvent<{ path?: string }>).detail?.path ?? '';
+  void openFormalPreview(path);
+}
+
 onMounted(() => {
   void session.load();
+  void window.xiao.preview.hideDock();
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('xiao:open-post', onOpenPost);
-  observer = new ResizeObserver(syncDock);
-  if (dockEl.value) observer.observe(dockEl.value);
-  nextTick(syncDock);
+  window.addEventListener('xiao:preview-window', onPreviewWindow);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('xiao:preview-window', onPreviewWindow);
   window.removeEventListener('xiao:open-post', onOpenPost);
-  observer?.disconnect();
-  void window.xiao.preview.hideDock();
 });
-
-watch(
-  () => [session.previewMode, session.previewDevice, session.previewUrl, commandOpen.value, session.nav],
-  () => {
-    void nextTick(syncDock);
-    if (dockEl.value && observer) {
-      observer.disconnect();
-      observer.observe(dockEl.value);
-    }
-  },
-);
 
 watch(
   () => session.previewUrl,
   (url) => {
-    if (url) previewNote.value = '';
+    if (!url || !pendingWindow.value) return;
+    pendingWindow.value = false;
+    const path = pendingPath.value;
+    pendingPath.value = '';
+    void showWindowPreview(path);
   },
 );
 
@@ -296,18 +304,15 @@ const modeKey = computed({
         <span>搜索</span>
         <UiKbd>Ctrl</UiKbd><UiKbd>K</UiKbd>
       </UiButton>
-      <UiTooltip :label="session.previewDocked ? copy.dockOff : copy.dockOn">
+      <UiTooltip :label="copy.windowPreview">
         <UiButton
           variant="ghost"
           size="sm"
-          :icon="icons.preview"
-          :aria-label="copy.preview"
-          :class="{ on: session.previewMode !== 'off' }"
-          @click="togglePreview"
+          :icon="icons.external"
+          :aria-label="copy.windowPreview"
+          :class="{ on: session.previewWindowOpen }"
+          @click="openFormalPreview()"
         />
-      </UiTooltip>
-      <UiTooltip label="独立预览窗口">
-        <UiButton variant="ghost" size="sm" :icon="icons.external" aria-label="独立预览窗口" @click="openWindowPreview" />
       </UiTooltip>
       <UiTooltip :label="session.theme === 'dark' ? '切到浅色' : '切到深色'">
         <UiButton
@@ -339,7 +344,9 @@ const modeKey = computed({
         <header class="list-head">
           <template v-if="!session.listCollapsed">
             <h2>{{ navItem?.label }}</h2>
-            <span class="list-hint">{{ session.nav === 'posts' ? '选题写作' : '选择页面' }}</span>
+            <span class="list-hint">{{
+              session.nav === 'posts' ? (layoutOpen ? '这篇的版式' : '选题写作') : '选择页面'
+            }}</span>
             <UiTooltip :label="session.nav === 'posts' ? '收起文章列表' : '收起页面列表'">
               <UiButton
                 variant="ghost"
@@ -361,7 +368,7 @@ const modeKey = computed({
           </UiTooltip>
         </header>
         <div v-show="!session.listCollapsed" class="list-body">
-          <Posts v-if="session.nav === 'posts' && hasSite" :active="slug" @select="slug = $event" />
+          <Posts v-if="session.nav === 'posts' && hasSite" :active="slug" @select="selectPost" />
           <Pages v-else-if="session.nav === 'pages' && hasSite" />
           <UiEmpty
             v-else
@@ -386,9 +393,13 @@ const modeKey = computed({
               <UiIcon :path="icons.chevronRight" :size="14" />
               <span>{{ slug }}</span>
             </template>
+            <template v-if="layoutOpen">
+              <UiIcon :path="icons.chevronRight" :size="14" />
+              <span>版式</span>
+            </template>
           </div>
           <div class="view-actions">
-            <UiSegmented v-if="session.previewMode !== 'off'" v-model="previewDeviceKey" :items="deviceItems" />
+            <UiSegmented v-if="showCanvas && !session.workbenchSource" v-model="previewDeviceKey" :items="deviceItems" />
             <UiTooltip v-if="showList" :label="session.inspectorOpen ? '收起属性栏' : '展开属性栏'">
               <UiButton
                 variant="ghost"
@@ -404,10 +415,10 @@ const modeKey = computed({
 
         <div
           class="view-body"
-          :class="{ flush: (session.nav === 'posts' && slug) || session.nav === 'pages' }"
+          :class="{ flush: showEditor || showCanvas }"
         >
-          <Editor v-if="session.nav === 'posts' && slug && hasSite" :site-dir="session.siteDir" :slug="slug" />
-          <Canvas v-else-if="session.nav === 'pages' && hasSite" />
+          <Editor v-if="showEditor" :site-dir="session.siteDir" :slug="slug" />
+          <Canvas v-else-if="showCanvas" />
           <Media v-else-if="session.nav === 'media'" />
           <Appearance v-else-if="session.nav === 'appearance'" />
           <Settings v-else-if="session.nav === 'settings'" />
@@ -436,26 +447,6 @@ const modeKey = computed({
           </UiEmpty>
         </div>
 
-        <div
-          v-if="session.previewMode === 'dock' && session.nav !== 'pages'"
-          class="dock"
-          :class="{ live: !!session.previewUrl }"
-        >
-          <div ref="dockEl" class="dock-frame">
-            <UiEmpty
-              v-if="!session.previewUrl"
-              :title="copy.emptyPreview"
-              :description="previewNote || '点击顶栏的预览按钮会启动 dev 服务器'"
-              :icon="icons.pc"
-            >
-              <template #action>
-                <UiButton variant="primary" size="sm" :loading="session.building" @click="togglePreview">
-                  {{ copy.startPreview }}
-                </UiButton>
-              </template>
-            </UiEmpty>
-          </div>
-        </div>
       </main>
 
       <aside v-if="showInspector" class="inspector">
@@ -688,21 +679,6 @@ const modeKey = computed({
 .view-body.flush {
   padding: 0;
   overflow: hidden;
-}
-
-.dock {
-  position: relative;
-  height: 42%;
-  min-height: 180px;
-  border-top: 1px solid var(--ui-line);
-  background: var(--ui-bg);
-}
-
-.dock-frame {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
 }
 
 .inspector {

@@ -112,7 +112,7 @@ function htmlPostProblems(postsDir, slugs) {
         `文章 ${slug} 的 HTML frontmatter date 格式不对：${fields.date}（应为 YYYY-MM-DD 或 YYYY-MM-DD HH:mm:ss）。`,
       );
     }
-    for (const key of ['draft', 'noindex']) {
+    for (const key of ['draft', 'noindex', 'standalone']) {
       const value = fields[key];
       if (value !== undefined && value !== '' && value !== 'true' && value !== 'false') {
         problems.push(`文章 ${slug} 的 HTML frontmatter ${key} 只能是 true / false。`);

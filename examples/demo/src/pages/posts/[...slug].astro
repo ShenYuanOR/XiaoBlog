@@ -1,10 +1,12 @@
 ---
+import BarePage from '../../layouts/BarePage.astro';
 import PostLayout from '../../layouts/PostLayout.astro';
-import { neighbors, publishedPosts, type PostEntry } from '../../lib/posts';
+import { allPosts, neighbors, publishedPosts, type PostEntry } from '../../lib/posts';
 import { render } from 'astro:content';
 
 export async function getStaticPaths() {
-  const posts = await publishedPosts();
+  // 开发预览要能打开草稿，否则新建的 HTML 文章会落到 404。构建仍只产出非草稿。
+  const posts = import.meta.env.DEV ? await allPosts() : await publishedPosts();
   const visible = posts.filter((post) => post.data.noindex !== true);
   return visible.map((post) => ({
     params: { slug: post.id },
@@ -26,8 +28,24 @@ const layouts = import.meta.glob('../../layouts/posts/*.astro', { eager: true })
 const custom = layouts[`../../layouts/posts/${post.id}.astro`] as
   { default: typeof PostLayout } | undefined;
 const Layout = custom?.default ?? PostLayout;
+const htmlStandalone = post.format === 'html' && post.data.standalone === true;
+const rawBody = post.body.trim();
+const fullDocument = /^<!doctype/i.test(rawBody) || /^<html[\s>]/i.test(rawBody);
+if (htmlStandalone && fullDocument) {
+  return new Response(post.body, {
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+  });
+}
 ---
 
-<Layout post={post} headings={headings} prev={prev} next={next} page={post.id}>
-  {post.format === 'html' ? <Fragment set:html={post.body} /> : Content ? <Content /> : null}
-</Layout>
+{
+  htmlStandalone ? (
+    <BarePage title={post.data.title} description={post.data.description}>
+      <Fragment set:html={post.body} />
+    </BarePage>
+  ) : (
+    <Layout post={post} headings={headings} prev={prev} next={next} page={post.id}>
+      {post.format === 'html' ? <Fragment set:html={post.body} /> : Content ? <Content /> : null}
+    </Layout>
+  )
+}

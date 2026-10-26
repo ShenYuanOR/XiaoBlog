@@ -81,6 +81,8 @@ export interface XiaoApi {
       index: number,
       file: string,
     ) => Promise<IpcResult<null>>;
+    remove: (siteDir: string, nodeId: string, file: string) => Promise<IpcResult<null>>;
+    duplicate: (siteDir: string, nodeId: string, file: string) => Promise<IpcResult<null>>;
     canNest: (parentName: string, childName: string) => Promise<IpcResult<boolean>>;
     undo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
     redo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
@@ -304,6 +306,17 @@ export interface XiaoApi {
       zoom?: number;
     }) => Promise<IpcResult<null>>;
     hideDock: () => Promise<IpcResult<null>>;
+    catalog: (items: { name: string; label: string }[]) => void;
+    onInsertBlock: (
+      callback: (payload: {
+        file: string;
+        offset: string;
+        name: string;
+        place: 'before' | 'after' | 'into';
+      }) => void,
+    ) => () => void;
+    windowOpen: () => Promise<IpcResult<boolean>>;
+    onWindow: (callback: (payload: { open: boolean }) => void) => () => void;
   };
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
@@ -333,6 +346,7 @@ export interface XiaoApi {
     start: (kind: RuntimeKind, siteDir: string) => Promise<IpcResult<RuntimeStart>>;
     cancel: (taskId: string) => Promise<IpcResult<null>>;
     onLog: (callback: (payload: RuntimeLogEvent) => void) => () => void;
+    onStart: (callback: (payload: RuntimeStart) => void) => () => void;
     onReady: (callback: (payload: { taskId: string; url: string }) => void) => () => void;
     onExit: (callback: (payload: RuntimeExitEvent) => void) => () => void;
   };

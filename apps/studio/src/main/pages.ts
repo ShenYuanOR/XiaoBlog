@@ -1,7 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { isValidSlug } from '@xiao/core/site';
+import {
+  SHARED_LAYOUTS,
+  isHiddenStudioPage,
+  isValidSlug,
+  normalizePageFile,
+} from '@xiao/core/site';
 import { listPosts } from './content.ts';
+
+/** 页面列表含站点页与共用容器，不含单篇文章版式。 */
 
 export type PageTemplate = 'blank' | 'landing' | 'about';
 
@@ -48,6 +55,7 @@ export function listPages(siteDir: string): string[] {
   const root = pagesRoot(siteDir);
   const found: string[] = [];
   const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
     for (const name of readdirSync(dir)) {
       if (name.startsWith('_')) continue;
       const full = path.join(dir, name);
@@ -60,14 +68,25 @@ export function listPages(siteDir: string): string[] {
     }
   };
   walk(root);
-  return found.sort();
+  for (const file of SHARED_LAYOUTS) {
+    if (existsSync(path.join(siteDir, file))) found.push(file);
+  }
+  return [...new Set(found.map(normalizePageFile))]
+    .filter((file) => !isHiddenStudioPage(file))
+    .sort();
 }
 
 export function pageHref(siteDir: string, file: string): string {
   const normalized = file.replaceAll('\\', '/');
-  if (normalized === 'src/pages/posts/[...slug].astro') {
+  if (
+    normalized === 'src/pages/posts/[...slug].astro' ||
+    normalized === 'src/layouts/PostLayout.astro'
+  ) {
     const post = listPosts(siteDir).find((item) => !item.draft);
     return post ? `posts/${post.slug}/` : '';
+  }
+  if (normalized === 'src/layouts/PageLayout.astro') {
+    return existsSync(path.join(siteDir, 'src/pages/about.astro')) ? 'about/' : '';
   }
   if (normalized === 'src/pages/categories/[category].astro') {
     const category = listPosts(siteDir).find((item) => item.category)?.category;

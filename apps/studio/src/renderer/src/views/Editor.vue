@@ -16,6 +16,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { copy } from '../copy.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
+import { htmlPostFileOf } from '@xiao/core/site';
+import { installMonaco } from '../monaco-setup.ts';
 import { layoutFileOf, useSession } from '../stores/session.ts';
 import {
   UiBadge,
@@ -26,27 +28,15 @@ import {
   UiIcon,
   UiInput,
   UiPopover,
-  UiSegmented,
   UiSelect,
   UiSpinner,
   UiSwitch,
   UiTextarea,
   UiTooltip,
 } from '../ui/index.ts';
+import WorkbenchBar from './WorkbenchBar.vue';
 
-// Monaco 的 worker 由 Vite 打包成独立模块；沿用旧实现的写法，不要改成默认 CDN 路径。
-self.MonacoEnvironment = {
-  getWorker: () =>
-    new Worker(
-      new URL(
-        '../../../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js',
-        import.meta.url,
-      ),
-      {
-        type: 'module',
-      },
-    ),
-};
+installMonaco();
 
 const props = defineProps<{ siteDir: string; slug: string }>();
 
@@ -68,6 +58,7 @@ interface FieldSnapshot {
 
 const crepeRoot = ref<HTMLElement | null>(null);
 const sourceRoot = ref<HTMLElement | null>(null);
+const htmlVisualRoot = ref<HTMLElement | null>(null);
 const bodyElement = ref<HTMLElement | null>(null);
 const viewState = ref<ViewState>('loading');
 const loadError = ref('');
@@ -139,22 +130,19 @@ let generation = 0;
 let bodyRetries = 0;
 let chain: Promise<void> = Promise.resolve();
 
-const modeItems = [
-  { key: 'visual', label: '编辑', icon: icons.edit },
-  { key: 'source', label: '源码', icon: icons.code },
-];
-
-const modeKey = computed({
+const workbenchMode = computed({
   get: () => (sourceMode.value ? 'source' : 'visual'),
-  set: (value: string) => {
+  set: (value: 'visual' | 'source') => {
     if (value === 'source') void enterSource();
     else enterVisual();
   },
 });
 
-/** HTML 文章直接进 Monaco；Markdown 只有在源码模式才显示 Monaco。 */
-const showMonaco = computed(
-  () => viewState.value !== 'loading' && (format.value === 'html' || sourceMode.value),
+/** 两种格式都是：编辑 = 可视化，源码 = Monaco。 */
+const showMonaco = computed(() => viewState.value !== 'loading' && sourceMode.value);
+
+const showHtmlVisual = computed(
+  () => format.value === 'html' && viewState.value === 'ready' && !sourceMode.value,
 );
 
 const saveTone = computed<'ok' | 'warn' | 'neutral' | 'danger'>(() => {
@@ -183,24 +171,9 @@ const saveText = computed(() => {
   }
 });
 
-const saveIcon = computed(() => {
-  switch (sessionStore.saveState) {
-    case 'dirty':
-      return icons.edit;
-    case 'saving':
-      return icons.save;
-    case 'conflict':
-      return icons.alert;
-    default:
-      return icons.check;
-  }
-});
-
 const fieldsEditable = computed(() => hasFrontmatter.value && viewState.value !== 'error');
 
-const showEmptyHint = computed(
-  () => format.value === 'markdown' && viewState.value === 'empty' && !sourceMode.value,
-);
+const showEmptyHint = computed(() => viewState.value === 'empty' && !sourceMode.value);
 
 const errorTitle = computed(() =>
   errorKind.value === 'mount' ? '编辑器没能加载' : '没能打开这篇',
@@ -381,8 +354,33 @@ function htmlFilePath(slug: string): string {
   return `src/content/posts/${slug}/index.html`;
 }
 
+/** 编辑区把 ./ 图片转成 xiao-asset，写回时再转回来，避免视觉层走不通相对路径。 */
+function toVisualHtml(body: string): string {
+  return body.replace(/\bsrc=(["'])\.\/([^"']+)\1/g, (_match, quote: string, name: string) => {
+    const url = `xiao-asset://local/${encodeURIComponent(name)}?site=${encodeURIComponent(activeSiteDir)}&slug=${encodeURIComponent(activeSlug)}`;
+    return `src=${quote}${url}${quote}`;
+  });
+}
+
+function fromVisualHtml(html: string): string {
+  return html.replace(
+    /\bsrc=(["'])xiao-asset:\/\/local\/([^"?]+)\?[^"']*\1/g,
+    (_match, quote: string, encoded: string) => {
+      try {
+        return `src=${quote}./${decodeURIComponent(encoded)}${quote}`;
+      } catch {
+        return `src=${quote}./${encoded}${quote}`;
+      }
+    },
+  );
+}
+
 function currentBody(): string | undefined {
-  if (format.value === 'html') return sourceEditor ? sourceEditor.getValue() : undefined;
+  if (format.value === 'html') {
+    if (sourceMode.value) return sourceEditor?.getValue() ?? pendingSourceText;
+    if (htmlVisualRoot.value) return fromVisualHtml(htmlVisualRoot.value.innerHTML);
+    return pendingVisualText || undefined;
+  }
   if (sourceMode.value) return sourceEditor?.getValue() ?? pendingSourceText;
   if (crepeReady && crepe) return crepe.getMarkdown();
   return pendingVisualText || undefined;
@@ -571,6 +569,7 @@ async function destroyEditors(): Promise<void> {
     }
   }
   disposeSource();
+  if (htmlVisualRoot.value) htmlVisualRoot.value.innerHTML = '';
 }
 
 function disposeSource(): void {
@@ -580,6 +579,7 @@ function disposeSource(): void {
   sourceModel = undefined;
   pendingSourceText = session?.body ?? '';
   sourceMode.value = false;
+  sessionStore.setWorkbenchSource(false);
 }
 
 function resetScroll(): void {
@@ -743,28 +743,55 @@ function syncMonacoTheme(): void {
   monaco.editor.setTheme(sessionStore.theme === 'dark' ? 'vs-dark' : 'vs');
 }
 
-/** HTML 文章：默认用 Monaco 直接编辑正文（frontmatter 已切走，保存时再拼回去）。 */
-async function mountHtmlEditor(text: string, gen = generation): Promise<void> {
+async function mountHtmlVisual(text: string, gen = generation): Promise<void> {
   await nextTick();
   if (gen !== generation) return;
-  disposeSource();
-  createMonacoEditor(text, 'html');
+  const host = htmlVisualRoot.value;
+  if (!host) return;
+  pendingVisualText = text;
+  host.innerHTML = toVisualHtml(text);
   bodyRetries = 0;
-  await nextTick();
-  if (gen !== generation) return;
-  sourceEditor?.layout();
-  sourceEditor?.focus();
+  charCount.value = countChars(text);
+  pendingVisualText = '';
+}
+
+function onHtmlVisualInput(): void {
+  const host = htmlVisualRoot.value;
+  if (!host || !session) return;
+  const text = fromVisualHtml(host.innerHTML);
+  charCount.value = countChars(text);
+  bodyEdited = true;
+  touchEdits();
+}
+
+function onHtmlVisualClick(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest('a')) event.preventDefault();
+}
+
+function onHtmlVisualFocus(): void {
+  try {
+    document.execCommand('defaultParagraphSeparator', false, 'p');
+  } catch {
+    // 旧引擎没有这条命令时忽略。
+  }
+}
+
+function focusHtmlVisual(): void {
+  htmlVisualRoot.value?.focus();
 }
 
 async function enterSource(): Promise<void> {
-  if (!session || format.value !== 'markdown' || sourceMode.value) return;
-  const text = currentBody() ?? session.body;
+  if (!session || sourceMode.value) return;
+  const text = bodyEdited ? (currentBody() ?? session.body) : session.body;
   pendingSourceText = text;
   sourceMode.value = true;
+  sessionStore.setWorkbenchSource(true);
   await nextTick();
   resetScroll();
   if (!session || !sourceMode.value || sourceEditor) return;
-  const editor = createMonacoEditor(text, 'markdown');
+  const editor = createMonacoEditor(text, format.value === 'html' ? 'html' : 'markdown');
   sourceInitial = text;
   await nextTick();
   editor?.layout();
@@ -772,7 +799,7 @@ async function enterSource(): Promise<void> {
 }
 
 /**
- * 源码 → 所见即所得：不写盘，只把内容重新交给 Crepe。
+ * 源码 → 所见即所得：不写盘，只把内容重新交给可视化层。
  * session.body 始终保留“磁盘上的正文”作为写回基准，否则新改动会被误判成未改。
  */
 function enterVisual(): void {
@@ -786,6 +813,18 @@ function enterVisual(): void {
   const edited = text !== sourceInitial;
   disposeSource();
   if (!session) return;
+  if (format.value === 'html') {
+    if (!edited && htmlVisualRoot.value && htmlVisualRoot.value.childNodes.length > 0) return;
+    if (!edited && text.trim().length === 0) {
+      viewState.value = 'empty';
+      return;
+    }
+    viewState.value = 'ready';
+    resetScroll();
+    if (edited) bodyEdited = true;
+    void mountHtmlVisual(text);
+    return;
+  }
   if (!edited && crepeReady) return; // 源码没改：保留 Crepe 的光标和撤销栈
   if (!edited && text.trim().length === 0) {
     viewState.value = 'empty';
@@ -799,6 +838,14 @@ function enterVisual(): void {
 async function beginWriting(): Promise<void> {
   if (!session || viewState.value !== 'empty') return;
   viewState.value = 'ready';
+  if (format.value === 'html') {
+    const seed = session.body.trim()
+      ? session.body
+      : '<article class="x-post">\n  <p></p>\n</article>\n';
+    await mountHtmlVisual(seed);
+    focusHtmlVisual();
+    return;
+  }
   await mountCrepe(session.body);
   focusVisual();
 }
@@ -1694,12 +1741,11 @@ async function open(): Promise<void> {
   syncingFields = false;
 
   charCount.value = countChars(opened.body);
+  sourceMode.value = false;
   if (format.value === 'html') {
-    viewState.value = 'ready';
+    viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
-    await nextTick();
-    if (gen !== generation) return;
-    await mountHtmlEditor(opened.body, gen);
+    if (viewState.value === 'ready') await mountHtmlVisual(opened.body, gen);
   } else {
     viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
@@ -1720,30 +1766,23 @@ async function reload(): Promise<void> {
 /* ---------- 顶栏动作 ---------- */
 
 async function openPreview(): Promise<void> {
-  sessionStore.setPreviewMode('dock');
-  if (sessionStore.previewUrl || sessionStore.building) return;
-  sessionStore.building = true;
-  try {
-    const result = await window.xiao.runtime.start('dev', activeSiteDir || props.siteDir);
-    if (!result.ok) {
-      notify(
-        `预览没能启动：${result.message}。先确认站点依赖已经装好，再点一次「预览」。`,
-        'error',
-        'editor-preview',
-      );
-    }
-  } catch (error) {
-    notify(`预览没能启动：${describeError(error)}。请稍后重试。`, 'error', 'editor-preview');
-  } finally {
-    sessionStore.building = false;
+  if (!props.slug) {
+    notify('先选一篇文章再预览。', 'error', 'editor-preview');
+    return;
   }
+  await flush();
+  window.dispatchEvent(
+    new CustomEvent('xiao:preview-window', {
+      detail: { path: `posts/${encodeURIComponent(props.slug)}/` },
+    }),
+  );
 }
 
 /* ---------- 文章版式（P2） ---------- */
 
 /**
- * 点「版式」：先把写作层未保存的改动写盘，再决定是复用已有布局还是确认生成，
- * 生成后切到「页面」画布编辑它。布局不存在时不静默创建（避免给所有文章生成文件）。
+ * 点「版式」：先把写作层未保存的改动写盘，再决定是复用已有布局还是确认生成。
+ * 画布仍留在「文章」导航，不切到「页面」。布局不存在时不静默创建。
  */
 async function openPostLayout(): Promise<void> {
   if (!props.siteDir || !props.slug || layoutBusy.value) return;
@@ -1775,9 +1814,8 @@ async function enterPostLayout(): Promise<void> {
     }
     sessionStore.openLayout(props.slug, title.value.trim() || props.slug);
     sessionStore.setPage(result.data);
-    sessionStore.setNav('pages');
     notify(
-      '已打开文章版式：改动会写回布局文件，重新构建后这篇文章生效；其他文章不受影响。',
+      '已打开这篇文章的版式：改动只写回这篇的布局文件，其他文章仍用默认版式。',
       'info',
       'editor-layout',
     );
@@ -1814,8 +1852,9 @@ function collectMarkdownArticleHtml(): string {
 }
 
 function currentHtmlBody(): string {
-  if (format.value === 'html' && sourceEditor) return sourceEditor.getValue();
-  return session?.body ?? '';
+  if (format.value !== 'html') return session?.body ?? '';
+  if (!bodyEdited) return session?.body ?? '';
+  return currentBody() ?? session?.body ?? '';
 }
 
 function requestConversion(): void {
@@ -1884,6 +1923,11 @@ async function confirmConvert(): Promise<void> {
     convertOpen.value = false;
     const label = result.data.format === 'html' ? 'HTML' : 'Markdown';
     notify(`已转换为 ${label} 文章，旧文件备份在 ${result.data.backup}`, 'info', 'editor-convert');
+    sessionStore.activePostFormat = result.data.format;
+    if (result.data.format === 'html') {
+      sessionStore.setPage(htmlPostFileOf(activeSlug));
+      return;
+    }
     await open();
   } catch (error) {
     convertError.value = `转换时出错：${describeError(error)}。`;
@@ -2056,34 +2100,23 @@ watch(
 
 <template>
   <div class="editor-view" :class="{ 'is-source': showMonaco }">
-    <div class="editor-bar">
-      <button
-        type="button"
-        class="save-chip"
-        :class="sessionStore.saveState"
-        :disabled="(viewState === 'loading' || viewState === 'error') && !showMonaco"
-        :aria-label="`保存状态：${saveText}，点击立即保存`"
-        @click="saveNow"
-      >
-        <UiSpinner v-if="sessionStore.saveState === 'saving'" :size="12" />
-        <UiIcon v-else :path="saveIcon" :size="14" />
-        <span>{{ saveText }}</span>
-      </button>
-
-      <UiBadge :tone="format === 'html' ? 'accent' : 'neutral'">{{ formatLabel }}</UiBadge>
-
-      <div class="bar-grow" />
-
-      <UiSegmented
-        v-if="format === 'markdown'"
-        v-model="modeKey"
-        :items="modeItems"
-        aria-label="编辑模式"
-      />
-
-      <UiButton variant="primary" :icon="icons.preview" aria-label="打开预览" @click="openPreview">
-        <span class="bar-label">预览</span>
-      </UiButton>
+    <WorkbenchBar
+      v-model:mode="workbenchMode"
+      :badge="formatLabel"
+      :badge-tone="format === 'html' ? 'accent' : 'neutral'"
+      :save-disabled="(viewState === 'loading' || viewState === 'error') && !showMonaco"
+      @save="saveNow"
+    >
+      <UiTooltip label="在预览窗口打开这篇文章">
+        <UiButton
+          variant="primary"
+          :icon="icons.preview"
+          aria-label="在预览窗口打开这篇文章"
+          @click="openPreview"
+        >
+          <span class="bar-label">预览</span>
+        </UiButton>
+      </UiTooltip>
 
       <UiTooltip label="用画布编辑这篇文章的版式">
         <UiButton
@@ -2116,7 +2149,7 @@ watch(
           </div>
         </template>
       </UiPopover>
-    </div>
+    </WorkbenchBar>
 
     <div ref="bodyElement" class="editor-body">
       <div v-if="viewState === 'loading' && !showMonaco" class="state-loading">
@@ -2151,6 +2184,17 @@ watch(
         ref="crepeRoot"
         class="crepe"
       />
+      <div v-show="showHtmlVisual" class="html-visual">
+        <div
+          ref="htmlVisualRoot"
+          class="html-visual__body"
+          contenteditable="true"
+          spellcheck="true"
+          @input="onHtmlVisualInput"
+          @click="onHtmlVisualClick"
+          @focus="onHtmlVisualFocus"
+        />
+      </div>
       <div v-show="showMonaco" ref="sourceRoot" class="source" />
     </div>
 
@@ -2239,8 +2283,8 @@ watch(
           </div>
 
           <p v-if="format === 'html'" class="inspector-note inspector-note--info">
-            HTML 文章的正文按原样保存；这里的元数据只改
-            frontmatter，不会重排正文。用「预览」看渲染效果。
+            编辑模式改可见内容，源码模式改原始 HTML。浏览器可能会整理标签，精确结构请用源码。元数据只改
+            frontmatter。
           </p>
           <p
             v-if="viewState !== 'loading' && viewState !== 'error' && !hasFrontmatter"
@@ -2335,73 +2379,8 @@ watch(
   overflow: hidden;
 }
 
-.editor-bar {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--ui-s2);
-  height: calc(var(--ui-s6) + var(--ui-s5));
-  padding: 0 var(--ui-s3);
-  border-bottom: 1px solid var(--ui-line);
-  background: var(--ui-panel);
-}
-
-.bar-grow {
-  flex: 1;
-}
-
 .bar-label {
   display: inline;
-}
-
-.save-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ui-s1);
-  height: var(--ui-h-sm);
-  padding: 0 var(--ui-s2);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-lg);
-  background: var(--ui-raise);
-  color: var(--ui-text-2);
-  font-family: var(--ui-font);
-  font-size: var(--ui-fs-1);
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background-color var(--ui-dur) var(--ui-ease),
-    border-color var(--ui-dur) var(--ui-ease),
-    color var(--ui-dur) var(--ui-ease);
-}
-
-.save-chip:hover:not(:disabled) {
-  background: var(--ui-hover);
-  color: var(--ui-text);
-}
-
-.save-chip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.save-chip.saved {
-  border-color: var(--ui-ok-weak);
-  color: var(--ui-ok);
-}
-
-.save-chip.dirty {
-  border-color: var(--ui-warn-weak);
-  color: var(--ui-warn);
-}
-
-.save-chip.saving {
-  color: var(--ui-accent);
-}
-
-.save-chip.conflict {
-  border-color: var(--ui-danger-weak);
-  color: var(--ui-danger);
 }
 
 .editor-body {
@@ -2414,6 +2393,56 @@ watch(
 
 .crepe {
   min-height: 100%;
+}
+
+.html-visual {
+  min-height: 100%;
+}
+
+.html-visual__body {
+  box-sizing: border-box;
+  max-width: 780px;
+  min-height: calc(100vh - 220px);
+  margin: 0 auto;
+  padding: var(--ui-s5) var(--ui-s6) var(--ui-s8);
+  color: var(--ui-text);
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-4);
+  line-height: var(--ui-lh);
+  outline: none;
+}
+
+.html-visual__body:focus,
+.html-visual__body:focus-visible {
+  outline: none;
+}
+
+.html-visual__body :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--ui-text);
+}
+
+.html-visual__body :where(a) {
+  color: var(--ui-accent);
+}
+
+.html-visual__body :where(code, pre) {
+  font-family: var(--ui-mono);
+}
+
+.html-visual__body :where(code) {
+  color: var(--ui-accent);
+}
+
+.html-visual__body :where(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.html-visual__body :where(blockquote) {
+  margin: var(--ui-s3) 0;
+  padding-left: var(--ui-s3);
+  border-left: 3px solid var(--ui-line-2);
+  color: var(--ui-text-2);
 }
 
 .source {
