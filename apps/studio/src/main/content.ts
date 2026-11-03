@@ -380,6 +380,35 @@ export function customizePost(siteDir: string, slug: string): string {
   return relative;
 }
 
+export function readLayoutComparison(
+  siteDir: string,
+  slug: string,
+): { custom: boolean; defaultText: string; customText: string; file: string } {
+  if (!isValidSlug(slug)) throw new Error('slug 只允许小写字母、数字和连字符');
+  const base = path.join(siteDir, 'src', 'layouts', 'PostLayout.astro');
+  const custom = path.join(siteDir, 'src', 'layouts', 'posts', `${slug}.astro`);
+  if (!existsSync(base)) throw new Error('站点模板里没有 src/layouts/PostLayout.astro');
+  return {
+    custom: existsSync(custom),
+    defaultText: readFileSync(base, 'utf8'),
+    customText: existsSync(custom) ? readFileSync(custom, 'utf8') : '',
+    file: `src/layouts/posts/${slug}.astro`,
+  };
+}
+
+export function resetPostLayout(siteDir: string, slug: string): { backup: string } {
+  if (!isValidSlug(slug)) throw new Error('slug 只允许小写字母、数字和连字符');
+  const custom = path.join(siteDir, 'src', 'layouts', 'posts', `${slug}.astro`);
+  if (!existsSync(custom)) throw new Error('这篇没有自定义版式，已经在用默认版式');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupRel = `.xiao/backups/layouts/${slug}-${stamp}.astro`;
+  const backup = path.join(siteDir, backupRel);
+  mkdirSync(path.dirname(backup), { recursive: true });
+  copyFileSync(custom, backup);
+  unlinkSync(custom);
+  return { backup: backupRel };
+}
+
 export function deletePost(siteDir: string, slug: string): void {
   const from = postDir(siteDir, slug);
   const bin = path.join(siteDir, '.xiao-recycle');

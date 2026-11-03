@@ -202,6 +202,64 @@
   }
 
   /* 无前缀的 base token 类（与生成器里的 x-<id>-* 一一对应）。 */
+  .x-mt-none {
+    margin-top: 0;
+  }
+  .x-mt-xs {
+    margin-top: var(--space-1);
+  }
+  .x-mt-sm {
+    margin-top: var(--space-2);
+  }
+  .x-mt-md {
+    margin-top: var(--space-4);
+  }
+  .x-mt-lg {
+    margin-top: clamp(var(--space-4), 3vw, var(--space-5));
+  }
+  .x-mt-xl {
+    margin-top: clamp(var(--space-5), 4vw, var(--space-6));
+  }
+  .x-mt-2xl {
+    margin-top: clamp(var(--space-6), 5vw, var(--space-8));
+  }
+  .x-mb-none {
+    margin-bottom: 0;
+  }
+  .x-mb-xs {
+    margin-bottom: var(--space-1);
+  }
+  .x-mb-sm {
+    margin-bottom: var(--space-2);
+  }
+  .x-mb-md {
+    margin-bottom: var(--space-4);
+  }
+  .x-mb-lg {
+    margin-bottom: clamp(var(--space-4), 3vw, var(--space-5));
+  }
+  .x-mb-xl {
+    margin-bottom: clamp(var(--space-5), 4vw, var(--space-6));
+  }
+  .x-mb-2xl {
+    margin-bottom: clamp(var(--space-6), 5vw, var(--space-8));
+  }
+  .x-span-1 {
+    grid-column: span 1;
+  }
+  .x-span-2 {
+    grid-column: span 2;
+  }
+  .x-span-3 {
+    grid-column: span 3;
+  }
+  .x-span-4 {
+    grid-column: span 4;
+  }
+  .x-span-full {
+    grid-column: 1 / -1;
+  }
+
   .x-pad-none {
     padding: 0;
   }

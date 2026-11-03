@@ -1,9 +1,9 @@
 ---
-const { src = '', title = '嵌入', ratio = '16:9', ...rest } = Astro.props;
+const { src = '', title = '嵌入', ratio = '16:9', class: extraClass, ...rest } = Astro.props;
 ---
 
 <iframe
-  class:list={['x-media', `x-ratio-${ratio.replace(':', 'x')}`]}
+  class:list={['x-media', `x-ratio-${ratio.replace(':', 'x')}`, extraClass]}
   src={src}
   title={title}
   loading="lazy"

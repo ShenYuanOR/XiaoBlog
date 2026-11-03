@@ -12,7 +12,8 @@
     "./importer": "./src/importer/index.ts",
     "./ipc": "./src/ipc-types.ts",
     "./runtime": "./src/runtime.ts",
-    "./components": "./src/components/manifest.ts"
+    "./components": "./src/components/manifest.ts",
+    "./components/layouts": "./src/components/layouts.ts"
   },
   "scripts": {
     "test": "vitest run"

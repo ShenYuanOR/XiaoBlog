@@ -1,0 +1,12 @@
+---
+/** 文章标题参数。绑定由版式固定传入。 */
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  class?: string;
+}
+const { post, class: extraClass } = Astro.props;
+---
+
+<h1 class:list={[extraClass]}>{post.data.title}</h1>

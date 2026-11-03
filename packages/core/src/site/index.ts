@@ -21,6 +21,7 @@ export { findDeadLinks, validatePosts, type PostRecord, type ValidationIssue } f
 export { migratePost, type MigratedFolderPost } from './migrate.ts';
 export {
   SHARED_LAYOUTS,
+  SITE_PARTS,
   groupStudioPages,
   htmlPostFileOf,
   htmlPostSlugOf,
@@ -28,6 +29,7 @@ export {
   isHiddenStudioPage,
   isHtmlPostFile,
   isSharedLayout,
+  isSitePart,
   isStudioPageFile,
   isSystemPage,
   normalizePageFile,

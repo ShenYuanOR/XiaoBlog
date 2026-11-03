@@ -1,12 +1,12 @@
 ---
 import { getEntry } from 'astro:content';
 import { withBase } from '../../lib/base';
-const { slug = 'hello' } = Astro.props;
+const { slug = 'hello', class: extraClass } = Astro.props;
 const post = await getEntry('posts', slug);
 ---
 
 {post && (
-  <a class="x-card x-link" href={withBase(`posts/${post.id}/`)}>
+  <a class:list={['x-card', 'x-link', extraClass]} href={withBase(`posts/${post.id}/`)}>
     {post.data.title}
   </a>
 )}

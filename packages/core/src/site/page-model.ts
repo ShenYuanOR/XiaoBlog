@@ -14,6 +14,12 @@ export const SHARED_LAYOUTS = [
   'src/layouts/PageLayout.astro',
 ] as const;
 
+/** 站点外壳部件：在「页面」里当成系统容器编辑，改动作用于整站。 */
+export const SITE_PARTS = [
+  'src/components/site/Header.astro',
+  'src/components/site/Footer.astro',
+] as const;
+
 const SITE_PAGE_LABELS: Record<string, string> = {
   'src/pages/index.astro': '首页',
   'src/pages/about.astro': '关于',
@@ -22,6 +28,11 @@ const SITE_PAGE_LABELS: Record<string, string> = {
 const SHARED_LAYOUT_LABELS: Record<string, string> = {
   'src/layouts/PostLayout.astro': '默认文章版式',
   'src/layouts/PageLayout.astro': '默认页面版式',
+};
+
+const SITE_PART_LABELS: Record<string, string> = {
+  'src/components/site/Header.astro': '页眉',
+  'src/components/site/Footer.astro': '页脚',
 };
 
 const SYSTEM_PAGE_LABELS: Record<string, string> = {
@@ -41,6 +52,11 @@ export function normalizePageFile(file: string): string {
 
 export function isHiddenStudioPage(file: string): boolean {
   return normalizePageFile(file).startsWith('src/pages/xiao/');
+}
+
+export function isSitePart(file: string): boolean {
+  const normalized = normalizePageFile(file);
+  return (SITE_PARTS as readonly string[]).includes(normalized);
 }
 
 export function isSharedLayout(file: string): boolean {
@@ -73,7 +89,7 @@ export function htmlPostFileOf(slug: string): string {
 
 export function isSystemPage(file: string): boolean {
   const normalized = normalizePageFile(file);
-  if (isSharedLayout(normalized)) return true;
+  if (isSharedLayout(normalized) || isSitePart(normalized)) return true;
   if (SYSTEM_PAGE_LABELS[normalized]) return true;
   return normalized.startsWith('src/pages/') && normalized.includes('[');
 }
@@ -84,7 +100,7 @@ export function pageGroup(file: string): PageGroup {
 
 export function pageLabel(file: string): string {
   const normalized = normalizePageFile(file);
-  const shared = SHARED_LAYOUT_LABELS[normalized];
+  const shared = SHARED_LAYOUT_LABELS[normalized] ?? SITE_PART_LABELS[normalized];
   if (shared) return shared;
   const system = SYSTEM_PAGE_LABELS[normalized];
   if (system) return system;
@@ -100,7 +116,7 @@ export function pageLabel(file: string): string {
 export function isStudioPageFile(file: string): boolean {
   const normalized = normalizePageFile(file);
   if (isHiddenStudioPage(normalized) || isArticleLayout(normalized)) return false;
-  if (isSharedLayout(normalized)) return true;
+  if (isSharedLayout(normalized) || isSitePart(normalized)) return true;
   return /^src\/pages\/[\w./[\]-]+\.astro$/.test(normalized);
 }
 

@@ -1,0 +1,19 @@
+---
+/** 特性卡片区块；卡片由页面传入。 */
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  cols?: string;
+  gap?: string;
+  class?: string;
+}
+const { pad = 'lg', bg = 'surface', cols = '3', gap = 'md', class: extraClass } = Astro.props;
+---
+
+<Section pad={pad} bg={bg} width="full" class={extraClass}>
+  <div class:list={['x-grid', `x-cols-${cols}`, `x-gap-${gap}`]}>
+    <slot />
+  </div>
+</Section>

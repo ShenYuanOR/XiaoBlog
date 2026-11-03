@@ -35,6 +35,9 @@ import {
   UiTooltip,
 } from '../ui/index.ts';
 import WorkbenchBar from './WorkbenchBar.vue';
+import HtmlArticleEditor from './HtmlArticleEditor.vue';
+import HtmlBlockInspector from './HtmlBlockInspector.vue';
+import type { HtmlBlockInfo } from '../editor/block-style.ts';
 
 installMonaco();
 
@@ -51,6 +54,7 @@ interface FieldSnapshot {
   category: string;
   description: string;
   draft: boolean;
+  standalone: boolean;
   tags: string[];
   cover: string;
   date: string;
@@ -58,7 +62,10 @@ interface FieldSnapshot {
 
 const crepeRoot = ref<HTMLElement | null>(null);
 const sourceRoot = ref<HTMLElement | null>(null);
-const htmlVisualRoot = ref<HTMLElement | null>(null);
+const htmlEditor = ref<InstanceType<typeof HtmlArticleEditor> | null>(null);
+const htmlSeed = ref('');
+const htmlKey = ref(0);
+const htmlBlock = ref<HtmlBlockInfo | null>(null);
 const bodyElement = ref<HTMLElement | null>(null);
 const viewState = ref<ViewState>('loading');
 const loadError = ref('');
@@ -89,6 +96,7 @@ const tagsText = ref('');
 const cover = ref('');
 const date = ref('');
 const draft = ref(false);
+const standalone = ref(false);
 const categoryList = ref<string[]>([]);
 const currentSlug = ref(props.slug);
 const hasFrontmatter = ref(false);
@@ -110,6 +118,7 @@ let baseline: FieldSnapshot = {
   category: '',
   description: '',
   draft: false,
+  standalone: false,
   tags: [],
   cover: '',
   date: '',
@@ -319,6 +328,7 @@ function snapshotFields(): FieldSnapshot {
     category: category.value,
     description: summary.value,
     draft: draft.value,
+    standalone: standalone.value,
     tags: parseTagsText(tagsText.value),
     cover: cover.value,
     date: date.value,
@@ -334,6 +344,9 @@ function fieldPatch(fields: FieldSnapshot): Record<string, string> {
   }
   if (fields.category !== baseline.category) patch.category = yamlString(fields.category);
   if (fields.draft !== baseline.draft) patch.draft = fields.draft ? 'true' : 'false';
+  if (fields.standalone !== baseline.standalone) {
+    patch.standalone = fields.standalone ? 'true' : 'false';
+  }
   if (!tagsEqual(fields.tags, baseline.tags)) patch.tags = yamlJson(fields.tags);
   if (fields.cover !== baseline.cover) patch.cover = yamlString(fields.cover);
   if (fields.date !== baseline.date) patch.date = yamlString(fields.date);
@@ -354,31 +367,10 @@ function htmlFilePath(slug: string): string {
   return `src/content/posts/${slug}/index.html`;
 }
 
-/** 编辑区把 ./ 图片转成 xiao-asset，写回时再转回来，避免视觉层走不通相对路径。 */
-function toVisualHtml(body: string): string {
-  return body.replace(/\bsrc=(["'])\.\/([^"']+)\1/g, (_match, quote: string, name: string) => {
-    const url = `xiao-asset://local/${encodeURIComponent(name)}?site=${encodeURIComponent(activeSiteDir)}&slug=${encodeURIComponent(activeSlug)}`;
-    return `src=${quote}${url}${quote}`;
-  });
-}
-
-function fromVisualHtml(html: string): string {
-  return html.replace(
-    /\bsrc=(["'])xiao-asset:\/\/local\/([^"?]+)\?[^"']*\1/g,
-    (_match, quote: string, encoded: string) => {
-      try {
-        return `src=${quote}./${decodeURIComponent(encoded)}${quote}`;
-      } catch {
-        return `src=${quote}./${encoded}${quote}`;
-      }
-    },
-  );
-}
-
 function currentBody(): string | undefined {
   if (format.value === 'html') {
     if (sourceMode.value) return sourceEditor?.getValue() ?? pendingSourceText;
-    if (htmlVisualRoot.value) return fromVisualHtml(htmlVisualRoot.value.innerHTML);
+    if (htmlEditor.value) return htmlEditor.value.getHtml();
     return pendingVisualText || undefined;
   }
   if (sourceMode.value) return sourceEditor?.getValue() ?? pendingSourceText;
@@ -569,7 +561,6 @@ async function destroyEditors(): Promise<void> {
     }
   }
   disposeSource();
-  if (htmlVisualRoot.value) htmlVisualRoot.value.innerHTML = '';
 }
 
 function disposeSource(): void {
@@ -746,44 +737,47 @@ function syncMonacoTheme(): void {
 async function mountHtmlVisual(text: string, gen = generation): Promise<void> {
   await nextTick();
   if (gen !== generation) return;
-  const host = htmlVisualRoot.value;
-  if (!host) return;
+  htmlSeed.value = text;
+  htmlKey.value += 1;
   pendingVisualText = text;
-  host.innerHTML = toVisualHtml(text);
   bodyRetries = 0;
-  charCount.value = countChars(text);
+  charCount.value = countChars(text.replace(/<[^>]+>/g, ' '));
+  await nextTick();
   pendingVisualText = '';
 }
 
-function onHtmlVisualInput(): void {
-  const host = htmlVisualRoot.value;
-  if (!host || !session) return;
-  const text = fromVisualHtml(host.innerHTML);
+function onHtmlChange(text: string): void {
+  if (!session) return;
   charCount.value = countChars(text);
   bodyEdited = true;
   touchEdits();
 }
 
-function onHtmlVisualClick(event: MouseEvent): void {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest('a')) event.preventDefault();
+function onHtmlSelect(info: HtmlBlockInfo | null): void {
+  htmlBlock.value = info;
 }
 
-function onHtmlVisualFocus(): void {
-  try {
-    document.execCommand('defaultParagraphSeparator', false, 'p');
-  } catch {
-    // 旧引擎没有这条命令时忽略。
+function onHtmlClasses(classes: string[]): void {
+  htmlEditor.value?.setBlockClasses(classes);
+}
+
+function onHtmlAttrs(attrs: Record<string, string | number>): void {
+  htmlEditor.value?.setBlockAttrs(attrs);
+}
+
+function onHtmlColumns(count: number): void {
+  if (htmlEditor.value?.setColumnsCount(count) === false) {
+    notify('那一栏里还有内容，先把多出来的栏清空，再减少栏数。', 'error', 'html-columns');
   }
 }
 
-function focusHtmlVisual(): void {
-  htmlVisualRoot.value?.focus();
+function deselectHtmlBlock(): void {
+  htmlBlock.value = null;
 }
 
 async function enterSource(): Promise<void> {
   if (!session || sourceMode.value) return;
+  htmlBlock.value = null;
   const text = bodyEdited ? (currentBody() ?? session.body) : session.body;
   pendingSourceText = text;
   sourceMode.value = true;
@@ -814,7 +808,6 @@ function enterVisual(): void {
   disposeSource();
   if (!session) return;
   if (format.value === 'html') {
-    if (!edited && htmlVisualRoot.value && htmlVisualRoot.value.childNodes.length > 0) return;
     if (!edited && text.trim().length === 0) {
       viewState.value = 'empty';
       return;
@@ -839,11 +832,8 @@ async function beginWriting(): Promise<void> {
   if (!session || viewState.value !== 'empty') return;
   viewState.value = 'ready';
   if (format.value === 'html') {
-    const seed = session.body.trim()
-      ? session.body
-      : '<article class="x-post">\n  <p></p>\n</article>\n';
+    const seed = session.body.trim() ? session.body : '<p></p>';
     await mountHtmlVisual(seed);
-    focusHtmlVisual();
     return;
   }
   await mountCrepe(session.body);
@@ -1742,6 +1732,7 @@ async function open(): Promise<void> {
 
   charCount.value = countChars(opened.body);
   sourceMode.value = false;
+  htmlBlock.value = null;
   if (format.value === 'html') {
     viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
@@ -2076,7 +2067,7 @@ watch(
 );
 
 watch(
-  [title, category, summary, tagsText, cover, date, draft],
+  [title, category, summary, tagsText, cover, date, draft, standalone],
   () => {
     if (syncingFields || !session) return;
     touchEdits();
@@ -2184,24 +2175,23 @@ watch(
         ref="crepeRoot"
         class="crepe"
       />
-      <div v-show="showHtmlVisual" class="html-visual">
-        <div
-          ref="htmlVisualRoot"
-          class="html-visual__body"
-          contenteditable="true"
-          spellcheck="true"
-          @input="onHtmlVisualInput"
-          @click="onHtmlVisualClick"
-          @focus="onHtmlVisualFocus"
-        />
-      </div>
+      <HtmlArticleEditor
+        v-if="showHtmlVisual"
+        :key="htmlKey"
+        ref="htmlEditor"
+        :site-dir="siteDir"
+        :slug="slug"
+        :html="htmlSeed"
+        @change="onHtmlChange"
+        @select="onHtmlSelect"
+      />
       <div v-show="showMonaco" ref="sourceRoot" class="source" />
     </div>
 
     <Teleport v-if="inspectorHost" to="#inspector-host">
       <section class="inspector">
         <header class="inspector-head">
-          <h3>文章属性</h3>
+          <h3>{{ format === 'html' && htmlBlock ? '区块样式' : '文章属性' }}</h3>
           <div class="inspector-head-actions">
             <UiBadge :tone="saveTone" dot>{{ saveText }}</UiBadge>
             <UiTooltip label="收起文章属性">
@@ -2217,6 +2207,19 @@ watch(
         </header>
 
         <div class="inspector-body">
+          <HtmlBlockInspector
+            v-if="format === 'html' && htmlBlock && !sourceMode"
+            :block="htmlBlock"
+            :site-dir="siteDir"
+            :slug="slug"
+            @classes="onHtmlClasses"
+            @attrs="onHtmlAttrs"
+            @columns-count="onHtmlColumns"
+            @deselect="deselectHtmlBlock"
+          />
+          <div v-if="format === 'html' && htmlBlock && !sourceMode" class="inspector-section-label">
+            文章属性
+          </div>
           <UiField label="标题" :hint="hintFor('title', '显示在文章顶部和列表里。')">
             <UiInput v-model="title" :disabled="!fieldsEditable" placeholder="给这篇文章起个标题" />
           </UiField>
@@ -2261,6 +2264,18 @@ watch(
             :hint="draft ? '草稿不会出现在站点里，构建时也跳过。' : '正文会随站点一起构建发布。'"
           >
             <UiSwitch v-model="draft" :disabled="!fieldsEditable" aria-label="草稿状态" />
+          </UiField>
+
+          <UiField
+            v-if="format === 'html'"
+            label="独立成页"
+            hint="打开后不套文章模板，也没有站点顶栏和页脚；正文是完整 HTML 文档时原样输出。"
+          >
+            <UiSwitch
+              v-model="standalone"
+              :disabled="!fieldsEditable"
+              aria-label="独立成页"
+            />
           </UiField>
 
           <div class="inspector-meta">
@@ -2393,56 +2408,6 @@ watch(
 
 .crepe {
   min-height: 100%;
-}
-
-.html-visual {
-  min-height: 100%;
-}
-
-.html-visual__body {
-  box-sizing: border-box;
-  max-width: 780px;
-  min-height: calc(100vh - 220px);
-  margin: 0 auto;
-  padding: var(--ui-s5) var(--ui-s6) var(--ui-s8);
-  color: var(--ui-text);
-  font-family: var(--ui-font);
-  font-size: var(--ui-fs-4);
-  line-height: var(--ui-lh);
-  outline: none;
-}
-
-.html-visual__body:focus,
-.html-visual__body:focus-visible {
-  outline: none;
-}
-
-.html-visual__body :where(h1, h2, h3, h4, h5, h6) {
-  color: var(--ui-text);
-}
-
-.html-visual__body :where(a) {
-  color: var(--ui-accent);
-}
-
-.html-visual__body :where(code, pre) {
-  font-family: var(--ui-mono);
-}
-
-.html-visual__body :where(code) {
-  color: var(--ui-accent);
-}
-
-.html-visual__body :where(img) {
-  max-width: 100%;
-  height: auto;
-}
-
-.html-visual__body :where(blockquote) {
-  margin: var(--ui-s3) 0;
-  padding-left: var(--ui-s3);
-  border-left: 3px solid var(--ui-line-2);
-  color: var(--ui-text-2);
 }
 
 .source {
@@ -2619,6 +2584,14 @@ watch(
   color: var(--ui-text);
   font-size: var(--ui-fs-2);
   font-weight: 600;
+}
+
+.inspector-section-label {
+  padding-top: var(--ui-s3);
+  border-top: 1px solid var(--ui-line);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  letter-spacing: 0.04em;
 }
 
 .inspector-body {

@@ -15,7 +15,7 @@ import {
   UiSpinner,
 } from '../ui/index.ts';
 
-type TemplateKey = 'blank' | 'landing' | 'about';
+type TemplateKey = 'blank' | 'docs' | 'landing' | 'magazine' | 'about';
 
 interface TemplateOption {
   key: TemplateKey;
@@ -34,10 +34,22 @@ const templates: TemplateOption[] = [
     icon: icons.files,
   },
   {
+    key: 'docs',
+    label: '文档',
+    description: '侧栏 + 正文，适合说明与手册。',
+    icon: icons.layers,
+  },
+  {
     key: 'landing',
     label: '落地页',
-    description: '大标题 + 区块 + 按钮，适合活动页。',
+    description: '首屏 + 分栏 + 卡片 + 行动号召。',
     icon: icons.pages,
+  },
+  {
+    key: 'magazine',
+    label: '杂志',
+    description: '首屏 + 要目网格 + 引用。',
+    icon: icons.posts,
   },
   {
     key: 'about',

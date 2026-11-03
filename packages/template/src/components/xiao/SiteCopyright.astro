@@ -1,0 +1,15 @@
+---
+/** 页脚版权参数。 */
+import { loadConfig } from '../../lib/config';
+
+interface Props {
+  class?: string;
+}
+const { class: extraClass } = Astro.props;
+const config = loadConfig();
+const name = config.author.name.trim() || config.site.title;
+---
+
+<footer class:list={['footer', extraClass]}>
+  © {config.site.since} {name}
+</footer>

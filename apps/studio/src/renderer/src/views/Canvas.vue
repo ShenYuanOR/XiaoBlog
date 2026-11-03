@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import {
+  mdiArrowDown,
+  mdiArrowUp,
   mdiCodeTags,
+  mdiContentCopy,
+  mdiContentSaveOutline,
+  mdiDeleteOutline,
   mdiFormatText,
   mdiLockOutline,
   mdiPackageVariantClosed,
@@ -17,6 +22,7 @@ import HtmlBlocks from './HtmlBlocks.vue';
 import {
   groupStudioPages,
   htmlPostSlugOf,
+  normalizePageFile,
   isStudioPageFile,
   isSystemPage,
   pageLabel,
@@ -43,6 +49,7 @@ import {
   UiTooltip,
 } from '../ui/index.ts';
 import WorkbenchBar from './WorkbenchBar.vue';
+import PageStylePanel from './PageStylePanel.vue';
 
 installMonaco();
 
@@ -60,7 +67,16 @@ interface OutlineNode {
   children: OutlineNode[];
 }
 
-type ComponentCategory = 'structure' | 'container' | 'content' | 'blog' | 'embed';
+type ComponentCategory =
+  | 'structure'
+  | 'container'
+  | 'section'
+  | 'saved'
+  | 'part'
+  | 'content'
+  | 'blog'
+  | 'embed'
+  | 'layout';
 
 interface ComponentMeta {
   name: string;
@@ -70,6 +86,17 @@ interface ComponentMeta {
   container: boolean;
   /** 文字类组件（可直接改文字）。 */
   text: boolean;
+  /** 只在这些上下文出现：post / page-layout / page。 */
+  contexts?: readonly string[];
+  /** 存为区块的自定义区块被引用次数。 */
+  refs?: number;
+}
+
+interface SavedSectionRow {
+  name: string;
+  label: string;
+  file: string;
+  refs: number;
 }
 
 interface PropOption {
@@ -107,6 +134,7 @@ interface PageStyleState {
   background: PageBackgroundOption;
   hideSide: boolean;
   hideToc: boolean;
+  custom: string;
 }
 
 interface TreeRow {
@@ -166,24 +194,68 @@ const COMPONENTS: ComponentMeta[] = [
   { name: 'Video', label: '视频', category: 'embed', container: false, text: false },
   { name: 'Embed', label: '嵌入', category: 'embed', container: false, text: false },
   { name: 'Html', label: '自定义 HTML', category: 'embed', container: false, text: false },
+  // 区块库
+  { name: 'Hero', label: '首屏区块', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  { name: 'Split', label: '左右分栏', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  { name: 'FeatureGrid', label: '特性卡片', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  { name: 'CtaBand', label: '行动号召', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  { name: 'QuoteBand', label: '引用区块', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  { name: 'StatsBand', label: '数据条', category: 'section', container: true, text: false, contexts: ['page', 'page-layout', 'post'] },
+  // 版式部件
+  { name: 'PostTitle', label: '文章标题', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostMeta', label: '文章元信息', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostCover', label: '文章封面', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostTags', label: '文章标签', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostPager', label: '上一篇/下一篇', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostLicense', label: '许可协议', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostToc', label: '文章目录', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PostSideTree', label: '侧栏文章树', category: 'part', container: false, text: false, contexts: ['post'] },
+  { name: 'PageTitle', label: '页面标题', category: 'part', container: false, text: false, contexts: ['page-layout'] },
+  { name: 'PageDescription', label: '页面摘要', category: 'part', container: false, text: false, contexts: ['page-layout'] },
+  { name: 'SiteTitle', label: '站点标题', category: 'part', container: false, text: false, contexts: ['site'] },
+  { name: 'SiteNav', label: '站点导航', category: 'part', container: false, text: false, contexts: ['site'] },
+  { name: 'SiteSearchButton', label: '搜索入口', category: 'part', container: false, text: false, contexts: ['site'] },
+  { name: 'SiteThemeToggle', label: '主题切换', category: 'part', container: false, text: false, contexts: ['site'] },
+  { name: 'SiteCopyright', label: '页脚版权', category: 'part', container: false, text: false, contexts: ['site'] },
+  // 只用于标题/标签映射，不进调色板
+  { name: 'PageLayout', label: '页面版式', category: 'layout', container: true, text: false },
+  { name: 'PostLayout', label: '文章版式', category: 'layout', container: true, text: false },
+  { name: 'PageShell', label: '页面骨架', category: 'layout', container: true, text: false },
 ];
 
-const CATEGORY_ORDER: ComponentCategory[] = ['structure', 'container', 'content', 'blog', 'embed'];
+const CATEGORY_ORDER: ComponentCategory[] = [
+  'structure',
+  'container',
+  'section',
+  'saved',
+  'part',
+  'content',
+  'blog',
+  'embed',
+];
 
 const CATEGORY_LABEL: Record<ComponentCategory, string> = {
   structure: '结构',
   container: '容器',
+  section: '区块库',
+  saved: '我的区块',
+  part: '版式部件',
   content: '内容',
   blog: '博客',
   embed: '嵌入',
+  layout: '版式',
 };
 
 const CATEGORY_ICON: Record<ComponentCategory, string> = {
   structure: mdiViewDashboardOutline,
   container: mdiPackageVariantClosed,
+  section: mdiViewDashboardOutline,
+  saved: mdiContentSaveOutline,
+  part: mdiPackageVariantClosed,
   content: mdiFormatText,
   blog: mdiPostOutline,
   embed: mdiCodeTags,
+  layout: mdiViewDashboardOutline,
 };
 
 const META_BY_NAME = new Map(COMPONENTS.map((item) => [item.name, item]));
@@ -244,6 +316,57 @@ const HTML_CONTAINERS = new Set([
 
 const session = useSession();
 
+const savedSections = ref<SavedSectionRow[]>([]);
+const partUsage = ref<Record<string, number>>({});
+const saveSectionOpen = ref(false);
+const sectionLabel = ref('');
+
+async function loadPartUsage(): Promise<void> {
+  if (!session.siteDir) return;
+  const names = COMPONENTS.filter((item) => item.category === 'part').map((item) => item.name);
+  if (!names.length) return;
+  try {
+    const result = await window.xiao.section.usage(session.siteDir, names);
+    if (result.ok) partUsage.value = result.data;
+  } catch {
+    partUsage.value = {};
+  }
+}
+
+async function loadSavedSections(): Promise<void> {
+  if (!session.siteDir) return;
+  try {
+    const result = await window.xiao.section.list(session.siteDir);
+    if (result.ok) savedSections.value = result.data;
+  } catch {
+    savedSections.value = [];
+  }
+}
+
+watch(
+  () => session.siteDir,
+  () => {
+    void loadSavedSections();
+    void loadPartUsage();
+  },
+  { immediate: true },
+);
+
+const allComponents = computed<ComponentMeta[]>(() => [
+  ...COMPONENTS,
+  ...savedSections.value.map((item) => ({
+    name: item.name,
+    label: item.label,
+    category: 'saved' as const,
+    container: true,
+    text: false,
+    contexts: ['page', 'page-layout', 'post'],
+    refs: item.refs,
+  })),
+]);
+
+
+
 const pages = ref<string[]>([]);
 const outline = ref<OutlineNode[]>([]);
 const loading = ref(true);
@@ -256,6 +379,64 @@ const layoutMode = computed(() => Boolean(layoutSlug.value));
 const layoutTitle = computed(() => session.layoutTitle);
 const htmlPostSlug = computed(() => htmlPostSlugOf(session.activePage));
 const htmlPostMode = computed(() => Boolean(htmlPostSlug.value));
+const layoutHasCustom = ref(false);
+const layoutCompareOpen = ref(false);
+const layoutResetOpen = ref(false);
+const layoutCompare = reactive({
+  file: '',
+  defaultText: '',
+  customText: '',
+});
+
+async function loadLayoutCustom(): Promise<void> {
+  if (!layoutMode.value || !layoutSlug.value || !session.siteDir) {
+    layoutHasCustom.value = false;
+    return;
+  }
+  try {
+    const result = await window.xiao.content.layoutRead(session.siteDir, layoutSlug.value);
+    layoutHasCustom.value = result.ok ? result.data.custom : false;
+  } catch {
+    layoutHasCustom.value = false;
+  }
+}
+
+watch([layoutMode, layoutSlug], () => {
+  void loadLayoutCustom();
+}, { immediate: true });
+
+async function openLayoutCompare(): Promise<void> {
+  if (!layoutSlug.value || !session.siteDir) return;
+  const result = await window.xiao.content.layoutRead(session.siteDir, layoutSlug.value);
+  if (!result.ok) {
+    notify(`读不到版式：${result.message}`, 'error', 'layout-compare');
+    return;
+  }
+  if (!result.data.custom) {
+    notify('这篇用的是默认版式，没有可对比的自定义版式。', 'info', 'layout-compare');
+    return;
+  }
+  layoutCompare.file = result.data.file;
+  layoutCompare.defaultText = result.data.defaultText;
+  layoutCompare.customText = result.data.customText;
+  layoutCompareOpen.value = true;
+}
+
+async function confirmResetLayout(): Promise<void> {
+  if (!layoutSlug.value || !session.siteDir) return;
+  const result = await window.xiao.content.resetLayout(session.siteDir, layoutSlug.value);
+  if (!result.ok) {
+    notify(`恢复默认版式失败：${result.message}`, 'error', 'layout-reset');
+    return;
+  }
+  layoutResetOpen.value = false;
+  layoutHasCustom.value = false;
+  session.setSaveState('saved');
+  backToWriting();
+  session.setPage('src/pages/index.astro');
+  notify(`已恢复默认版式，旧版式备份在 ${result.data.backup}`, 'info', 'layout-reset');
+}
+
 const htmlStandalone = ref(false);
 const htmlChromeItems = [
   { key: 'template', label: '套用模板' },
@@ -283,12 +464,14 @@ const busy = ref(false);
 const insertPending = ref('');
 
 const newSlug = ref('');
-const newTemplate = ref<'blank' | 'landing' | 'about'>('blank');
+const newTemplate = ref<'blank' | 'docs' | 'landing' | 'magazine' | 'about'>('blank');
 const creating = ref(false);
 
 const templateItems = [
   { key: 'blank', label: '空白' },
+  { key: 'docs', label: '文档' },
   { key: 'landing', label: '落地页' },
+  { key: 'magazine', label: '杂志' },
   { key: 'about', label: '关于' },
 ];
 
@@ -299,6 +482,7 @@ const pageStyle = reactive<PageStyleState>({
   background: '',
   hideSide: false,
   hideToc: false,
+  custom: '',
 });
 const pageStyleExisting = ref('');
 const pageStyleExists = ref(false);
@@ -423,10 +607,13 @@ function isExpanded(row: TreeRow): boolean {
   return expanded.value.includes(row.node.id);
 }
 
+const hideTextNodes = ref(true);
+
 const visibleRows = computed(() => {
   const rows: TreeRow[] = [];
   const walk = (nodes: OutlineNode[], depth: number, parentId: string | null): void => {
     for (const node of nodes) {
+      if (hideTextNodes.value && node.kind === 'text' && node.id !== selectedId.value) continue;
       const row: TreeRow = {
         node,
         depth,
@@ -494,6 +681,189 @@ const selectedTextNode = computed(() => {
   if (!node) return undefined;
   return node.kind === 'text' ? node : singleTextChild.value;
 });
+
+const coveredPropNames = computed(() => propSpecs.value.map((spec) => spec.name));
+
+const selectedPartUsage = computed(() => {
+  const name = selectedNode.value?.name;
+  if (!name) return 0;
+  const meta = META_BY_NAME.get(name);
+  if (meta?.category !== 'part') return 0;
+  return partUsage.value[name] ?? 0;
+});
+
+const selectedClasses = computed(() =>
+  (selectedNode.value?.props.find((prop) => prop.name === 'class')?.value ?? '')
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+/** 文字节点、锁定代码和正文插槽不接受样式令牌；其余元素/组件都可以。 */
+const canStyleNode = computed(() => {
+  const node = selectedNode.value;
+  if (!node) return false;
+  if (node.kind === 'text' || node.kind === 'locked') return false;
+  if (isSlotNode(node)) return false;
+  return true;
+});
+
+const actionBusy = ref(false);
+const ACTION_BLOCKED = new Set([
+  'PageLayout',
+  'PostLayout',
+  'PageShell',
+  'BaseLayout',
+  'Base',
+  'Fragment',
+]);
+
+const canActOnSelected = computed(() => {
+  const node = selectedNode.value;
+  if (!node) return false;
+  if (node.kind === 'text' || node.kind === 'locked') return false;
+  if (isSlotNode(node)) return false;
+  return !ACTION_BLOCKED.has(node.name);
+});
+
+async function selectByPath(path: number[] | null): Promise<void> {
+  if (!path) return;
+  const node = atPath(outline.value, path);
+  if (node) await selectNode(node, false);
+}
+
+async function moveSelected(delta: 1 | -1): Promise<void> {
+  const row = selectedRow.value;
+  if (!row || !row.parentId || !session.siteDir || actionBusy.value) return;
+  const parent = nodeMap.value.get(row.parentId);
+  if (!parent) return;
+  const count = parent.node.children.length;
+  const target = delta < 0 ? row.index - 1 : row.index + 2;
+  if (target < 0 || target > count) return;
+  const parentPath = pathOf(outline.value, row.parentId);
+  actionBusy.value = true;
+  try {
+    const result = await window.xiao.canvas.move(
+      session.siteDir,
+      row.node.id,
+      row.parentId,
+      target,
+      session.activePage,
+    );
+    if (!result.ok) {
+      notify(`移动失败：${result.message}`, 'error', 'canvas-action');
+      return;
+    }
+    await reload('');
+    const nextIndex = delta < 0 ? target : target - 1;
+    await selectByPath(parentPath ? [...parentPath, nextIndex] : null);
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
+async function duplicateSelected(): Promise<void> {
+  const row = selectedRow.value;
+  if (!row || !session.siteDir || actionBusy.value) return;
+  const path = pathOf(outline.value, row.node.id);
+  actionBusy.value = true;
+  try {
+    const result = await window.xiao.canvas.duplicate(
+      session.siteDir,
+      row.node.id,
+      session.activePage,
+    );
+    if (!result.ok) {
+      notify(`复制失败：${result.message}`, 'error', 'canvas-action');
+      return;
+    }
+    await reload('');
+    await selectByPath(path);
+    notify('已复制，可继续编辑副本或撤销。', 'info', 'canvas-action');
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
+async function removeSelected(): Promise<void> {
+  const row = selectedRow.value;
+  if (!row || !session.siteDir) return;
+  const result = await window.xiao.canvas.remove(
+    session.siteDir,
+    row.node.id,
+    session.activePage,
+  );
+  if (!result.ok) {
+    notify(`删除失败：${result.message}`, 'error', 'canvas-action');
+    return;
+  }
+  clearSelection();
+  await reload('');
+  notify('已删除，可点撤销恢复。', 'info', 'canvas-action');
+}
+
+async function wrapSelected(): Promise<void> {
+  const row = selectedRow.value;
+  if (!row || !session.siteDir || actionBusy.value) return;
+  const path = pathOf(outline.value, row.node.id);
+  actionBusy.value = true;
+  try {
+    const result = await window.xiao.canvas.wrap(
+      session.siteDir,
+      row.node.id,
+      '<Section pad="lg">',
+      session.activePage,
+    );
+    if (!result.ok) {
+      notify(`套进区块失败：${result.message}`, 'error', 'canvas-action');
+      return;
+    }
+    await reload('');
+    await selectByPath(path);
+    notify('已套进区块，可在右侧继续加样式。', 'info', 'canvas-action');
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
+function openSaveSection(): void {
+  if (!canActOnSelected.value) return;
+  sectionLabel.value = `${selectedTitle.value || '区块'}`;
+  saveSectionOpen.value = true;
+}
+
+async function confirmSaveSection(): Promise<void> {
+  if (!session.siteDir || !selectedId.value) return;
+  const result = await window.xiao.section.save(
+    session.siteDir,
+    session.activePage,
+    selectedId.value,
+    sectionLabel.value.trim() || selectedTitle.value || '我的区块',
+  );
+  if (!result.ok) {
+    notify(`存为区块失败：${result.message}`, 'error', 'canvas-section-save');
+    return;
+  }
+  saveSectionOpen.value = false;
+  await loadSavedSections();
+  notify(`已存为 ${result.data.file}，在「我的区块」里插入。`, 'info', 'canvas-section-save');
+}
+
+async function commitClass(classes: string[]): Promise<void> {
+  if (!session.siteDir || !selectedId.value) return;
+  const value = [...new Set(classes)].join(' ').trim();
+  const result = await window.xiao.canvas.setProp(
+    session.siteDir,
+    selectedId.value,
+    'class',
+    value,
+    session.activePage,
+  );
+  if (!result.ok) {
+    notify(`样式没写进去：${result.message}`, 'error', 'canvas-style');
+    return;
+  }
+  await reload(selectedId.value);
+}
 
 // 插入目标：优先放进选中的容器末尾；选中的是叶子则插到它后面；否则放进根容器末尾。
 const insertTarget = computed<InsertTarget | null>(() => {
@@ -722,6 +1092,11 @@ function optionItems(spec: PropSpec): PropOption[] {
 }
 
 function paletteHint(meta: ComponentMeta): string {
+  if (meta.refs !== undefined) return `已用 ${meta.refs} 处`;
+  if (meta.category === 'part') {
+    const count = partUsage.value[meta.name];
+    if (count !== undefined) return count ? `被 ${count} 个版式/页面使用` : '还没被使用';
+  }
   if (meta.container) return '可嵌套其他组件';
   if (meta.text) return '文字内容，检查器里可改';
   if (meta.category === 'blog') return '读取站点数据';
@@ -729,16 +1104,28 @@ function paletteHint(meta: ComponentMeta): string {
   return '独立内容块';
 }
 
+const editContext = computed(() => {
+  const file = normalizePageFile(session.activePage);
+  if (/^src\/layouts\/posts\/[^/]+\.astro$/.test(file) || file === 'src/layouts/PostLayout.astro') {
+    return 'post';
+  }
+  if (file === 'src/layouts/PageLayout.astro') return 'page-layout';
+  if (file.startsWith('src/components/site/')) return 'site';
+  return 'page';
+});
+
 const filteredGroups = computed(() => {
   const needle = search.value.trim().toLowerCase();
   const hideBlog = htmlPostMode.value;
+  const context = editContext.value;
   return CATEGORY_ORDER.map((category) => ({
     category,
     label: CATEGORY_LABEL[category],
     icon: CATEGORY_ICON[category],
-    items: COMPONENTS.filter(
+    items: allComponents.value.filter(
       (meta) =>
         meta.category === category &&
+        (!meta.contexts || meta.contexts.includes(context)) &&
         !(hideBlog && meta.category === 'blog') &&
         (needle === '' ||
           meta.label.toLowerCase().includes(needle) ||
@@ -793,7 +1180,7 @@ const pageStyleUnsupportedReason = computed(() => {
 });
 
 function defaultPageStyle(): PageStyleState {
-  return { width: '', padding: '', background: '', hideSide: false, hideToc: false };
+  return { width: '', padding: '', background: '', hideSide: false, hideToc: false, custom: '' };
 }
 
 function resetPageStyleDraft(): void {
@@ -874,10 +1261,20 @@ function applyPageStyleDeclaration(
  * 解析既有页面 CSS：只认模板侧 canonical 变量与隐藏规则；
  * 出现手写规则/未知取值就标记 known=false，界面会显示只读的「现有样式」并要求二次确认后再覆盖。
  */
+const PAGE_CUSTOM_START = '/* xiao:custom:start */';
+const PAGE_CUSTOM_END = '/* xiao:custom:end */';
+
 function parsePageStyle(css: string, slug: string): { state: PageStyleState; known: boolean } {
   const state = defaultPageStyle();
-  const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  if (!source.trim()) return { state, known: true };
+  const startIndex = css.indexOf(PAGE_CUSTOM_START);
+  const endIndex = css.indexOf(PAGE_CUSTOM_END);
+  let withoutCustom = css;
+  if (startIndex >= 0 && endIndex > startIndex) {
+    state.custom = css.slice(startIndex + PAGE_CUSTOM_START.length, endIndex).trim();
+    withoutCustom = css.slice(0, startIndex) + css.slice(endIndex + PAGE_CUSTOM_END.length);
+  }
+  const source = withoutCustom.replace(/\/\*[\s\S]*?\*\//g, '');
+  if (!source.trim() && !state.custom) return { state, known: true };
   const blockRe = new RegExp(`${pageStyleAttrSource(slug)}\\s*([^{}]*?)\\s*\\{([^}]*)\\}`, 'g');
   const blocks = [...source.matchAll(blockRe)];
   let known = true;
@@ -926,6 +1323,11 @@ function buildPageCss(slug: string, state: PageStyleState): string {
   if (state.hideToc) hideSelectors.push(`${attr} .toc`, `${attr} .toc-mobile`);
   if (hideSelectors.length) {
     blocks.push(`${hideSelectors.join(',\n')} {\n  display: none;\n}`);
+  }
+  if (state.custom.trim()) {
+    blocks.push(`${PAGE_CUSTOM_START}
+${state.custom.trim()}
+${PAGE_CUSTOM_END}`);
   }
   return blocks.join('\n');
 }
@@ -1349,7 +1751,6 @@ function isSelfOrDescendant(id: string, ancestorId: string): boolean {
 
 function hitToInsert(hit: StageHit): InsertTarget | null {
   const file = hit.file.replaceAll('\\', '/');
-  const current = session.activePage.replaceAll('\\', '/');
   if (file !== current) return null;
   const row = nodeMap.value.get(hit.offset);
   if (!row) return insertTarget.value;
@@ -1526,7 +1927,6 @@ async function setHtmlChrome(standalone: boolean): Promise<void> {
 function commitPreviewText(payload: { file: string; offset: string; text: string }): void {
   if (!htmlPostMode.value || !session.siteDir) return;
   const file = payload.file.replaceAll('\\', '/');
-  if (file !== session.activePage.replaceAll('\\', '/')) return;
   const row = nodeMap.value.get(payload.offset);
   if (!row) return;
   const target = row.node.kind === 'text' ? row.node : singleTextNode(row.node);
@@ -2110,7 +2510,6 @@ function onWindowPointerUp(): void {
 
 async function onPreviewPick(payload: { file: string; offset: string }): Promise<void> {
   const file = payload.file.replaceAll('\\', '/');
-  const current = session.activePage.replaceAll('\\', '/');
   if (file !== current) {
     const htmlArticle = current.includes('/content/posts/') && current.endsWith('/index.html');
     const fromLayout = file.includes('/layouts/') && file.endsWith('.astro');
@@ -2465,6 +2864,10 @@ onBeforeUnmount(() => {
             <span class="stage-title" :title="layoutTitle || layoutSlug">
               {{ layoutTitle || layoutSlug }}
             </span>
+            <template v-if="layoutHasCustom">
+              <UiButton size="sm" variant="ghost" @click="openLayoutCompare">对比默认</UiButton>
+              <UiButton size="sm" variant="ghost" @click="layoutResetOpen = true">恢复默认</UiButton>
+            </template>
           </template>
           <template v-else>
             <UiIcon class="stage-bar__page-icon" :path="icons.files" :size="15" />
@@ -2482,6 +2885,68 @@ onBeforeUnmount(() => {
             {{ pageRoute }}
           </UiBadge>
         </div>
+        <div v-if="!sourceMode && canActOnSelected" class="stage-bar__right">
+          <UiTooltip label="上移">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiArrowUp"
+              :disabled="actionBusy"
+              aria-label="上移"
+              @click="moveSelected(-1)"
+            />
+          </UiTooltip>
+          <UiTooltip label="下移">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiArrowDown"
+              :disabled="actionBusy"
+              aria-label="下移"
+              @click="moveSelected(1)"
+            />
+          </UiTooltip>
+          <UiTooltip label="复制">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiContentCopy"
+              :disabled="actionBusy"
+              aria-label="复制"
+              @click="duplicateSelected"
+            />
+          </UiTooltip>
+          <UiTooltip label="存为区块">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiContentSaveOutline"
+              :disabled="actionBusy"
+              aria-label="存为区块"
+              @click="openSaveSection"
+            />
+          </UiTooltip>
+          <UiTooltip label="套进区块">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiViewDashboardOutline"
+              :disabled="actionBusy"
+              aria-label="套进区块"
+              @click="wrapSelected"
+            />
+          </UiTooltip>
+          <UiTooltip label="删除">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :icon="mdiDeleteOutline"
+              :disabled="actionBusy"
+              aria-label="删除"
+              @click="removeSelected"
+            />
+          </UiTooltip>
+        </div>
       </header>
 
       <div v-show="sourceMode" ref="sourceRoot" class="page-source" />
@@ -2498,6 +2963,16 @@ onBeforeUnmount(() => {
                   :icon="icons.chevronLeft"
                   aria-label="收起结构"
                   @click="layersCollapsed = true"
+                />
+              </UiTooltip>
+              <UiTooltip :label="hideTextNodes ? '显示文字节点' : '只看结构'">
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  :icon="mdiFormatText"
+                  :class="{ on: !hideTextNodes }"
+                  :aria-label="hideTextNodes ? '显示文字节点' : '只看结构'"
+                  @click="hideTextNodes = !hideTextNodes"
                 />
               </UiTooltip>
             </template>
@@ -2704,6 +3179,15 @@ onBeforeUnmount(() => {
         />
 
         <template v-else-if="htmlInspector === 'block' && selectedRow">
+          <UiPanel v-if="canStyleNode" title="样式令牌" collapsible>
+            <PageStylePanel
+              :classes="selectedClasses"
+              :covered="coveredPropNames"
+              :site-dir="session.siteDir"
+              @change="commitClass"
+            />
+          </UiPanel>
+
           <!-- 文字节点 / 单一文字子节点 -->
           <UiPanel v-if="selectedTextNode && !htmlPostMode" title="文字" collapsible>
             <UiField label="文字内容" hint="改完点出输入框即写入源码">
@@ -2827,6 +3311,9 @@ onBeforeUnmount(() => {
               </div>
             </UiPanel>
 
+            <p v-if="selectedPartUsage" class="inspector-tip">
+              这个部件被 {{ selectedPartUsage }} 个版式/页面使用，改动会影响它们。
+            </p>
             <p v-if="groupedProps.length" class="inspector-tip">
               {{ historyHint() }}
             </p>
@@ -2911,6 +3398,17 @@ onBeforeUnmount(() => {
                   <span class="prop-switch__label">隐藏目录</span>
                   <UiSwitch v-model="pageStyle.hideToc" aria-label="隐藏目录" />
                 </div>
+
+                <UiField
+                  label="自定义 CSS"
+                  hint="追加在生成样式之后；直接写选择器，不用 @import"
+                >
+                  <UiTextarea
+                    v-model="pageStyle.custom"
+                    :rows="5"
+                    placeholder="body[data-page='about'] .side { ... }"
+                  />
+                </UiField>
 
                 <div v-if="!pageStyleKnown" class="style-unknown">
                   <p class="hint-text">
@@ -2997,6 +3495,54 @@ onBeforeUnmount(() => {
       <footer v-if="selectedId && !htmlPostMode" class="inspector-foot">{{ selectedPath }}</footer>
     </div>
   </Teleport>
+
+  <UiDialog v-model="layoutCompareOpen" title="对比默认版式" :width="960">
+    <p class="hint-text">
+      左边是站点默认的 <code>src/layouts/PostLayout.astro</code>，右边是这篇的
+      <code>{{ layoutCompare.file }}</code>。恢复默认会先备份右边的文件。
+    </p>
+    <div class="layout-compare">
+      <section>
+        <h4>默认版式</h4>
+        <pre>{{ layoutCompare.defaultText }}</pre>
+      </section>
+      <section>
+        <h4>这篇的自定义版式</h4>
+        <pre>{{ layoutCompare.customText }}</pre>
+      </section>
+    </div>
+    <template #actions>
+      <UiButton size="sm" @click="layoutCompareOpen = false">关闭</UiButton>
+      <UiButton variant="danger" size="sm" @click="layoutCompareOpen = false; layoutResetOpen = true">
+        恢复默认
+      </UiButton>
+    </template>
+  </UiDialog>
+
+  <UiDialog v-model="layoutResetOpen" title="恢复默认版式？" :width="520">
+    <p class="hint-text">
+      会删除 <code>src/layouts/posts/{{ layoutSlug }}.astro</code>，这篇回到
+      <code>src/layouts/PostLayout.astro</code>。删除前会备份到站点的
+      <code>.xiao/backups/layouts/</code>，其他文章不受影响。
+    </p>
+    <template #actions>
+      <UiButton size="sm" @click="layoutResetOpen = false">取消</UiButton>
+      <UiButton variant="danger" size="sm" @click="confirmResetLayout">恢复默认</UiButton>
+    </template>
+  </UiDialog>
+
+  <UiDialog v-model="saveSectionOpen" title="存为区块" :width="460">
+    <p class="hint-text">
+      会把当前选中的结构复制成 src/components/xiao 下的普通 Astro 组件，之后可以在任意页面/版式里复用。
+    </p>
+    <UiField label="区块名称" hint="用于文件标识和「我的区块」列表，可留空">
+      <UiInput v-model="sectionLabel" placeholder="例如 产品特性三栏" />
+    </UiField>
+    <template #actions>
+      <UiButton size="sm" @click="saveSectionOpen = false">取消</UiButton>
+      <UiButton variant="primary" size="sm" @click="confirmSaveSection">存为区块</UiButton>
+    </template>
+  </UiDialog>
 
   <UiDialog v-model="overwriteStyleOpen" title="覆盖现有页面样式？" :width="560">
     <div class="dialog-stack">
@@ -3263,6 +3809,37 @@ onBeforeUnmount(() => {
   color: var(--ui-text-3);
   font-size: var(--ui-fs-1);
   text-align: right;
+}
+
+.layout-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ui-s3);
+}
+
+.layout-compare section {
+  min-width: 0;
+}
+
+.layout-compare h4 {
+  margin: 0 0 var(--ui-s2);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+}
+
+.layout-compare pre {
+  max-height: 420px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-bg);
+  color: var(--ui-text-2);
+  font-family: var(--ui-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .drag-ghost {

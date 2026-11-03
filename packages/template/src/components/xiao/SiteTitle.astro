@@ -1,0 +1,15 @@
+---
+/** 站点标题参数。 */
+import { withBase } from '../../lib/base';
+import { loadConfig } from '../../lib/config';
+
+interface Props {
+  class?: string;
+}
+const { class: extraClass } = Astro.props;
+const config = loadConfig();
+---
+
+<a class:list={['brand', extraClass]} href={withBase()}>
+  {config.site.title}
+</a>

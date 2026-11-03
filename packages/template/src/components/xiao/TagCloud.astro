@@ -1,14 +1,32 @@
 ---
-import { publishedPosts, tagsOf } from '../../lib/posts';
+/** 标签云参数：胶囊或行内。 */
 import { withBase } from '../../lib/base';
-const { limit = 20 } = Astro.props;
-const tags = tagsOf(await publishedPosts()).slice(0, limit);
+import { publishedPosts, tagsOf } from '../../lib/posts';
+
+interface Props {
+  limit?: number;
+  style?: 'pills' | 'inline';
+  class?: string;
+}
+const { limit = 20, style = 'pills', class: extraClass } = Astro.props;
+const tags = tagsOf(await publishedPosts()).slice(0, Math.max(1, limit));
 ---
 
-<ul>
-  {tags.map((tag) => (
-    <li>
-      <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a>
-    </li>
-  ))}
-</ul>
+{style === 'inline' ? (
+  <p class:list={[extraClass]}>
+    {tags.map((tag, index) => (
+      <>
+        {index > 0 && ' · '}
+        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a>
+      </>
+    ))}
+  </p>
+) : (
+  <ul class:list={['pills', extraClass]}>
+    {tags.map((tag) => (
+      <li>
+        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>{tag.name}</a>
+      </li>
+    ))}
+  </ul>
+)}

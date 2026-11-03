@@ -1,0 +1,25 @@
+---
+/** 站点导航参数；桌面栏和抽屉共用同一份配置。 */
+import { withBase } from '../../lib/base';
+import { loadConfig } from '../../lib/config';
+
+interface Props {
+  variant?: 'desktop' | 'drawer';
+  class?: string;
+}
+const { variant = 'desktop', class: extraClass } = Astro.props;
+const config = loadConfig();
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+function currentNav(href: string): 'page' | undefined {
+  const target = withBase(href).replace(/\/+$/, '') || '/';
+  return path === target ? 'page' : undefined;
+}
+---
+
+<nav class:list={[variant === 'desktop' && 'nav-desktop', extraClass]} aria-label="站点">
+  {config.nav.map((item) => (
+    <a href={withBase(item.href)} aria-current={currentNav(item.href)}>
+      {item.label}
+    </a>
+  ))}
+</nav>

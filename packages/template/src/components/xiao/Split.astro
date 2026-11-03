@@ -1,0 +1,18 @@
+---
+/** 左右分栏区块；两栏内容由页面传入。 */
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  gap?: string;
+  class?: string;
+}
+const { pad = 'lg', bg = 'default', gap = 'lg', class: extraClass } = Astro.props;
+---
+
+<Section pad={pad} bg={bg} width="full" class={extraClass}>
+  <div class:list={['x-grid', 'x-cols-2', `x-gap-${gap}`]}>
+    <slot />
+  </div>
+</Section>

@@ -1,0 +1,35 @@
+---
+/** 上一篇 / 下一篇参数。 */
+import { withBase } from '../../lib/base';
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  prev?: PostEntry;
+  next?: PostEntry;
+  prevLabel?: string;
+  nextLabel?: string;
+  class?: string;
+}
+const { prev, next, prevLabel = '上一篇', nextLabel = '下一篇', class: extraClass } = Astro.props;
+---
+
+{(prev || next) && (
+  <nav class:list={['pager', extraClass]} aria-label="相邻文章">
+    {prev ? (
+      <a href={withBase(`posts/${prev.id}/`)}>
+        <small>{prevLabel}</small>
+        <span>{prev.data.title}</span>
+      </a>
+    ) : (
+      <span />
+    )}
+    {next ? (
+      <a href={withBase(`posts/${next.id}/`)}>
+        <small>{nextLabel}</small>
+        <span>{next.data.title}</span>
+      </a>
+    ) : (
+      <span />
+    )}
+  </nav>
+)}

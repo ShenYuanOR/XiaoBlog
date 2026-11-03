@@ -23,6 +23,16 @@ function listen<T>(channel: string, callback: (payload: T) => void): () => void 
 }
 
 const api = {
+  section: {
+    list: (siteDir: string) => ipcRenderer.invoke('section:list', siteDir),
+    save: (siteDir: string, file: string, nodeId: string, label: string) =>
+      ipcRenderer.invoke('section:save', siteDir, file, nodeId, label),
+    usage: (siteDir: string, names: string[]) =>
+      ipcRenderer.invoke('section:usage', siteDir, names),
+  },
+  article: {
+    css: (siteDir: string) => ipcRenderer.invoke('article:css', siteDir),
+  },
   canvas: {
     components: () => ipcRenderer.invoke('canvas:components'),
     outline: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:outline', siteDir, file),
@@ -34,6 +44,8 @@ const api = {
       ipcRenderer.invoke('canvas:remove', siteDir, nodeId, file),
     duplicate: (siteDir: string, nodeId: string, file: string) =>
       ipcRenderer.invoke('canvas:duplicate', siteDir, nodeId, file),
+    wrap: (siteDir: string, nodeId: string, wrapperSnippet: string, file: string) =>
+      ipcRenderer.invoke('canvas:wrap', siteDir, nodeId, wrapperSnippet, file),
     canNest: (parentName: string, childName: string) =>
       ipcRenderer.invoke('canvas:canNest', parentName, childName),
     undo: (siteDir: string, file: string) => ipcRenderer.invoke('canvas:undo', siteDir, file),
@@ -89,8 +101,11 @@ const api = {
   },
   page: {
     list: (siteDir: string) => ipcRenderer.invoke('page:list', siteDir),
-    create: (siteDir: string, template: 'blank' | 'landing' | 'about', slug: string) =>
-      ipcRenderer.invoke('page:create', siteDir, template, slug),
+    create: (
+      siteDir: string,
+      template: 'blank' | 'docs' | 'landing' | 'magazine' | 'about',
+      slug: string,
+    ) => ipcRenderer.invoke('page:create', siteDir, template, slug),
     href: (siteDir: string, file: string) => ipcRenderer.invoke('page:href', siteDir, file),
     styleRead: (siteDir: string, slug: string) =>
       ipcRenderer.invoke('page:styleRead', siteDir, slug),
@@ -137,6 +152,14 @@ const api = {
     ) => ipcRenderer.invoke('content:create', siteDir, title, category, format),
     customize: (siteDir: string, slug: string) =>
       ipcRenderer.invoke('content:customize', siteDir, slug),
+    layoutRead: (
+      siteDir: string,
+      slug: string,
+    ): Promise<
+      IpcResult<{ custom: boolean; defaultText: string; customText: string; file: string }>
+    > => ipcRenderer.invoke('content:layoutRead', siteDir, slug),
+    resetLayout: (siteDir: string, slug: string): Promise<IpcResult<{ backup: string }>> =>
+      ipcRenderer.invoke('content:resetLayout', siteDir, slug),
     remove: (siteDir: string, slug: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('content:delete', siteDir, slug),
     rename: (

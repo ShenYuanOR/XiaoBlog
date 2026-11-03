@@ -1,0 +1,33 @@
+---
+/** 文章标签列表参数。 */
+import { withBase } from '../../lib/base';
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  style?: 'pills' | 'inline';
+  class?: string;
+}
+const { post, style = 'pills', class: extraClass } = Astro.props;
+const tags = post.data.tags;
+---
+
+{tags.length > 0 &&
+  (style === 'inline' ? (
+    <p class:list={['post-tags-inline', extraClass]}>
+      {tags.map((tag, index) => (
+        <>
+          {index > 0 && ' · '}
+          <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
+        </>
+      ))}
+    </p>
+  ) : (
+    <ul class:list={['pills', 'tag-pills', extraClass]}>
+      {tags.map((tag) => (
+        <li>
+          <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
+        </li>
+      ))}
+    </ul>
+  ))}

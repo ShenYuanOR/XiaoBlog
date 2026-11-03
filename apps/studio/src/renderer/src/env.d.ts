@@ -63,7 +63,33 @@ export interface PostContent {
   format: ContentFormat;
 }
 
+export interface ArticleCss {
+  css: string;
+  colorScheme: 'auto' | 'light' | 'dark';
+  breakpoints: { id: string; label: string }[];
+}
+
+export interface SavedSection {
+  name: string;
+  label: string;
+  file: string;
+  refs: number;
+}
+
 export interface XiaoApi {
+  section: {
+    list: (siteDir: string) => Promise<IpcResult<SavedSection[]>>;
+    save: (
+      siteDir: string,
+      file: string,
+      nodeId: string,
+      label: string,
+    ) => Promise<IpcResult<SavedSection>>;
+    usage: (siteDir: string, names: string[]) => Promise<IpcResult<Record<string, number>>>;
+  };
+  article: {
+    css: (siteDir: string) => Promise<IpcResult<ArticleCss>>;
+  };
   canvas: {
     components: () => Promise<IpcResult<string[]>>;
     outline: (siteDir: string, file: string) => Promise<IpcResult<CanvasNode[]>>;
@@ -83,6 +109,12 @@ export interface XiaoApi {
     ) => Promise<IpcResult<null>>;
     remove: (siteDir: string, nodeId: string, file: string) => Promise<IpcResult<null>>;
     duplicate: (siteDir: string, nodeId: string, file: string) => Promise<IpcResult<null>>;
+    wrap: (
+      siteDir: string,
+      nodeId: string,
+      wrapperSnippet: string,
+      file: string,
+    ) => Promise<IpcResult<null>>;
     canNest: (parentName: string, childName: string) => Promise<IpcResult<boolean>>;
     undo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
     redo: (siteDir: string, file: string) => Promise<IpcResult<null>>;
@@ -210,6 +242,13 @@ export interface XiaoApi {
       format?: ContentFormat,
     ) => Promise<IpcResult<ContentPost>>;
     customize: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
+    layoutRead: (
+      siteDir: string,
+      slug: string,
+    ) => Promise<
+      IpcResult<{ custom: boolean; defaultText: string; customText: string; file: string }>
+    >;
+    resetLayout: (siteDir: string, slug: string) => Promise<IpcResult<{ backup: string }>>;
     remove: (siteDir: string, slug: string) => Promise<IpcResult<null>>;
     rename: (
       siteDir: string,

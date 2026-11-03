@@ -1,0 +1,12 @@
+---
+/** 页面标题参数。 */
+interface Props {
+  title?: string;
+  show?: boolean | string;
+  class?: string;
+}
+const { title, show = true, class: extraClass } = Astro.props;
+const visible = show !== false && show !== 'false' && show !== 'no';
+---
+
+{visible && title && <h1 class:list={[extraClass]}>{title}</h1>}

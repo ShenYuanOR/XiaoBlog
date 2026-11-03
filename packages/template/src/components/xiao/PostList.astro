@@ -1,14 +1,84 @@
 ---
-import { publishedPosts } from '../../lib/posts';
+/** 文章列表参数：列表/卡片/紧凑三种形态，字段按开关显示。 */
 import { withBase } from '../../lib/base';
-const { limit = 20 } = Astro.props;
-const posts = (await publishedPosts()).slice(0, limit);
+import { publishedPosts, type PostEntry } from '../../lib/posts';
+
+interface Props {
+  limit?: number;
+  layout?: 'list' | 'cards' | 'compact';
+  showDate?: boolean | string;
+  showCategory?: boolean | string;
+  showSummary?: boolean | string;
+  showCover?: boolean | string;
+  class?: string;
+}
+const {
+  limit = 20,
+  layout = 'list',
+  showDate = true,
+  showCategory = true,
+  showSummary = true,
+  showCover = true,
+  class: extraClass,
+} = Astro.props;
+const on = (value: boolean | string | undefined): boolean =>
+  value === undefined ? true : value !== false && value !== 'false' && value !== 'no';
+const posts = (await publishedPosts()).slice(0, Math.max(1, limit));
+const coverOf = (post: PostEntry): string => {
+  const cover = post.data.cover;
+  if (typeof cover === 'string') return cover;
+  if (cover && typeof cover === 'object' && 'src' in cover) {
+    return String((cover as { src: unknown }).src);
+  }
+  return '';
+};
 ---
 
-<ul>
-  {posts.map((post) => (
-    <li>
-      <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
-    </li>
-  ))}
-</ul>
+{layout === 'cards' ? (
+  <div class:list={['x-grid', 'x-cols-3', 'x-gap-md', extraClass]}>
+    {posts.map((post) => (
+      <article class="x-card x-pad-md x-stack x-dir-column x-gap-sm">
+        {on(showCover) && coverOf(post) && (
+          <img class="x-media x-ratio-16x9" src={coverOf(post)} alt={post.data.title} />
+        )}
+        <a class="x-link" href={withBase(`posts/${post.id}/`)}>
+          <strong>{post.data.title}</strong>
+        </a>
+        {on(showSummary) && post.data.description && <p>{post.data.description}</p>}
+        {(on(showDate) || on(showCategory)) && (
+          <p class="meta">
+            {on(showDate) && <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>}
+            {on(showCategory) && post.data.category && (
+              <>
+                {on(showDate) && ' · '}
+                <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
+                  {post.data.category}
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </article>
+    ))}
+  </div>
+) : (
+  <ul class:list={[layout === 'compact' ? 'x-stack x-dir-column x-gap-xs' : '', extraClass]}>
+    {posts.map((post) => (
+      <li>
+        <a class="x-link" href={withBase(`posts/${post.id}/`)}>
+          {post.data.title}
+        </a>
+        {on(showDate) && <time datetime={post.data.date}> {post.data.date.slice(0, 10)}</time>}
+        {on(showCategory) && post.data.category && (
+          <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
+            {' '}
+            · {post.data.category}
+          </a>
+        )}
+        {layout !== 'compact' && on(showSummary) && post.data.description && (
+          <p>{post.data.description}</p>
+        )}
+      </li>
+    ))}
+  </ul>
+)}

@@ -45,8 +45,10 @@ import {
   customizePost,
   deletePost,
   listPosts,
+  readLayoutComparison,
   readPostFile,
   renamePost,
+  resetPostLayout,
   saveImage,
   writePostFile,
 } from './content.ts';
@@ -74,14 +76,18 @@ import {
   setPageText,
   setVisualText,
   undoPage,
+  wrapComponent,
 } from './canvas.ts';
 import { createPage, listPages, pageHref, type PageTemplate } from './pages.ts';
+import { readArticleCss } from './article-css.ts';
+import { listSections, saveSection, usageCounts } from './sections.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
 import { groupChanges, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
+import { layoutSpecs } from '@xiao/core/components/layouts';
 
 const csp = [
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -534,27 +540,32 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.handle(
-    'canvas:remove',
-    (_event, siteDir: string, nodeId: string, file?: string) => {
+    'canvas:wrap',
+    (_event, siteDir: string, nodeId: string, wrapperSnippet: string, file?: string) => {
       try {
-        removeComponent(siteDir, nodeId, safePage(file));
+        wrapComponent(siteDir, nodeId, wrapperSnippet, safePage(file));
         return ok(null);
       } catch (error) {
-        return fail('CANVAS_REMOVE', error instanceof Error ? error.message : '删不掉');
+        return fail('CANVAS_WRAP', error instanceof Error ? error.message : '套不进去');
       }
     },
   );
-  ipcMain.handle(
-    'canvas:duplicate',
-    (_event, siteDir: string, nodeId: string, file?: string) => {
-      try {
-        duplicateComponent(siteDir, nodeId, safePage(file));
-        return ok(null);
-      } catch (error) {
-        return fail('CANVAS_DUPLICATE', error instanceof Error ? error.message : '复制不了');
-      }
-    },
-  );
+  ipcMain.handle('canvas:remove', (_event, siteDir: string, nodeId: string, file?: string) => {
+    try {
+      removeComponent(siteDir, nodeId, safePage(file));
+      return ok(null);
+    } catch (error) {
+      return fail('CANVAS_REMOVE', error instanceof Error ? error.message : '删不掉');
+    }
+  });
+  ipcMain.handle('canvas:duplicate', (_event, siteDir: string, nodeId: string, file?: string) => {
+    try {
+      duplicateComponent(siteDir, nodeId, safePage(file));
+      return ok(null);
+    } catch (error) {
+      return fail('CANVAS_DUPLICATE', error instanceof Error ? error.message : '复制不了');
+    }
+  });
   ipcMain.handle('canvas:canNest', (_event, parentName: string, childName: string) =>
     ok(nestingAllowed(parentName, childName)),
   );
@@ -800,7 +811,11 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.handle('canvas:props', (_event, name: string) =>
-    ok(manifest.find((item) => item.name === name)?.props ?? []),
+    ok(
+      manifest.find((item) => item.name === name)?.props ??
+        layoutSpecs.find((item) => item.name === name)?.props ??
+        [],
+    ),
   );
   ipcMain.handle(
     'canvas:setProp',
@@ -820,6 +835,37 @@ app.whenReady().then(() => {
       }
     },
   );
+  ipcMain.handle('section:list', (_event, siteDir: string) => {
+    try {
+      return ok(listSections(siteDir));
+    } catch (error) {
+      return fail('SECTION_LIST', error instanceof Error ? error.message : '读不到自定义区块');
+    }
+  });
+  ipcMain.handle('section:usage', (_event, siteDir: string, names: string[]) => {
+    try {
+      return ok(usageCounts(siteDir, names));
+    } catch (error) {
+      return fail('SECTION_USAGE', error instanceof Error ? error.message : '统计不了引用');
+    }
+  });
+  ipcMain.handle(
+    'section:save',
+    (_event, siteDir: string, file: string, nodeId: string, label: string) => {
+      try {
+        return ok(saveSection(siteDir, file, nodeId, label));
+      } catch (error) {
+        return fail('SECTION_SAVE', error instanceof Error ? error.message : '存不了区块');
+      }
+    },
+  );
+  ipcMain.handle('article:css', (_event, siteDir: string) => {
+    try {
+      return ok(readArticleCss(siteDir));
+    } catch (error) {
+      return fail('ARTICLE_CSS', error instanceof Error ? error.message : '读不到站点样式');
+    }
+  });
   ipcMain.handle('seo:check', (_event, siteDir: string) => {
     try {
       return ok(seoRows(readConfig(siteDir), listPosts(siteDir)));
@@ -861,6 +907,20 @@ app.whenReady().then(() => {
       return ok(customizePost(siteDir, slug));
     } catch (error) {
       return fail('CONTENT_CUSTOM', error instanceof Error ? error.message : '自定义失败');
+    }
+  });
+  ipcMain.handle('content:layoutRead', (_event, siteDir: string, slug: string) => {
+    try {
+      return ok(readLayoutComparison(siteDir, slug));
+    } catch (error) {
+      return fail('CONTENT_LAYOUT_READ', error instanceof Error ? error.message : '读不到版式');
+    }
+  });
+  ipcMain.handle('content:resetLayout', (_event, siteDir: string, slug: string) => {
+    try {
+      return ok(resetPostLayout(siteDir, slug));
+    } catch (error) {
+      return fail('CONTENT_LAYOUT_RESET', error instanceof Error ? error.message : '恢复失败');
     }
   });
   ipcMain.handle('content:delete', (_event, siteDir: string, slug: string) => {

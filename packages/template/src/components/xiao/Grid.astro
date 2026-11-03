@@ -1,17 +1,21 @@
 ---
-const { pad, bg, hideOn, ...rest } = Astro.props;
+const { pad, bg, hideOn, class: extraClass, ...rest } = Astro.props;
 const hide = Array.isArray(hideOn) ? hideOn : hideOn ? [hideOn] : [];
 const classes = [
   'x-box',
   pad ? `x-pad-${pad}` : '',
   bg ? `x-bg-${bg}` : '',
   ...hide.map((item) => `x-hide-${item}`),
+  extraClass,
 ]
   .filter(Boolean)
   .join(' ');
-const { gap = 'md' } = Astro.props;
+const { gap = 'md', cols = 'auto' } = Astro.props;
 ---
 
-<div class:list={[classes, 'x-grid', `x-gap-${gap}`]} {...rest}>
+<div
+  class:list={[classes, 'x-grid', cols !== 'auto' && `x-cols-${cols}`, `x-gap-${gap}`]}
+  {...rest}
+>
   <slot />
 </div>

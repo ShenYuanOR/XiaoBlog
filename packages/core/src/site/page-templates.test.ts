@@ -25,16 +25,20 @@ describe('自定义此页和页面模板', () => {
     expect(existsSync(path.join(site, 'src', 'layouts', 'posts', 'other.astro'))).toBe(false);
   });
 
-  it('三个模板各自成页，不改首页', () => {
+  it('页面模板各自成页，不改首页', () => {
     const site = mkdtempSync(path.join(tmpdir(), 'xiao-page-'));
     const index = path.join(site, 'src', 'pages', 'index.astro');
     mkdirSync(path.dirname(index), { recursive: true });
     writeFileSync(index, 'HOME\n');
     expect(createPage(site, 'blank', 'empty')).toBe('src/pages/empty.astro');
+    expect(createPage(site, 'docs', 'guide')).toContain('guide.astro');
     expect(createPage(site, 'landing', 'land')).toContain('land.astro');
+    expect(createPage(site, 'magazine', 'zine')).toContain('zine.astro');
     expect(createPage(site, 'about', 'about-me')).toContain('about-me.astro');
     expect(readFileSync(index, 'utf8')).toBe('HOME\n');
-    expect(readFileSync(path.join(site, 'src/pages/land.astro'), 'utf8')).toContain('<Section>');
+    expect(readFileSync(path.join(site, 'src/pages/guide.astro'), 'utf8')).toContain('<Heading');
+    expect(readFileSync(path.join(site, 'src/pages/land.astro'), 'utf8')).toContain('<Hero>');
+    expect(readFileSync(path.join(site, 'src/pages/zine.astro'), 'utf8')).toContain('<FeatureGrid');
     expect(readFileSync(path.join(site, 'src/pages/about-me.astro'), 'utf8')).toContain(
       'author.bio',
     );
@@ -65,6 +69,8 @@ describe('自定义此页和页面模板', () => {
     expect(safePage('src/layouts/posts/hello-xiao.astro')).toBe(
       'src/layouts/posts/hello-xiao.astro',
     );
+    expect(safePage('src/components/site/Header.astro')).toBe('src/components/site/Header.astro');
+    expect(safePage('src/components/site/Footer.astro')).toBe('src/components/site/Footer.astro');
     expect(safePage('../etc/passwd')).toBe('src/pages/index.astro');
     expect(safePage('src/content/posts/hello-xiao/index.html')).toBe(
       'src/content/posts/hello-xiao/index.html',
@@ -80,7 +86,7 @@ describe('自定义此页和页面模板', () => {
       [
         '---',
         'title: HTML',
-        "date: 2026-09-12",
+        'date: 2026-09-12',
         '---',
         '<div class="x-callout x-pad-md"><p>你好</p></div>',
         '<h2>标题</h2>',

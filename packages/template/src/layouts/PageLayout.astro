@@ -1,5 +1,8 @@
 ---
 import Base from './BaseLayout.astro';
+import PageDescription from '../components/xiao/PageDescription.astro';
+import PageShell from '../components/xiao/PageShell.astro';
+import PageTitle from '../components/xiao/PageTitle.astro';
 import SideTree from '../components/site/SideTree.astro';
 import { publishedPosts } from '../lib/posts';
 import type { HeadEntry } from '../lib/seo';
@@ -9,21 +12,33 @@ interface Props {
   description?: string;
   heads?: HeadEntry[];
   showHeading?: boolean;
+  /** 是否在标题下显示摘要，默认不显示。 */
+  showDescription?: boolean;
+  /** 侧栏位置：left / right / none。 */
+  sidebar?: 'left' | 'right' | 'none';
   /** 页面标识：透传给 BaseLayout 的 <body data-page> 与按页样式表查找。 */
   page?: string;
+  /** 版式根节点的附加 class。 */
+  class?: string;
 }
-const { title, description, heads = [], showHeading = true, page } = Astro.props;
+const {
+  title,
+  description,
+  heads = [],
+  showHeading = true,
+  showDescription = false,
+  sidebar = 'left',
+  page,
+  class: extraClass,
+} = Astro.props;
 const posts = await publishedPosts();
 ---
 
 <Base title={title} description={description} heads={heads} page={page}>
-  <div class="shell">
-    <aside class="side side-desktop">
-      <SideTree posts={posts} />
-    </aside>
-    <main class="page-body">
-      {showHeading && title && <h1>{title}</h1>}
-      <slot />
-    </main>
-  </div>
+  <PageShell sidebar={sidebar} mainClass="page-body" class={extraClass}>
+    <SideTree slot="side" posts={posts} />
+    <PageTitle title={title} show={showHeading} />
+    <PageDescription description={description} show={showDescription} />
+    <slot />
+  </PageShell>
 </Base>

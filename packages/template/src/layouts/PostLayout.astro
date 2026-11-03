@@ -1,10 +1,14 @@
 ---
 import Base from './BaseLayout.astro';
+import PageShell from '../components/xiao/PageShell.astro';
+import PostLicense from '../components/xiao/PostLicense.astro';
+import PostMeta from '../components/xiao/PostMeta.astro';
+import PostPager from '../components/xiao/PostPager.astro';
+import PostTags from '../components/xiao/PostTags.astro';
+import PostTitle from '../components/xiao/PostTitle.astro';
 import SideTree from '../components/site/SideTree.astro';
 import Toc from '../components/site/Toc.astro';
-import { withBase } from '../lib/base';
-import { loadConfig } from '../lib/config';
-import { publishedPosts, readingMinutes, type PostEntry } from '../lib/posts';
+import { publishedPosts, type PostEntry } from '../lib/posts';
 import { articleHeads } from '../lib/seo';
 
 interface Props {
@@ -14,10 +18,11 @@ interface Props {
   next?: PostEntry;
   /** 页面标识：默认不用传，posts/[...slug].astro 会传文章 id。 */
   page?: string;
+  /** 版式根节点的附加 class。 */
+  class?: string;
 }
-const { post, headings, prev, next, page } = Astro.props;
+const { post, headings, prev, next, page, class: extraClass } = Astro.props;
 const posts = await publishedPosts();
-const config = loadConfig();
 const heads = articleHeads({
   slug: post.id,
   title: post.data.title,
@@ -27,70 +32,20 @@ const heads = articleHeads({
   tags: post.data.tags,
   noindex: post.data.noindex,
 });
-const source =
-  'body' in post && typeof post.body === 'string' ? post.body : (post.data.description ?? '');
-const minutes = readingMinutes(source);
 ---
 
 <Base title={post.data.title} description={post.data.description} heads={heads} page={page}>
-  <div class="shell">
-    <aside class="side side-desktop">
-      <SideTree posts={posts} current={post.id} />
-    </aside>
-    <main>
-      <article class="prose">
-        <h1>{post.data.title}</h1>
-        <p class="meta">
-          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
-          {post.data.category && (
-            <>
-              {' · '}
-              <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
-                {post.data.category}
-              </a>
-            </>
-          )}
-          {' · '}
-          <span>预计阅读 {minutes} 分钟</span>
-        </p>
-        <Toc headings={headings} mobile />
-        <slot />
-        {post.data.tags.length > 0 && (
-          <ul class="pills tag-pills">
-            {post.data.tags.map((tag) => (
-              <li>
-                <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
-              </li>
-            ))}
-          </ul>
-        )}
-        {(prev || next) && (
-          <nav class="pager" aria-label="相邻文章">
-            {prev ? (
-              <a href={withBase(`posts/${prev.id}/`)}>
-                <small>上一篇</small>
-                <span>{prev.data.title}</span>
-              </a>
-            ) : (
-              <span></span>
-            )}
-            {next ? (
-              <a href={withBase(`posts/${next.id}/`)}>
-                <small>下一篇</small>
-                <span>{next.data.title}</span>
-              </a>
-            ) : (
-              <span></span>
-            )}
-          </nav>
-        )}
-        {config.posts.license.enabled && (
-          <p class="license">
-            许可协议：<a href={config.posts.license.url}>{config.posts.license.name}</a>
-          </p>
-        )}
-      </article>
-    </main>
-    <Toc headings={headings} />
-  </div>
+  <PageShell sidebar="left" class={extraClass}>
+    <SideTree slot="side" posts={posts} current={post.id} />
+    <article class="prose">
+      <PostTitle post={post} />
+      <PostMeta post={post} />
+      <Toc headings={headings} mobile />
+      <slot />
+      <PostTags post={post} />
+      <PostPager prev={prev} next={next} />
+      <PostLicense />
+    </article>
+    <Toc slot="toc" headings={headings} />
+  </PageShell>
 </Base>

@@ -13,10 +13,11 @@ import {
   setProp,
   setText,
   undoEdit,
+  wrapNode,
   type FileHistory,
 } from '@xiao/core/ast';
 import { htmlNodeComponent, htmlSnippet, manifest } from '@xiao/core/components';
-import { isHtmlPostFile, isSharedLayout } from '@xiao/core/site';
+import { isHtmlPostFile, isSharedLayout, isSitePart, normalizePageFile } from '@xiao/core/site';
 
 export interface OutlineNode {
   id: string;
@@ -51,6 +52,7 @@ export function safePage(file?: string): string {
     PAGE_FILE_RE.test(normalized) ||
     POST_LAYOUT_RE.test(normalized) ||
     isSharedLayout(normalized) ||
+    isSitePart(normalized) ||
     isHtmlPostFile(normalized)
   ) {
     return normalized;
@@ -98,8 +100,13 @@ function pagePath(siteDir: string, file = 'src/pages/index.astro'): string {
  * 插到 src/layouts/posts/*.astro 时要把新增的组件 import 再往上提一层。
  */
 function fixInsertedImports(source: string, file: string): string {
-  if (!isPostLayout(file)) return source;
-  return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../../components/xiao/');
+  if (isPostLayout(file)) {
+    return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../../components/xiao/');
+  }
+  if (normalizePageFile(file).startsWith('src/components/site/')) {
+    return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../xiao/');
+  }
+  return source;
 }
 
 /** `<slot />` 是文章正文插槽：结构里受保护，不能删、不能改属性、不能往里塞组件。 */
@@ -156,10 +163,16 @@ export function insertComponent(
   file = 'src/pages/index.astro',
 ): string {
   const spec = manifest.find((item) => item.name === component);
-  if (!spec) throw new Error(`没有组件 ${component}`);
+  if (!spec && !/^[A-Z][A-Za-z0-9]*$/.test(component)) {
+    throw new Error(`没有组件 ${component}`);
+  }
   const loaded = loadCanvasSource(siteDir, file);
   assertNotSlotParent(loaded.doc, parentId);
-  const snippet = isHtmlPost(file) ? htmlSnippet(component) : spec.snippet;
+  const snippet = spec
+    ? isHtmlPost(file)
+      ? htmlSnippet(component)
+      : spec.snippet
+    : `<${component} />`;
   const next = fixInsertedImports(insertNode(loaded.doc, parentId, index, snippet), file);
   return commitCanvas(siteDir, file, loaded.full, loaded.head, next);
 }
@@ -255,6 +268,19 @@ export function setPageText(
     throw new Error('「正文」块受保护：不能删除或改它的内容');
   }
   const next = setText(loaded.doc, nodeId, text);
+  return commitCanvas(siteDir, file, loaded.full, loaded.head, next);
+}
+
+export function wrapComponent(
+  siteDir: string,
+  nodeId: string,
+  wrapperSnippet: string,
+  file = 'src/pages/index.astro',
+): string {
+  const loaded = loadCanvasSource(siteDir, file);
+  const node = findNode(loaded.doc.tree, nodeId);
+  if (isSlotNode(node)) throw new Error('「正文」块不能套容器');
+  const next = fixInsertedImports(wrapNode(loaded.doc, nodeId, wrapperSnippet), file);
   return commitCanvas(siteDir, file, loaded.full, loaded.head, next);
 }
 

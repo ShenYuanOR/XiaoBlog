@@ -1,10 +1,5 @@
 ---
-import { loadConfig } from '../../lib/config';
-
-const config = loadConfig();
-const name = config.author.name.trim() || config.site.title;
+import SiteCopyright from '../xiao/SiteCopyright.astro';
 ---
 
-<footer class="footer">
-  © {config.site.since} {name}
-</footer>
+<SiteCopyright />

@@ -1,0 +1,18 @@
+---
+/** 数据/统计条区块。 */
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  cols?: string;
+  class?: string;
+}
+const { pad = 'lg', bg = 'surface', cols = '3', class: extraClass } = Astro.props;
+---
+
+<Section pad={pad} bg={bg} width="full" class={extraClass}>
+  <div class:list={['x-grid', `x-cols-${cols}`, 'x-gap-lg', 'x-talign-center']}>
+    <slot />
+  </div>
+</Section>

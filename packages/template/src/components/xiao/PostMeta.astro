@@ -1,0 +1,53 @@
+---
+/**
+ * 文章元信息参数：日期 / 分类 / 预计阅读。
+ *
+ * show* 和 separator 是展示选项；数据从 post 固定绑定。
+ */
+import { withBase } from '../../lib/base';
+import { readingMinutes, type PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  showDate?: boolean | string;
+  showCategory?: boolean | string;
+  showReading?: boolean | string;
+  separator?: string;
+  class?: string;
+}
+const {
+  post,
+  showDate = true,
+  showCategory = true,
+  showReading = true,
+  separator = ' · ',
+  class: extraClass,
+} = Astro.props;
+const on = (value: boolean | string | undefined): boolean =>
+  value === undefined ? true : value !== false && value !== 'false' && value !== 'no';
+const minutes = readingMinutes(post.body);
+const category = post.data.category;
+const date = post.data.date.slice(0, 10);
+const hasDate = on(showDate);
+const hasCategory = on(showCategory) && Boolean(category);
+const hasReading = on(showReading);
+const first = hasDate || hasCategory;
+---
+
+{(hasDate || hasCategory || hasReading) && (
+  <p class:list={['meta', extraClass]}>
+    {hasDate && <time datetime={post.data.date}>{date}</time>}
+    {hasCategory && (
+      <>
+        {hasDate && separator}
+        <a href={withBase(`categories/${encodeURIComponent(category ?? '')}/`)}>{category}</a>
+      </>
+    )}
+    {hasReading && (
+      <>
+        {first && separator}
+        <span>预计阅读 {minutes} 分钟</span>
+      </>
+    )}
+  </p>
+)}

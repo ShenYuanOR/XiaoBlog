@@ -57,23 +57,15 @@ const showList = computed(
   () => Boolean(session.siteDir) && (session.nav === 'posts' || session.nav === 'pages'),
 );
 const layoutOpen = computed(() => session.nav === 'posts' && Boolean(session.layoutSlug));
-const htmlCanvas = computed(
-  () =>
-    session.nav === 'posts' &&
-    Boolean(slug.value) &&
-    session.activePostFormat === 'html' &&
-    !layoutOpen.value,
-);
 const showCanvas = computed(
-  () => Boolean(session.siteDir) && (session.nav === 'pages' || layoutOpen.value || htmlCanvas.value),
+  () => Boolean(session.siteDir) && (session.nav === 'pages' || layoutOpen.value),
 );
 const showEditor = computed(
   () =>
     Boolean(session.siteDir) &&
     session.nav === 'posts' &&
     Boolean(slug.value) &&
-    !layoutOpen.value &&
-    session.activePostFormat !== 'html',
+    !layoutOpen.value,
 );
 const showInspector = computed(() => session.inspectorOpen && showList.value);
 const listRail = computed(() => showList.value && session.listCollapsed);
@@ -158,28 +150,10 @@ async function openFormalPreview(path: string | Event = ''): Promise<void> {
   }
 }
 
-function htmlPostFile(next: string): string {
-  return `src/content/posts/${next}/index.html`;
-}
-
 function selectPost(next: string): void {
   if (session.layoutSlug) session.closeLayout();
   slug.value = next;
-  if (session.activePostFormat === 'html' && next) {
-    session.setPage(htmlPostFile(next));
-  }
 }
-
-// 离开文章时 setNav 会把 HTML 文件换成首页，否则页面画布还停在文章上。
-// 回到文章时要装回这篇 HTML，否则画布继续用页面布局。
-watch(
-  () => session.nav,
-  (nav) => {
-    if (nav !== 'posts' || !slug.value || session.activePostFormat !== 'html') return;
-    const file = htmlPostFile(slug.value);
-    if (session.activePage.replaceAll('\\', '/') !== file) session.setPage(file);
-  },
-);
 
 async function toggleMode(): Promise<void> {
   session.toggleMode();
