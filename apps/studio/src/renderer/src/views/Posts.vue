@@ -14,6 +14,7 @@ import {
   UiPopover,
   UiRow,
   UiSelect,
+  UiSegmented,
   UiSpinner,
 } from '../ui/index.ts';
 
@@ -54,7 +55,15 @@ const createFormatKey = computed({
   set: (value: string | number) => {
     createFormat.value = value === 'html' ? 'html' : 'markdown';
   },
-});const createTouched = ref(false);
+});
+const createKind = ref<'article' | 'page'>('article');
+const createKindKey = computed({
+  get: () => createKind.value,
+  set: (value: string) => {
+    createKind.value = value === 'page' ? 'page' : 'article';
+  },
+});
+const createTouched = ref(false);
 const creating = ref(false);
 
 const renameOpen = ref(false);
@@ -171,6 +180,7 @@ function openCreate(): void {
   menuSlug.value = '';
   createTitle.value = '';
   createFormat.value = 'markdown';
+  createKind.value = 'article';
   createCategory.value = categoryOptions.value.some((option) => option.value === DEFAULT_CATEGORY)
     ? DEFAULT_CATEGORY
     : (categoryOptions.value[0]?.value ?? DEFAULT_CATEGORY);
@@ -188,18 +198,20 @@ async function submitCreate(): Promise<void> {
   }
   creating.value = true;
   try {
+    const asPage = createFormat.value === 'html' && createKind.value === 'page';
     const result = await window.xiao.content.create(
       session.siteDir,
       title,
-      createCategory.value || DEFAULT_CATEGORY,
+      asPage ? '' : createCategory.value || DEFAULT_CATEGORY,
       createFormat.value,
+      asPage,
     );
     if (!result.ok) {
       notify(`没能新建文章：${result.message}。检查站点文件夹权限后重试。`, 'error');
       return;
     }
     createOpen.value = false;
-    const kind = createFormat.value === 'html' ? 'HTML 文章' : 'Markdown 文章';
+    const kind = asPage ? '独立页面' : createFormat.value === 'html' ? 'HTML 文章' : 'Markdown 文章';
     notify(`已新建${kind}《${result.data.title}》`, 'info', 'post-create');
     session.activePostFormat = result.data.format ?? createFormat.value;
     emit('select', result.data.slug);
@@ -434,7 +446,7 @@ watch(
       </p>
     </div>
 
-    <UiDialog v-model="createOpen" title="新建文章" :width="420">
+    <UiDialog v-model="createOpen" title="新建文章" :width="createFormat === 'html' ? 520 : 420">
       <div class="form">
         <UiField label="标题" :error="createTitleError" required>
           <UiInput
@@ -445,10 +457,34 @@ watch(
             @keydown.enter="submitCreate"
           />
         </UiField>
-        <UiField label="格式" hint="两种格式都能在本页切「编辑 / 源码」。HTML 正文按原样保存。">
+        <UiField
+          label="格式"
+          :hint="
+            createFormat === 'html'
+              ? 'HTML 打开后直接是源码编辑器，可并排预览。'
+              : 'Markdown 可以在本页切「编辑 / 源码」。'
+          "
+        >
           <UiSelect v-model="createFormatKey" :options="CREATE_FORMATS" />
         </UiField>
-        <UiField label="分类" hint="分类决定左侧列表的分组，默认「生活」。">
+        <UiField
+          v-if="createFormat === 'html'"
+          label="类型"
+          hint="两个选项对等。文章带完整元数据；独立页面只保留标题和 SEO 描述。"
+        >
+          <UiSegmented
+            v-model="createKindKey"
+            :items="[
+              { key: 'article', label: '注册为文章' },
+              { key: 'page', label: '作为独立页面' },
+            ]"
+          />
+        </UiField>
+        <UiField
+          v-if="createFormat !== 'html' || createKind === 'article'"
+          label="分类"
+          hint="分类决定左侧列表的分组，默认「生活」。"
+        >
           <UiSelect v-model="createCategory" :options="categoryOptions" />
         </UiField>
       </div>

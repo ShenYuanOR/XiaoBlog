@@ -240,6 +240,7 @@ export interface XiaoApi {
       title: string,
       category: string,
       format?: ContentFormat,
+      standalone?: boolean,
     ) => Promise<IpcResult<ContentPost>>;
     customize: (siteDir: string, slug: string) => Promise<IpcResult<string>>;
     layoutRead: (

@@ -881,9 +881,10 @@ app.whenReady().then(() => {
       title: string,
       category: string,
       format: 'markdown' | 'html' = 'markdown',
+      standalone = false,
     ) => {
       try {
-        const post = createPost(siteDir, title, category, format);
+        const post = createPost(siteDir, title, category, format, standalone);
         return ok(post);
       } catch (error) {
         return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');

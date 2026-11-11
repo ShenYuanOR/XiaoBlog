@@ -176,6 +176,8 @@ const saveText = computed(() => {
 });
 
 const fieldsEditable = computed(() => hasFrontmatter.value && viewState.value !== 'error');
+/** HTML 且 standalone：独立页面。Markdown 始终按文章字段显示。 */
+const isPage = computed(() => format.value === 'html' && standalone.value);
 
 const showEmptyHint = computed(() => viewState.value === 'empty' && !sourceMode.value);
 
@@ -1128,6 +1130,7 @@ async function open(): Promise<void> {
   cover.value = readField(opened.fmRaw, 'cover');
   date.value = readField(opened.fmRaw, 'date');
   draft.value = /^draft:[ \t]*true/m.test(opened.fmRaw);
+  standalone.value = /^standalone:[ \t]*true\b/m.test(opened.fmRaw);
   baseline = snapshotFields();
   syncingFields = false;
 
@@ -1530,7 +1533,7 @@ watch(
     <Teleport v-if="inspectorHost" to="#inspector-host">
       <section class="inspector">
         <header class="inspector-head">
-          <h3>文章属性</h3>
+          <h3>{{ isPage ? '页面属性' : '文章属性' }}</h3>
           <div class="inspector-head-actions">
             <UiBadge :tone="saveTone" dot>{{ saveText }}</UiBadge>
             <UiTooltip label="收起文章属性">
@@ -1546,63 +1549,80 @@ watch(
         </header>
 
         <div class="inspector-body">
-          <UiField label="标题" :hint="hintFor('title', '显示在文章顶部和列表里。')">
-            <UiInput v-model="title" :disabled="!fieldsEditable" placeholder="给这篇文章起个标题" />
-          </UiField>
-
-          <UiField label="分类" :hint="hintFor('category', '用于文章列表里的分类树。')">
-            <UiSelect v-model="category" :options="categoryOptions" :disabled="!fieldsEditable" />
-          </UiField>
-
-          <UiField label="标签" :hint="hintFor('tags', '用逗号分隔，例如：随笔, 旅行。')">
-            <UiInput v-model="tagsText" :disabled="!fieldsEditable" placeholder="随笔, 旅行" />
-          </UiField>
+          <p v-if="format === 'html'" class="inspector-note">
+            {{ isPage ? '独立页面' : '文章' }}。类型在新建时选定，这里只显示对应字段。
+          </p>
 
           <UiField
-            label="摘要"
-            :hint="hintFor('summary', '一两句话概括这篇，用于列表和搜索结果。')"
+            label="标题"
+            :hint="hintFor('title', isPage ? '显示在页面标题和浏览器标签上。' : '显示在文章顶部和列表里。')"
+          >
+            <UiInput
+              v-model="title"
+              :disabled="!fieldsEditable"
+              :placeholder="isPage ? '给这个页面起个标题' : '给这篇文章起个标题'"
+            />
+          </UiField>
+
+          <template v-if="!isPage">
+            <UiField label="分类" :hint="hintFor('category', '用于文章列表里的分类树。')">
+              <UiSelect v-model="category" :options="categoryOptions" :disabled="!fieldsEditable" />
+            </UiField>
+
+            <UiField label="标签" :hint="hintFor('tags', '用逗号分隔，例如：随笔, 旅行。')">
+              <UiInput v-model="tagsText" :disabled="!fieldsEditable" placeholder="随笔, 旅行" />
+            </UiField>
+
+            <UiField
+              label="摘要"
+              :hint="hintFor('summary', '一两句话概括这篇，用于列表和搜索结果。')"
+            >
+              <UiTextarea
+                v-model="summary"
+                :rows="3"
+                :disabled="!fieldsEditable"
+                placeholder="这篇讲了什么？"
+              />
+            </UiField>
+
+            <UiField label="封面" :hint="hintFor('cover', '图片地址；留空表示不用封面。')">
+              <UiInput
+                v-model="cover"
+                :disabled="!fieldsEditable"
+                placeholder="./cover.jpg 或站内路径"
+              />
+            </UiField>
+
+            <UiField
+              label="发布日期"
+              :hint="hintFor('date', '例如 2026-10-24 00:00:00；留空使用默认排序。')"
+            >
+              <UiInput v-model="date" :disabled="!fieldsEditable" placeholder="2026-10-24 00:00:00" />
+            </UiField>
+
+            <UiField
+              label="草稿"
+              :hint="draft ? '草稿不会出现在站点里，构建时也跳过。' : '正文会随站点一起构建发布。'"
+            >
+              <UiSwitch v-model="draft" :disabled="!fieldsEditable" aria-label="草稿状态" />
+            </UiField>
+          </template>
+
+          <UiField
+            v-else
+            label="SEO 描述"
+            :hint="hintFor('summary', '用于搜索结果和页面说明。')"
           >
             <UiTextarea
               v-model="summary"
               :rows="3"
               :disabled="!fieldsEditable"
-              placeholder="这篇讲了什么？"
+              placeholder="这个页面是做什么的？"
             />
           </UiField>
-
-          <UiField label="封面" :hint="hintFor('cover', '图片地址；留空表示不用封面。')">
-            <UiInput
-              v-model="cover"
-              :disabled="!fieldsEditable"
-              placeholder="./cover.jpg 或站内路径"
-            />
-          </UiField>
-
-          <UiField
-            label="发布日期"
-            :hint="hintFor('date', '例如 2026-10-24 00:00:00；留空使用默认排序。')"
-          >
-            <UiInput v-model="date" :disabled="!fieldsEditable" placeholder="2026-10-24 00:00:00" />
-          </UiField>
-
-          <UiField
-            label="草稿"
-            :hint="draft ? '草稿不会出现在站点里，构建时也跳过。' : '正文会随站点一起构建发布。'"
-          >
-            <UiSwitch v-model="draft" :disabled="!fieldsEditable" aria-label="草稿状态" />
-          </UiField>
-
-          <UiField
-            v-if="format === 'html'"
-            label="独立成页"
-            hint="打开后不套文章模板，也没有站点顶栏和页脚；正文是完整 HTML 文档时原样输出。"
-          >
-            <UiSwitch
-              v-model="standalone"
-              :disabled="!fieldsEditable"
-              aria-label="独立成页"
-            />
-          </UiField>
+          <p v-if="isPage && draft" class="inspector-note">
+            这篇是草稿，站点里不会出现。发布前在源码 frontmatter 里把 draft 改成 false。
+          </p>
 
           <div class="inspector-meta">
             <div class="meta-row">

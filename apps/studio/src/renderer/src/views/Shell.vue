@@ -67,7 +67,8 @@ const showEditor = computed(
     Boolean(slug.value) &&
     !layoutOpen.value,
 );
-const showInspector = computed(() => session.inspectorOpen && showList.value);
+const showInspector = computed(() => showList.value && session.inspectorOpen);
+const inspectorRail = computed(() => showList.value && !session.inspectorOpen);
 const listRail = computed(() => showList.value && session.listCollapsed);
 const hasSite = computed(() => Boolean(session.siteDir));
 
@@ -312,6 +313,7 @@ const modeKey = computed({
         'has-list': showList && !session.listCollapsed,
         'list-rail': listRail,
         'has-inspector': showInspector,
+        'inspector-rail': inspectorRail,
       }"
     >
       <aside v-if="showList" class="list" :class="{ collapsed: session.listCollapsed }">
@@ -374,13 +376,13 @@ const modeKey = computed({
           </div>
           <div class="view-actions">
             <UiSegmented v-if="showCanvas && !session.workbenchSource" v-model="previewDeviceKey" :items="deviceItems" />
-            <UiTooltip v-if="showList" :label="session.inspectorOpen ? '收起属性栏' : '展开属性栏'">
+            <UiTooltip v-if="showList" :label="session.inspectorOpen ? '收成窄栏' : '展开属性栏'">
               <UiButton
                 variant="ghost"
                 size="sm"
                 :icon="icons.list"
                 :class="{ on: session.inspectorOpen }"
-                :aria-label="session.inspectorOpen ? '收起属性栏' : '展开属性栏'"
+                :aria-label="session.inspectorOpen ? '收成窄栏' : '展开属性栏'"
                 @click="session.inspectorOpen = !session.inspectorOpen"
               />
             </UiTooltip>
@@ -423,8 +425,17 @@ const modeKey = computed({
 
       </main>
 
-      <aside v-if="showInspector" class="inspector">
-        <div id="inspector-host" class="inspector-host"></div>
+      <aside v-if="showList" class="inspector" :class="{ rail: inspectorRail }">
+        <UiTooltip v-if="inspectorRail" label="展开属性">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            :icon="icons.list"
+            aria-label="展开属性"
+            @click="session.inspectorOpen = true"
+          />
+        </UiTooltip>
+        <div v-else id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
 
@@ -558,6 +569,18 @@ const modeKey = computed({
   grid-template-columns: 44px minmax(0, 1fr) 320px;
 }
 
+.body.inspector-rail {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.body.has-list.inspector-rail {
+  grid-template-columns: 272px minmax(0, 1fr) 44px;
+}
+
+.body.list-rail.inspector-rail {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -661,6 +684,11 @@ const modeKey = computed({
   min-height: 0;
   background: var(--ui-panel);
   border-left: 1px solid var(--ui-line);
+}
+
+.inspector.rail {
+  align-items: center;
+  padding-top: var(--ui-s2);
 }
 
 .inspector-host {

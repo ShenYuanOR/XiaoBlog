@@ -35,6 +35,8 @@ export interface PostContent {
 export interface CreatePostOptions {
   category?: string;
   format?: ContentFormat;
+  /** true 表示独立页面，写入现有 standalone，不另起字段。 */
+  standalone?: boolean;
 }
 
 const FORMAT_FILE: Record<ContentFormat, string> = {
@@ -230,20 +232,21 @@ function createPostBody(format: ContentFormat): string {
 }
 
 /**
- * 新建文章。
- * 主进程 `content:create` handler 目前只转发 (siteDir, title, category)；
- * 为了不丢 format，preload 在 HTML 时把 category 位置传成 `{ category, format }`，
- * 这里两种入参都接受，将来 handler 补第 4 个参数时可直接透传。
+ * 新建文章或独立页面。
+ * category 可以是字符串，也可以是 `{ category, format, standalone }`。
+ * HTML 且 standalone 为 true 时写入现有 standalone 字段，表示独立页面。
  */
 export function createPost(
   siteDir: string,
   title: string,
   category: string | CreatePostOptions,
   format: ContentFormat = 'markdown',
+  standalone = false,
 ): PostItem {
   const input: CreatePostOptions = typeof category === 'string' ? { category } : (category ?? {});
   const targetFormat = resolveFormat(input.format ?? format);
   const categoryName = (input.category ?? '').trim();
+  const asPage = targetFormat === 'html' && Boolean(input.standalone ?? standalone);
   const slug = slugFromTitle(title.trim() || 'note');
   const safe = isValidSlug(slug) ? slug : `note-${Date.now().toString(36)}`;
   const dir = postDir(siteDir, safe);
@@ -255,6 +258,7 @@ export function createPost(
     categoryName ? `category: ${JSON.stringify(categoryName)}` : null,
     'description: ""',
     'draft: true',
+    asPage ? 'standalone: true' : null,
     '---',
     '',
     createPostBody(targetFormat),

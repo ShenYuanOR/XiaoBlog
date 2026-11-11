@@ -149,7 +149,8 @@ const api = {
       title: string,
       category: string,
       format: 'markdown' | 'html' = 'markdown',
-    ) => ipcRenderer.invoke('content:create', siteDir, title, category, format),
+      standalone = false,
+    ) => ipcRenderer.invoke('content:create', siteDir, title, category, format, standalone),
     customize: (siteDir: string, slug: string) =>
       ipcRenderer.invoke('content:customize', siteDir, slug),
     layoutRead: (

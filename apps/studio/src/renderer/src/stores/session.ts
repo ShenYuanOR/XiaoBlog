@@ -45,7 +45,14 @@ export const useSession = defineStore('session', () => {
   const devOpen = ref('');
   const drag = ref<{ kind: 'new' | 'move'; name: string; id: string } | null>(null);
   const saveState = ref<SaveState>('saved');
-  const inspectorOpen = ref(true);
+  /** 属性栏默认收成窄栏；true 才展开成整栏。赋值 false 回到窄栏，不把整栏拆掉。 */
+  const inspectorExpanded = ref(false);
+  const inspectorOpen = computed({
+    get: () => inspectorExpanded.value,
+    set: (value: boolean) => {
+      inspectorExpanded.value = value;
+    },
+  });
   const listCollapsed = ref(false);
   /** 编辑台正在看源码：页面画布收起真页面，不占工作区。 */
   const workbenchSource = ref(false);
