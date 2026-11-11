@@ -36,8 +36,6 @@ import {
 } from '../ui/index.ts';
 import WorkbenchBar from './WorkbenchBar.vue';
 import HtmlArticleEditor from './HtmlArticleEditor.vue';
-import HtmlBlockInspector from './HtmlBlockInspector.vue';
-import type { HtmlBlockInfo } from '../editor/block-style.ts';
 
 installMonaco();
 
@@ -65,7 +63,6 @@ const sourceRoot = ref<HTMLElement | null>(null);
 const htmlEditor = ref<InstanceType<typeof HtmlArticleEditor> | null>(null);
 const htmlSeed = ref('');
 const htmlKey = ref(0);
-const htmlBlock = ref<HtmlBlockInfo | null>(null);
 const bodyElement = ref<HTMLElement | null>(null);
 const viewState = ref<ViewState>('loading');
 const loadError = ref('');
@@ -753,31 +750,8 @@ function onHtmlChange(text: string): void {
   touchEdits();
 }
 
-function onHtmlSelect(info: HtmlBlockInfo | null): void {
-  htmlBlock.value = info;
-}
-
-function onHtmlClasses(classes: string[]): void {
-  htmlEditor.value?.setBlockClasses(classes);
-}
-
-function onHtmlAttrs(attrs: Record<string, string | number>): void {
-  htmlEditor.value?.setBlockAttrs(attrs);
-}
-
-function onHtmlColumns(count: number): void {
-  if (htmlEditor.value?.setColumnsCount(count) === false) {
-    notify('那一栏里还有内容，先把多出来的栏清空，再减少栏数。', 'error', 'html-columns');
-  }
-}
-
-function deselectHtmlBlock(): void {
-  htmlBlock.value = null;
-}
-
 async function enterSource(): Promise<void> {
   if (!session || sourceMode.value) return;
-  htmlBlock.value = null;
   const text = bodyEdited ? (currentBody() ?? session.body) : session.body;
   pendingSourceText = text;
   sourceMode.value = true;
@@ -1732,7 +1706,6 @@ async function open(): Promise<void> {
 
   charCount.value = countChars(opened.body);
   sourceMode.value = false;
-  htmlBlock.value = null;
   if (format.value === 'html') {
     viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
@@ -2183,7 +2156,6 @@ watch(
         :slug="slug"
         :html="htmlSeed"
         @change="onHtmlChange"
-        @select="onHtmlSelect"
       />
       <div v-show="showMonaco" ref="sourceRoot" class="source" />
     </div>
@@ -2191,7 +2163,7 @@ watch(
     <Teleport v-if="inspectorHost" to="#inspector-host">
       <section class="inspector">
         <header class="inspector-head">
-          <h3>{{ format === 'html' && htmlBlock ? '区块样式' : '文章属性' }}</h3>
+          <h3>文章属性</h3>
           <div class="inspector-head-actions">
             <UiBadge :tone="saveTone" dot>{{ saveText }}</UiBadge>
             <UiTooltip label="收起文章属性">
@@ -2207,19 +2179,6 @@ watch(
         </header>
 
         <div class="inspector-body">
-          <HtmlBlockInspector
-            v-if="format === 'html' && htmlBlock && !sourceMode"
-            :block="htmlBlock"
-            :site-dir="siteDir"
-            :slug="slug"
-            @classes="onHtmlClasses"
-            @attrs="onHtmlAttrs"
-            @columns-count="onHtmlColumns"
-            @deselect="deselectHtmlBlock"
-          />
-          <div v-if="format === 'html' && htmlBlock && !sourceMode" class="inspector-section-label">
-            文章属性
-          </div>
           <UiField label="标题" :hint="hintFor('title', '显示在文章顶部和列表里。')">
             <UiInput v-model="title" :disabled="!fieldsEditable" placeholder="给这篇文章起个标题" />
           </UiField>
