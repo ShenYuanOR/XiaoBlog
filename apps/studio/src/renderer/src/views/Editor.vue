@@ -1705,6 +1705,130 @@ watch(
   z-index: 80;
 }
 
+/* 选中气泡和斜杠菜单改用 Studio 令牌，不再沿用 Crepe 默认的大圆角浮层。 */
+.crepe :deep(.milkdown-toolbar) {
+  gap: 2px;
+  padding: 2px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  box-shadow: var(--ui-shadow-1);
+}
+
+.crepe :deep(.milkdown-toolbar .divider) {
+  width: 1px;
+  height: 16px;
+  margin: 6px 2px;
+  background: var(--ui-line);
+}
+
+.crepe :deep(.milkdown-toolbar .toolbar-item) {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 4px;
+  border-radius: var(--ui-r-sm);
+}
+
+.crepe :deep(.milkdown-toolbar .toolbar-item svg) {
+  width: 16px;
+  height: 16px;
+  color: var(--ui-text-2);
+  fill: var(--ui-text-2);
+}
+
+.crepe :deep(.milkdown-toolbar .toolbar-item:hover) {
+  background: var(--ui-hover);
+}
+
+.crepe :deep(.milkdown-toolbar .toolbar-item.active) {
+  background: var(--ui-active);
+}
+
+.crepe :deep(.milkdown-toolbar .toolbar-item.active svg) {
+  color: var(--ui-accent);
+  fill: var(--ui-accent);
+}
+
+.crepe :deep(.milkdown-slash-menu) {
+  min-width: 220px;
+  color: var(--ui-text);
+  font-family: var(--ui-font);
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  box-shadow: var(--ui-shadow-2);
+}
+
+.crepe :deep(.milkdown-slash-menu .tab-group) {
+  padding: var(--ui-s2) var(--ui-s2) 0;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.crepe :deep(.milkdown-slash-menu .tab-group ul) {
+  gap: var(--ui-s1);
+  padding: var(--ui-s1);
+}
+
+.crepe :deep(.milkdown-slash-menu .tab-group li),
+.crepe :deep(.milkdown-slash-menu .menu-group li) {
+  min-width: 0;
+  gap: var(--ui-s2);
+  padding: var(--ui-s2);
+  border-radius: var(--ui-r-sm);
+  font-size: var(--ui-fs-2);
+  font-weight: 500;
+  line-height: var(--ui-lh);
+}
+
+.crepe :deep(.milkdown-slash-menu .menu-group h6) {
+  padding: var(--ui-s2) var(--ui-s2) var(--ui-s1);
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.crepe :deep(.milkdown-slash-menu .menu-groups) {
+  padding: var(--ui-s1);
+}
+
+.crepe :deep(.milkdown-slash-menu li.hover),
+.crepe :deep(.milkdown-slash-menu li.active),
+.crepe :deep(.milkdown-slash-menu .tab-group li.selected),
+.crepe :deep(.milkdown-slash-menu .tab-group li:hover) {
+  background: var(--ui-hover);
+}
+
+.crepe :deep(.milkdown-slash-menu .menu-group li svg) {
+  width: 16px;
+  height: 16px;
+  color: var(--ui-text-2);
+  fill: var(--ui-text-2);
+}
+
+.crepe :deep(.milkdown-link-preview),
+.crepe :deep(.milkdown-link-edit) {
+  color: var(--ui-text);
+  font-family: var(--ui-font);
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  box-shadow: var(--ui-shadow-1);
+}
+
+.crepe :deep(.milkdown-block-handle .operation-item) {
+  border-radius: var(--ui-r-sm);
+}
+
+.crepe :deep(.milkdown-block-handle .operation-item svg) {
+  fill: var(--ui-text-3);
+}
+
+.crepe :deep(.milkdown-block-handle .operation-item:hover) {
+  background: var(--ui-hover);
+}
+
 .crepe :deep(.milkdown-slash-menu[data-show='true']) {
   display: flex;
   flex-direction: column;
