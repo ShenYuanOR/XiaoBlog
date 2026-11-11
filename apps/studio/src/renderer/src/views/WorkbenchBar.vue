@@ -11,8 +11,10 @@ const props = withDefaults(
     badge: string;
     badgeTone?: 'accent' | 'neutral';
     saveDisabled?: boolean;
+    /** HTML 文章固定源码，不提供可视化切换。 */
+    showMode?: boolean;
   }>(),
-  { badgeTone: 'neutral', saveDisabled: false },
+  { badgeTone: 'neutral', saveDisabled: false, showMode: true },
 );
 
 const emit = defineEmits<{
@@ -82,7 +84,13 @@ const saveIcon = computed(() => {
 
     <div class="bar-grow" />
 
-    <UiSegmented class="mode-switch" v-model="modeKey" :items="modeItems" aria-label="编辑模式" />
+    <UiSegmented
+      v-if="showMode"
+      class="mode-switch"
+      v-model="modeKey"
+      :items="modeItems"
+      aria-label="编辑模式"
+    />
   </div>
 </template>
 

@@ -78,6 +78,10 @@ const layoutPath = computed(() => layoutFileOf(props.slug));
 const htmlBoxOpen = ref(false);
 const htmlBoxValue = ref('');
 const htmlBoxPrevious = ref('');
+const htmlPreviewOpen = ref(true);
+const htmlPreviewHole = ref<HTMLElement | null>(null);
+let htmlPreviewFrame = 0;
+let htmlPreviewObserver: ResizeObserver | null = null;
 
 const title = ref('');
 const category = ref('');
@@ -132,13 +136,13 @@ let chain: Promise<void> = Promise.resolve();
 const workbenchMode = computed({
   get: () => (sourceMode.value ? 'source' : 'visual'),
   set: (value: 'visual' | 'source') => {
-    if (sessionStore.mode === 'develop' && format.value === 'html' && value === 'visual') return;
+    if (format.value === 'html') return;
     if (value === 'source') void enterSource();
     else enterVisual();
   },
 });
 
-/** 两种格式都是：编辑 = 可视化，源码 = Monaco。 */
+/** Markdown 可在可视化与源码之间切；HTML 固定 Monaco。 */
 const showMonaco = computed(() => viewState.value !== 'loading' && sourceMode.value);
 
 const showHtmlVisual = computed(
@@ -823,14 +827,23 @@ function onHtmlChange(text: string): void {
 }
 
 async function enterSource(): Promise<void> {
-  if (!session || sourceMode.value) return;
-  const text = bodyEdited ? (currentBody() ?? session.body) : session.body;
+  if (!session) return;
+  const text = sourceEditor
+    ? sourceEditor.getValue()
+    : bodyEdited
+      ? (currentBody() ?? session.body)
+      : session.body;
   pendingSourceText = text;
   sourceMode.value = true;
   sessionStore.setWorkbenchSource(true);
   await nextTick();
   resetScroll();
-  if (!session || !sourceMode.value || sourceEditor) return;
+  if (!session || !sourceMode.value) return;
+  if (!sourceRoot.value) await nextTick();
+  if (sourceEditor) {
+    sourceEditor.layout();
+    return;
+  }
   const editor = createMonacoEditor(text, format.value === 'html' ? 'html' : 'markdown');
   sourceInitial = text;
   await nextTick();
@@ -1120,15 +1133,12 @@ async function open(): Promise<void> {
 
   charCount.value = countChars(opened.body);
   sourceMode.value = false;
-  if (format.value === 'html' && sessionStore.mode === 'develop') {
+  if (format.value === 'html') {
     viewState.value = 'ready';
     sessionStore.setSaveState('saved');
+    htmlPreviewOpen.value = true;
     await enterSource();
-    void openPreview();
-  } else if (format.value === 'html') {
-    viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
-    sessionStore.setSaveState('saved');
-    if (viewState.value === 'ready') await mountHtmlVisual(opened.body, gen);
+    void syncHtmlPreview();
   } else {
     viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
@@ -1144,12 +1154,66 @@ async function reload(): Promise<void> {
 
 /* ---------- 顶栏动作 ---------- */
 
+function htmlPreviewUrl(): string {
+  const base = sessionStore.previewUrl;
+  if (!base || !props.slug) return '';
+  const root = base.endsWith('/') ? base : `${base}/`;
+  return new URL(`posts/${encodeURIComponent(props.slug)}/`, root).href;
+}
+
+async function ensureHtmlPreview(): Promise<void> {
+  if (!props.siteDir || sessionStore.building) return;
+  if (sessionStore.previewUrl && sessionStore.previewSiteDir === props.siteDir) return;
+  sessionStore.building = true;
+  const result = await window.xiao.runtime.start('dev', props.siteDir);
+  if (!result.ok) {
+    sessionStore.building = false;
+    notify(`没能打开预览：${result.message}。先确认站点依赖已经装好。`, 'error', 'editor-preview');
+  }
+}
+
+function syncHtmlPreview(): void {
+  const hole = htmlPreviewHole.value;
+  const show = format.value === 'html' && sourceMode.value && htmlPreviewOpen.value;
+  if (!hole || !show) {
+    void window.xiao.preview.editor('', null);
+    return;
+  }
+  const url = htmlPreviewUrl();
+  if (!url) {
+    void ensureHtmlPreview();
+    void window.xiao.preview.editor('', null);
+    return;
+  }
+  cancelAnimationFrame(htmlPreviewFrame);
+  htmlPreviewFrame = requestAnimationFrame(() => {
+    const rect = hole.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) {
+      void window.xiao.preview.editor('', null);
+      return;
+    }
+    void window.xiao.preview.hideDock();
+    void window.xiao.preview.editor(url, {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    });
+  });
+}
+
 async function openPreview(): Promise<void> {
   if (!props.slug) {
     notify('先选一篇文章再预览。', 'error', 'editor-preview');
     return;
   }
   await flush();
+  if (format.value === 'html') {
+    htmlPreviewOpen.value = !htmlPreviewOpen.value;
+    await nextTick();
+    syncHtmlPreview();
+    return;
+  }
   window.dispatchEvent(
     new CustomEvent('xiao:preview-window', {
       detail: { path: `posts/${encodeURIComponent(props.slug)}/` },
@@ -1318,6 +1382,9 @@ onBeforeUnmount(() => {
   // 带未保存改动切走/关闭前先 flush；persist 会先同步抓正文再异步写盘。
   if (session && (session.dirty || hasFieldChanges())) void persist();
   void destroyEditors();
+  htmlPreviewObserver?.disconnect();
+  cancelAnimationFrame(htmlPreviewFrame);
+  void window.xiao.preview.editor('', null);
 });
 
 watch(
@@ -1344,15 +1411,20 @@ watch(
 );
 
 watch(
-  () => sessionStore.mode,
-  (mode) => {
-    if (mode !== 'develop' || format.value !== 'html' || viewState.value !== 'ready') return;
-    if (!sourceMode.value) {
-      void enterSource();
-      void openPreview();
-    }
+  () =>
+    [sessionStore.previewUrl, htmlPreviewOpen.value, sourceMode.value, format.value] as const,
+  () => {
+    void nextTick(syncHtmlPreview);
   },
 );
+
+watch(htmlPreviewHole, (el) => {
+  htmlPreviewObserver?.disconnect();
+  if (!el) return;
+  htmlPreviewObserver = new ResizeObserver(() => syncHtmlPreview());
+  htmlPreviewObserver.observe(el);
+  syncHtmlPreview();
+});
 
 watch(
   () => [props.siteDir, props.slug],
@@ -1364,12 +1436,13 @@ watch(
 </script>
 
 <template>
-  <div class="editor-view" :class="{ 'is-source': showMonaco }">
+  <div class="editor-view" :class="{ 'is-source': showMonaco, 'is-split': format === 'html' && showMonaco && htmlPreviewOpen }">
     <WorkbenchBar
       v-model:mode="workbenchMode"
       :badge="formatLabel"
       :badge-tone="format === 'html' ? 'accent' : 'neutral'"
       :save-disabled="(viewState === 'loading' || viewState === 'error') && !showMonaco"
+      :show-mode="format !== 'html'"
       @save="saveNow"
     >
       <UiTooltip v-if="format === 'markdown' && !sourceMode" label="撤销">
@@ -1378,14 +1451,14 @@ watch(
       <UiTooltip v-if="format === 'markdown' && !sourceMode" label="重做">
         <UiButton variant="ghost" size="sm" :icon="mdiRedo" aria-label="重做" @click="crepeHistory('redo')" />
       </UiTooltip>
-      <UiTooltip label="在预览窗口打开这篇文章">
+      <UiTooltip :label="format === 'html' ? (htmlPreviewOpen ? '收起预览列' : '打开预览列') : '在预览窗口打开这篇文章'">
         <UiButton
           variant="primary"
-          :icon="icons.preview"
-          aria-label="在预览窗口打开这篇文章"
+          :icon-left="icons.preview"
+          :aria-label="format === 'html' ? '预览列' : '在预览窗口打开这篇文章'"
           @click="openPreview"
         >
-          <span class="bar-label">预览</span>
+          <span class="bar-label">{{ format === 'html' && htmlPreviewOpen ? '收起预览' : '预览' }}</span>
         </UiButton>
       </UiTooltip>
 
@@ -1447,6 +1520,11 @@ watch(
         @change="onHtmlChange"
       />
       <div v-show="showMonaco" ref="sourceRoot" class="source" />
+      <div
+        v-if="format === 'html' && showMonaco && htmlPreviewOpen"
+        ref="htmlPreviewHole"
+        class="html-preview"
+      />
     </div>
 
     <Teleport v-if="inspectorHost" to="#inspector-host">
@@ -1546,8 +1624,7 @@ watch(
           </div>
 
           <p v-if="format === 'html'" class="inspector-note inspector-note--info">
-            编辑模式改可见内容，源码模式改原始 HTML。浏览器可能会整理标签，精确结构请用源码。元数据只改
-            frontmatter。
+            HTML 只在源码里改，右侧预览对照效果。元数据只改 frontmatter。
           </p>
           <p
             v-if="viewState !== 'loading' && viewState !== 'error' && !hasFrontmatter"
@@ -1621,6 +1698,26 @@ watch(
   flex: 1;
   min-height: 0;
   overflow: auto;
+  background: var(--ui-bg);
+}
+
+.editor-view.is-split .editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 42%);
+  overflow: hidden;
+}
+
+.editor-view.is-split .source {
+  position: relative;
+  inset: auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.html-preview {
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--ui-line);
   background: var(--ui-bg);
 }
 
