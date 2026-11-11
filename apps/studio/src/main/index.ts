@@ -40,7 +40,6 @@ import {
 } from './publish.ts';
 import { readPageStyle, resetPageStyle, writePageStyle } from './page-style.ts';
 import {
-  convertPostFile,
   createPost,
   customizePost,
   deletePost,
@@ -888,17 +887,6 @@ app.whenReady().then(() => {
         return ok(post);
       } catch (error) {
         return fail('CONTENT_CREATE', error instanceof Error ? error.message : '新建文章失败');
-      }
-    },
-  );
-  ipcMain.handle(
-    'content:convert',
-    (_event, siteDir: string, slug: string, target: unknown, body: unknown) => {
-      try {
-        if (target !== 'markdown' && target !== 'html') throw new Error('目标格式不合法');
-        return ok(convertPostFile(siteDir, slug, target, typeof body === 'string' ? body : ''));
-      } catch (error) {
-        return fail('CONTENT_CONVERT', error instanceof Error ? error.message : '转换格式失败');
       }
     },
   );
