@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mdiRedo, mdiUndo } from '@mdi/js';
 import { Crepe } from '@milkdown/crepe';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame-dark.css';
@@ -12,6 +13,8 @@ import {
   type SaveResult,
 } from '@xiao/core/markdown';
 import * as monaco from 'monaco-editor';
+import { undo, redo } from 'prosemirror-history';
+import type { EditorView } from 'prosemirror-view';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { copy } from '../copy.ts';
 import { icons } from '../icons.ts';
@@ -618,9 +621,9 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
         textGroup: {
           label: '文本',
           text: null,
-          h1: null,
+          h1: { label: '标题 1' },
           h2: { label: '标题' },
-          h3: null,
+          h3: { label: '标题 3' },
           h4: null,
           h5: null,
           h6: null,
@@ -629,9 +632,9 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
         },
         listGroup: {
           label: '列表',
-          bulletList: { label: '列表' },
-          orderedList: null,
-          taskList: null,
+          bulletList: { label: '无序列表' },
+          orderedList: { label: '有序列表' },
+          taskList: { label: '待办列表' },
         },
         advancedGroup: {
           label: '高级',
@@ -651,6 +654,13 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
             },
           });
         },
+      },
+      [Crepe.Feature.Toolbar]: {
+        boldLabel: '加粗',
+        italicLabel: '斜体',
+        strikethroughLabel: '删除线',
+        codeLabel: '行内代码',
+        linkLabel: '链接',
       },
       [Crepe.Feature.ImageBlock]: {
         onUpload: async (file: File) => {
@@ -728,6 +738,21 @@ async function mountCrepe(body: string, gen = generation): Promise<void> {
       'editor-mount',
     );
   }
+}
+
+function crepeView(): EditorView | null {
+  const root = crepeRoot.value?.querySelector('.ProseMirror');
+  if (!root) return null;
+  const desc = (root as HTMLElement & { pmViewDesc?: { view?: EditorView } }).pmViewDesc;
+  return desc?.view ?? null;
+}
+
+function crepeHistory(kind: 'undo' | 'redo'): void {
+  const view = crepeView();
+  if (!view) return;
+  const command = kind === 'undo' ? undo : redo;
+  command(view.state, view.dispatch);
+  view.focus();
 }
 
 function stripSlashLine(markdown: string): string {
@@ -1347,6 +1372,12 @@ watch(
       :save-disabled="(viewState === 'loading' || viewState === 'error') && !showMonaco"
       @save="saveNow"
     >
+      <UiTooltip v-if="format === 'markdown' && !sourceMode" label="撤销">
+        <UiButton variant="ghost" size="sm" :icon="mdiUndo" aria-label="撤销" @click="crepeHistory('undo')" />
+      </UiTooltip>
+      <UiTooltip v-if="format === 'markdown' && !sourceMode" label="重做">
+        <UiButton variant="ghost" size="sm" :icon="mdiRedo" aria-label="重做" @click="crepeHistory('redo')" />
+      </UiTooltip>
       <UiTooltip label="在预览窗口打开这篇文章">
         <UiButton
           variant="primary"
@@ -1530,7 +1561,9 @@ watch(
 
     <UiDialog v-model="htmlBoxOpen" title="自定义 HTML 容器" :width="640">
       <div class="convert-body">
-        <p>这里的 HTML 会原样写进 Markdown，编辑器不把它拆成富文本。站点预览按这段 HTML 渲染。</p>
+        <p>
+          这里的 HTML 会原样写进 Markdown，编辑器不把它拆成富文本。字体颜色、背景和视频也写在这里，不单独做颜色或视频按钮。
+        </p>
         <UiTextarea v-model="htmlBoxValue" :rows="8" placeholder="例如 <iframe ...></iframe>" />
       </div>
       <template #actions>
