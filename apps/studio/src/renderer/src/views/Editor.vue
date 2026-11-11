@@ -1421,6 +1421,20 @@ watch(
   },
 );
 
+watch(
+  () => sessionStore.mode,
+  (mode) => {
+    if (mode === 'develop') {
+      void window.xiao.preview.editor('', null);
+      return;
+    }
+    void nextTick(() => {
+      sourceEditor?.layout();
+      syncHtmlPreview();
+    });
+  },
+);
+
 watch(htmlPreviewHole, (el) => {
   htmlPreviewObserver?.disconnect();
   if (!el) return;

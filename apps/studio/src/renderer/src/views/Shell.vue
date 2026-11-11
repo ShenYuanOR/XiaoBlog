@@ -260,7 +260,7 @@ const modeKey = computed({
 </script>
 
 <template>
-  <div class="shell" :class="{ 'has-dev': session.devDrawer }">
+  <div class="shell">
     <header class="top">
       <div class="brand">
         <span class="brand-mark">晓</span>
@@ -389,7 +389,9 @@ const modeKey = computed({
           </div>
         </div>
 
+        <DevDrawer v-if="session.devDrawer" class="dev-main" @close="session.setMode('write')" />
         <div
+          v-show="!session.devDrawer"
           class="view-body"
           :class="{ flush: showEditor || showCanvas }"
         >
@@ -439,10 +441,6 @@ const modeKey = computed({
       </aside>
     </div>
 
-    <section v-if="session.devDrawer" class="dev-drawer">
-      <DevDrawer @close="session.setMode('write')" />
-    </section>
-
     <footer class="status">
       <span class="state" :class="session.saveState">
         <UiIcon
@@ -479,10 +477,6 @@ const modeKey = computed({
   overflow: hidden;
   background: var(--ui-bg);
   color: var(--ui-text);
-}
-
-.shell.has-dev {
-  grid-template-rows: 48px minmax(0, 1fr) auto 24px;
 }
 
 .top {
@@ -697,12 +691,9 @@ const modeKey = computed({
   overflow: auto;
 }
 
-.dev-drawer {
-  height: 40vh;
-  min-height: 220px;
-  overflow: hidden;
-  border-top: 1px solid var(--ui-line);
-  background: var(--ui-panel);
+.dev-main {
+  flex: 1;
+  min-height: 0;
 }
 
 .status {
