@@ -270,66 +270,6 @@ const nodes: Record<string, NodeSpec> = {
     ],
   },
 
-  columns: {
-    group: 'block',
-    content: 'column+',
-    defining: true,
-    attrs: { class: { default: 'x-box x-grid x-cols-2 x-gap-md' } },
-    parseDOM: [
-      {
-        tag: 'div[data-xiao="columns"]',
-        getAttrs: (dom: HTMLElement) => ({
-          class: dom.getAttribute('class') ?? 'x-box x-grid x-cols-2 x-gap-md',
-        }),
-      },
-    ],
-    toDOM: (node) => ['div', htmlAttrs(node, { 'data-xiao': 'columns' }), 0],
-  },
-
-  column: {
-    content: 'block+',
-    defining: true,
-    attrs: { class: { default: 'x-box' } },
-    parseDOM: [
-      {
-        tag: 'div[data-xiao="column"]',
-        getAttrs: (dom: HTMLElement) => ({ class: dom.getAttribute('class') ?? 'x-box' }),
-      },
-    ],
-    toDOM: (node) => ['div', htmlAttrs(node, { 'data-xiao': 'column' }), 0],
-  },
-
-  button: {
-    group: 'block',
-    content: 'inline*',
-    defining: true,
-    attrs: { href: { default: '#' }, class: { default: 'x-button' } },
-    parseDOM: [
-      {
-        tag: 'a.x-button',
-        getAttrs: (dom: HTMLElement) => ({
-          href: dom.getAttribute('href') ?? '#',
-          class: dom.getAttribute('class') ?? 'x-button',
-        }),
-      },
-      {
-        tag: 'a[data-xiao="button"]',
-        getAttrs: (dom: HTMLElement) => ({
-          href: dom.getAttribute('href') ?? '#',
-          class: dom.getAttribute('class') ?? 'x-button',
-        }),
-      },
-    ],
-    toDOM: (node) => [
-      'a',
-      htmlAttrs(node, {
-        'data-xiao': 'button',
-        href: String(node.attrs.href || '#'),
-      }),
-      0,
-    ],
-  },
-
   /** 认不出的结构原样保留：只展示，不进文档模型。 */
   html_block: {
     group: 'block',
@@ -544,30 +484,6 @@ function cardOk(el: Element): boolean {
   return blocksOk(el);
 }
 
-function columnsOk(el: Element): boolean {
-  if (el.tagName.toLowerCase() !== 'div') return false;
-  if (el.getAttribute('data-xiao') !== 'columns') return false;
-  if (!onlyAttrs(el, ['class', 'data-xiao'])) return false;
-  return Array.from(el.children).every(
-    (child) => child.tagName.toLowerCase() === 'div' && columnOk(child),
-  );
-}
-
-function columnOk(el: Element): boolean {
-  if (el.tagName.toLowerCase() !== 'div') return false;
-  if (el.getAttribute('data-xiao') !== 'column') return false;
-  if (!onlyAttrs(el, ['class', 'data-xiao'])) return false;
-  return blocksOk(el);
-}
-
-function buttonOk(el: Element): boolean {
-  if (el.tagName.toLowerCase() !== 'a') return false;
-  if (!onlyAttrs(el, ['class', 'data-xiao', 'href', 'title'])) return false;
-  const tokens = classTokens(el);
-  if (!tokens.includes('x-button') && el.getAttribute('data-xiao') !== 'button') return false;
-  return inlineChildrenOk(el);
-}
-
 function blockElementOk(el: Element): boolean {
   const tag = el.tagName.toLowerCase();
   if (!BLOCK_TAGS.has(tag)) return false;
@@ -591,10 +507,6 @@ function blockElementOk(el: Element): boolean {
       return calloutOk(el);
     case 'article':
       return cardOk(el);
-    case 'div':
-      return columnsOk(el) || columnOk(el);
-    case 'a':
-      return buttonOk(el);
     default:
       return false;
   }
@@ -632,21 +544,6 @@ function htmlBlockOf(html: string): PMNode {
   return nodeType('html_block').create({ html });
 }
 
-/** 顶层按钮是 `<a>`（行内元素），交给 PM 规则会被折成段落；这里手工转成 button 块。 */
-function buttonFromElement(el: Element): PMNode {
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = el.innerHTML;
-  const parsed = parser.parse(wrapper);
-  const content = parsed.firstChild?.content;
-  return nodeType('button').create(
-    {
-      href: el.getAttribute('href') ?? '#',
-      class: el.getAttribute('class') ?? 'x-button',
-    },
-    content && content.size ? content : undefined,
-  );
-}
-
 function appendBlocks(parent: ParentNode, blocks: PMNode[]): void {
   for (const child of Array.from(parent.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
@@ -664,10 +561,6 @@ function appendBlocks(parent: ParentNode, blocks: PMNode[]): void {
     const el = child as Element;
     if (isTransparentWrapper(el)) {
       appendBlocks(el, blocks);
-      continue;
-    }
-    if (el.tagName.toLowerCase() === 'a' && buttonOk(el)) {
-      blocks.push(buttonFromElement(el));
       continue;
     }
     if (blockElementOk(el)) {
@@ -726,9 +619,6 @@ const BLOCK_LABELS: Record<string, string> = {
   image: '图片',
   callout: '提示框',
   card: '卡片',
-  columns: '分栏',
-  column: '栏',
-  button: '按钮',
   html_block: '原始 HTML',
 };
 
@@ -784,49 +674,6 @@ export function image(src = '', alt = '', caption = ''): PMNode {
 
 export function divider(): PMNode {
   return nodeType('horizontal_rule').create();
-}
-
-export function column(text = ''): PMNode {
-  return nodeType('column').create(null, paragraph(text));
-}
-
-export function columns(count = 2, text = ''): PMNode {
-  const safe = count === 3 ? 3 : count === 4 ? 4 : 2;
-  const items: PMNode[] = [];
-  for (let index = 0; index < safe; index += 1) {
-    items.push(column(index === 0 ? text : ''));
-  }
-  return nodeType('columns').create({ class: `x-box x-grid x-cols-${safe} x-gap-md` }, items);
-}
-
-/** 改分栏数量：加栏时补空栏；减栏时只允许删掉空栏。 */
-export function resizeColumns(node: PMNode, count: number): PMNode | null {
-  if (node.type.name !== 'columns') return null;
-  const safe = Math.max(2, Math.min(4, Math.round(count)));
-  const current = node.childCount;
-  if (safe === current) return node;
-  if (safe < current) {
-    for (let index = safe; index < current; index += 1) {
-      if (node.child(index).content.size > 0) return null;
-    }
-  }
-  const children: PMNode[] = [];
-  for (let index = 0; index < safe; index += 1) {
-    children.push(index < current ? node.child(index) : column(''));
-  }
-  const base = splitClassTokens(String(node.attrs.class ?? '')).filter(
-    (token) => !/^x-cols-\d$/.test(token),
-  );
-  const classes = [...new Set([...base, `x-cols-${safe}`])].join(' ');
-  return nodeType('columns').create({ class: classes }, children);
-}
-
-function splitClassTokens(value: string): string[] {
-  return value.split(/\s+/).filter(Boolean);
-}
-
-export function button(label = '按钮', href = '#', cls = 'x-button'): PMNode {
-  return nodeType('button').create({ href, class: cls }, label ? schema.text(label) : undefined);
 }
 
 export function callout(type = 'info', text = '提示内容'): PMNode {

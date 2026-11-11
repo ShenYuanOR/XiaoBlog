@@ -10,7 +10,6 @@
 import {
   mdiAlertCircleOutline,
   mdiArrowDown,
-  mdiButtonCursor,
   mdiArrowUp,
   mdiCardTextOutline,
   mdiCodeBraces,
@@ -31,7 +30,6 @@ import {
   mdiLinkVariant,
   mdiMinus,
   mdiPlus,
-  mdiViewGridOutline,
 } from '@mdi/js';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { Decoration, DecorationSet, EditorView, type NodeView } from 'prosemirror-view';
@@ -49,11 +47,9 @@ import {
   blockAtIndex,
   blockIndexAt,
   blockLabel,
-  button as buttonNode,
   callout,
   card,
   codeBlock,
-  columns as columnsNode,
   divider,
   heading,
   image as imageNode,
@@ -64,7 +60,6 @@ import {
   placeCursorIn,
   quote,
   rawHtml,
-  resizeColumns,
   schema,
   serializeArticle,
 } from '../editor/html-schema.ts';
@@ -145,8 +140,6 @@ const INSERT_ITEMS: InsertItem[] = [
   { key: 'image', label: '图片', hint: '上传或插入', group: '媒体', icon: mdiImageOutline, make: () => null },
   { key: 'callout', label: '提示框', hint: 'Callout', group: '组件', icon: mdiAlertCircleOutline, make: () => callout() },
   { key: 'card', label: '卡片', hint: 'Card', group: '组件', icon: mdiCardTextOutline, make: () => card() },
-  { key: 'columns', label: '分栏', hint: '2–4 栏', group: '组件', icon: mdiViewGridOutline, make: () => columnsNode(2) },
-  { key: 'button', label: '按钮', hint: '链接按钮', group: '组件', icon: mdiButtonCursor, make: () => buttonNode() },
   { key: 'raw', label: '原始 HTML', hint: '手写片段', group: '组件', icon: mdiCodeTags, make: () => rawHtml() },
 ];
 
@@ -960,7 +953,6 @@ function infoAt(index: number): HtmlBlockInfo | null {
     const value = range.node.attrs[key];
     if (value !== undefined && value !== null && value !== '') attrs[key] = String(value);
   }
-  if (type === 'columns') attrs.count = range.node.childCount;
   return {
     index,
     type,
@@ -1037,25 +1029,6 @@ function setBlockAttrs(patch: Record<string, string | number>): void {
   emitSelection(true);
 }
 
-function setColumnsCount(count: number): boolean {
-  if (!view) return false;
-  const index = selectionIndex();
-  if (index === null) return false;
-  const range = blockAtIndex(view.state.doc, index);
-  if (!range) return false;
-  const next = resizeColumns(range.node, count);
-  if (!next) {
-    emitSelection(true);
-    return false;
-  }
-  const tr = view.state.tr.replaceWith(range.from, range.to, next);
-  view.dispatch(tr);
-  placeCursorIn(view, range.from);
-  view.focus();
-  emitSelection(true);
-  return true;
-}
-
 function onEditorClick(event: MouseEvent): void {
   const target = event.target;
   if (target instanceof Element && target.closest('a')) event.preventDefault();
@@ -1065,7 +1038,7 @@ function getHtml(): string {
   return view ? serializeArticle(view.state.doc) : '';
 }
 
-defineExpose({ getHtml, setBlockClasses, setBlockAttrs, setColumnsCount });
+defineExpose({ getHtml, setBlockClasses, setBlockAttrs });
 </script>
 
 <template>
