@@ -72,6 +72,9 @@ const inspectorHost = ref(false);
 const layoutBusy = ref(false);
 const layoutConfirmOpen = ref(false);
 const layoutPath = computed(() => layoutFileOf(props.slug));
+const htmlBoxOpen = ref(false);
+const htmlBoxValue = ref('');
+const htmlBoxPrevious = ref('');
 
 const title = ref('');
 const category = ref('');
@@ -126,6 +129,7 @@ let chain: Promise<void> = Promise.resolve();
 const workbenchMode = computed({
   get: () => (sourceMode.value ? 'source' : 'visual'),
   set: (value: 'visual' | 'source') => {
+    if (sessionStore.mode === 'develop' && format.value === 'html' && value === 'visual') return;
     if (value === 'source') void enterSource();
     else enterVisual();
   },
@@ -613,27 +617,39 @@ async function mountCrepeUnsafe(body: string, gen = generation): Promise<void> {
       [Crepe.Feature.BlockEdit]: {
         textGroup: {
           label: '文本',
-          text: { label: '正文' },
-          h1: { label: '标题 1' },
-          h2: { label: '标题 2' },
-          h3: { label: '标题 3' },
-          h4: { label: '标题 4' },
-          h5: { label: '标题 5' },
-          h6: { label: '标题 6' },
+          text: null,
+          h1: null,
+          h2: { label: '标题' },
+          h3: null,
+          h4: null,
+          h5: null,
+          h6: null,
           quote: { label: '引用' },
-          divider: { label: '分隔线' },
+          divider: { label: '分割线' },
         },
         listGroup: {
           label: '列表',
-          bulletList: { label: '无序列表' },
-          orderedList: { label: '有序列表' },
-          taskList: { label: '待办' },
+          bulletList: { label: '列表' },
+          orderedList: null,
+          taskList: null,
         },
         advancedGroup: {
           label: '高级',
           image: { label: '图片' },
           codeBlock: { label: '代码块' },
           table: { label: '表格' },
+          math: null,
+        },
+        buildMenu: (builder) => {
+          builder.addGroup('embed', '嵌入').addItem('html', {
+            label: '自定义 HTML 容器',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6z"/></svg>',
+            onRun: () => {
+              htmlBoxPrevious.value = '';
+              htmlBoxValue.value = '';
+              htmlBoxOpen.value = true;
+            },
+          });
         },
       },
       [Crepe.Feature.ImageBlock]: {
@@ -712,6 +728,50 @@ async function mountCrepe(body: string, gen = generation): Promise<void> {
       'editor-mount',
     );
   }
+}
+
+function stripSlashLine(markdown: string): string {
+  return markdown
+    .split('\n')
+    .filter((line) => !/^\/\S*$/.test(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function openHtmlBox(previous = ''): void {
+  htmlBoxPrevious.value = previous;
+  htmlBoxValue.value = previous;
+  htmlBoxOpen.value = true;
+}
+
+async function applyHtmlBox(): Promise<void> {
+  if (!crepe) return;
+  const html = htmlBoxValue.value.trim();
+  if (!html) {
+    notify('先贴一段 HTML。', 'error', 'editor-html-box');
+    return;
+  }
+  const current = crepe.getMarkdown();
+  const previous = htmlBoxPrevious.value;
+  const next = previous
+    ? current.replace(previous, html)
+    : `${stripSlashLine(current)}\n\n${html}\n`.trim() + '\n';
+  if (previous && next === current) {
+    notify('没找到原来的 HTML，没有改文件。', 'error', 'editor-html-box');
+    return;
+  }
+  htmlBoxOpen.value = false;
+  await mountCrepe(next);
+}
+
+function onCrepeClick(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const node = target.closest<HTMLElement>('[data-type="html"]');
+  if (!node || !crepeRoot.value?.contains(node)) return;
+  event.preventDefault();
+  openHtmlBox(node.dataset.value ?? node.textContent ?? '');
 }
 
 function syncMonacoTheme(): void {
@@ -1035,7 +1095,12 @@ async function open(): Promise<void> {
 
   charCount.value = countChars(opened.body);
   sourceMode.value = false;
-  if (format.value === 'html') {
+  if (format.value === 'html' && sessionStore.mode === 'develop') {
+    viewState.value = 'ready';
+    sessionStore.setSaveState('saved');
+    await enterSource();
+    void openPreview();
+  } else if (format.value === 'html') {
     viewState.value = opened.body.trim().length > 0 ? 'ready' : 'empty';
     sessionStore.setSaveState('saved');
     if (viewState.value === 'ready') await mountHtmlVisual(opened.body, gen);
@@ -1254,6 +1319,17 @@ watch(
 );
 
 watch(
+  () => sessionStore.mode,
+  (mode) => {
+    if (mode !== 'develop' || format.value !== 'html' || viewState.value !== 'ready') return;
+    if (!sourceMode.value) {
+      void enterSource();
+      void openPreview();
+    }
+  },
+);
+
+watch(
   () => [props.siteDir, props.slug],
   () => {
     void reload();
@@ -1328,6 +1404,7 @@ watch(
         v-show="format === 'markdown' && viewState === 'ready' && !sourceMode"
         ref="crepeRoot"
         class="crepe"
+        @click="onCrepeClick"
       />
       <HtmlArticleEditor
         v-if="showHtmlVisual"
@@ -1450,6 +1527,17 @@ watch(
         </div>
       </section>
     </Teleport>
+
+    <UiDialog v-model="htmlBoxOpen" title="自定义 HTML 容器" :width="640">
+      <div class="convert-body">
+        <p>这里的 HTML 会原样写进 Markdown，编辑器不把它拆成富文本。站点预览按这段 HTML 渲染。</p>
+        <UiTextarea v-model="htmlBoxValue" :rows="8" placeholder="例如 <iframe ...></iframe>" />
+      </div>
+      <template #actions>
+        <UiButton variant="ghost" @click="htmlBoxOpen = false">取消</UiButton>
+        <UiButton variant="primary" @click="applyHtmlBox">写入</UiButton>
+      </template>
+    </UiDialog>
 
     <UiDialog v-model="layoutConfirmOpen" title="生成自定义版式？" :width="520">
       <div class="convert-body">
@@ -1621,6 +1709,20 @@ watch(
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.crepe :deep([data-type='html']) {
+  display: block;
+  margin: 0.6em 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--ui-line-2);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-raise);
+  color: var(--ui-text-2);
+  font-family: var(--ui-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  cursor: pointer;
 }
 
 .crepe :deep(.milkdown-slash-menu .menu-groups) {

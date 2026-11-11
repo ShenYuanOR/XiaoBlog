@@ -8,10 +8,8 @@
  */
 
 import {
-  mdiAlertCircleOutline,
   mdiArrowDown,
   mdiArrowUp,
-  mdiCardTextOutline,
   mdiCodeBraces,
   mdiCodeTags,
   mdiContentCopy,
@@ -19,11 +17,9 @@ import {
   mdiDragVertical,
   mdiFormatBold,
   mdiFormatHeader2,
-  mdiFormatHeader3,
   mdiFormatItalic,
   mdiFormatListBulleted,
   mdiFormatListNumbered,
-  mdiFormatParagraph,
   mdiFormatQuoteClose,
   mdiFormatStrikethroughVariant,
   mdiImageOutline,
@@ -47,8 +43,6 @@ import {
   blockAtIndex,
   blockIndexAt,
   blockLabel,
-  callout,
-  card,
   codeBlock,
   divider,
   heading,
@@ -123,24 +117,28 @@ interface InsertItem {
   key: string;
   label: string;
   hint: string;
-  group: '基础' | '媒体' | '组件';
+  group: '基础' | '媒体' | '组件' | '嵌入';
   icon: string;
   make: () => PMNode | null;
 }
 
 const INSERT_ITEMS: InsertItem[] = [
-  { key: 'paragraph', label: '段落', hint: 'P', group: '基础', icon: mdiFormatParagraph, make: () => paragraph() },
-  { key: 'h2', label: '标题 2', hint: 'H2', group: '基础', icon: mdiFormatHeader2, make: () => heading(2) },
-  { key: 'h3', label: '标题 3', hint: 'H3', group: '基础', icon: mdiFormatHeader3, make: () => heading(3) },
-  { key: 'ul', label: '无序列表', hint: 'UL', group: '基础', icon: mdiFormatListBulleted, make: () => list(false) },
-  { key: 'ol', label: '有序列表', hint: 'OL', group: '基础', icon: mdiFormatListNumbered, make: () => list(true) },
+  { key: 'h2', label: '标题', hint: 'H2', group: '基础', icon: mdiFormatHeader2, make: () => heading(2) },
+  { key: 'ul', label: '列表', hint: 'UL', group: '基础', icon: mdiFormatListBulleted, make: () => list(false) },
   { key: 'quote', label: '引用', hint: 'Quote', group: '基础', icon: mdiFormatQuoteClose, make: () => quote() },
   { key: 'code', label: '代码块', hint: 'Code', group: '基础', icon: mdiCodeBraces, make: () => codeBlock() },
-  { key: 'divider', label: '分隔线', hint: 'HR', group: '基础', icon: mdiMinus, make: () => divider() },
   { key: 'image', label: '图片', hint: '上传或插入', group: '媒体', icon: mdiImageOutline, make: () => null },
-  { key: 'callout', label: '提示框', hint: 'Callout', group: '组件', icon: mdiAlertCircleOutline, make: () => callout() },
-  { key: 'card', label: '卡片', hint: 'Card', group: '组件', icon: mdiCardTextOutline, make: () => card() },
-  { key: 'raw', label: '原始 HTML', hint: '手写片段', group: '组件', icon: mdiCodeTags, make: () => rawHtml() },
+  {
+    key: 'table',
+    label: '表格',
+    hint: 'HTML 表格',
+    group: '基础',
+    icon: mdiFormatListNumbered,
+    make: () =>
+      rawHtml('<table><thead><tr><th>列</th><th>列</th></tr></thead><tbody><tr><td></td><td></td></tr></tbody></table>'),
+  },
+  { key: 'divider', label: '分割线', hint: 'HR', group: '基础', icon: mdiMinus, make: () => divider() },
+  { key: 'raw', label: '自定义 HTML 容器', hint: '原样保留', group: '嵌入', icon: mdiCodeTags, make: () => rawHtml() },
 ];
 
 const filteredItems = computed(() => {
