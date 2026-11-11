@@ -47,7 +47,6 @@ import {
   UiTooltip,
 } from '../ui/index.ts';
 import WorkbenchBar from './WorkbenchBar.vue';
-import PageStylePanel from './PageStylePanel.vue';
 
 installMonaco();
 
@@ -711,123 +710,6 @@ async function selectByPath(path: number[] | null): Promise<void> {
   if (!path) return;
   const node = atPath(outline.value, path);
   if (node) await selectNode(node, false);
-}
-
-async function moveSelected(delta: 1 | -1): Promise<void> {
-  const row = selectedRow.value;
-  if (!row || !row.parentId || !session.siteDir || actionBusy.value) return;
-  const parent = nodeMap.value.get(row.parentId);
-  if (!parent) return;
-  const count = parent.node.children.length;
-  const target = delta < 0 ? row.index - 1 : row.index + 2;
-  if (target < 0 || target > count) return;
-  const parentPath = pathOf(outline.value, row.parentId);
-  actionBusy.value = true;
-  try {
-    const result = await window.xiao.canvas.move(
-      session.siteDir,
-      row.node.id,
-      row.parentId,
-      target,
-      session.activePage,
-    );
-    if (!result.ok) {
-      notify(`移动失败：${result.message}`, 'error', 'canvas-action');
-      return;
-    }
-    await reload('');
-    const nextIndex = delta < 0 ? target : target - 1;
-    await selectByPath(parentPath ? [...parentPath, nextIndex] : null);
-  } finally {
-    actionBusy.value = false;
-  }
-}
-
-async function duplicateSelected(): Promise<void> {
-  const row = selectedRow.value;
-  if (!row || !session.siteDir || actionBusy.value) return;
-  const path = pathOf(outline.value, row.node.id);
-  actionBusy.value = true;
-  try {
-    const result = await window.xiao.canvas.duplicate(
-      session.siteDir,
-      row.node.id,
-      session.activePage,
-    );
-    if (!result.ok) {
-      notify(`复制失败：${result.message}`, 'error', 'canvas-action');
-      return;
-    }
-    await reload('');
-    await selectByPath(path);
-    notify('已复制，可继续编辑副本或撤销。', 'info', 'canvas-action');
-  } finally {
-    actionBusy.value = false;
-  }
-}
-
-async function removeSelected(): Promise<void> {
-  const row = selectedRow.value;
-  if (!row || !session.siteDir) return;
-  const result = await window.xiao.canvas.remove(
-    session.siteDir,
-    row.node.id,
-    session.activePage,
-  );
-  if (!result.ok) {
-    notify(`删除失败：${result.message}`, 'error', 'canvas-action');
-    return;
-  }
-  clearSelection();
-  await reload('');
-  notify('已删除，可点撤销恢复。', 'info', 'canvas-action');
-}
-
-async function wrapSelected(): Promise<void> {
-  const row = selectedRow.value;
-  if (!row || !session.siteDir || actionBusy.value) return;
-  const path = pathOf(outline.value, row.node.id);
-  actionBusy.value = true;
-  try {
-    const result = await window.xiao.canvas.wrap(
-      session.siteDir,
-      row.node.id,
-      '<Section pad="lg">',
-      session.activePage,
-    );
-    if (!result.ok) {
-      notify(`套进区块失败：${result.message}`, 'error', 'canvas-action');
-      return;
-    }
-    await reload('');
-    await selectByPath(path);
-    notify('已套进区块，可在右侧继续加样式。', 'info', 'canvas-action');
-  } finally {
-    actionBusy.value = false;
-  }
-}
-
-function openSaveSection(): void {
-  if (!canActOnSelected.value) return;
-  sectionLabel.value = `${selectedTitle.value || '区块'}`;
-  saveSectionOpen.value = true;
-}
-
-async function confirmSaveSection(): Promise<void> {
-  if (!session.siteDir || !selectedId.value) return;
-  const result = await window.xiao.section.save(
-    session.siteDir,
-    session.activePage,
-    selectedId.value,
-    sectionLabel.value.trim() || selectedTitle.value || '我的区块',
-  );
-  if (!result.ok) {
-    notify(`存为区块失败：${result.message}`, 'error', 'canvas-section-save');
-    return;
-  }
-  saveSectionOpen.value = false;
-  await loadSavedSections();
-  notify(`已存为 ${result.data.file}，在「我的区块」里插入。`, 'info', 'canvas-section-save');
 }
 
 async function commitClass(classes: string[]): Promise<void> {
@@ -1906,38 +1788,6 @@ async function history(kind: 'undo' | 'redo'): Promise<void> {
   }
 }
 
-async function createPage(): Promise<void> {
-  const slug = newSlug.value.trim();
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    notify('页面地址只用小写字母、数字和连字符，例如 about。', 'error', 'canvas-page-slug');
-    return;
-  }
-  if (!session.siteDir || creating.value) return;
-  creating.value = true;
-  session.setSaveState('saving');
-  try {
-    const result = await sequenced(() =>
-      window.xiao.page.create(session.siteDir, newTemplate.value, slug),
-    );
-    if (!result.ok) {
-      notify(
-        `没能新建页面：${result.message}。换个地址或检查站点目录后重试。`,
-        'error',
-        'canvas-page-create',
-      );
-      session.setSaveState('dirty');
-      return;
-    }
-    session.setSaveState('saved');
-    newSlug.value = '';
-    await loadPages();
-    session.setPage(result.data);
-    notify(`已新建 ${result.data}`, 'info', 'canvas-page-create');
-  } finally {
-    creating.value = false;
-  }
-}
-
 function openSource(): void {
   void enterSource();
 }
@@ -2218,88 +2068,6 @@ async function setStageZoom(next: number): Promise<void> {
   await window.xiao.preview.zoom(stageZoom.value);
 }
 
-function armDrag(event: PointerEvent, payload: DragKind): void {
-  if (event.button !== 0 || busy.value) return;
-  dragArmed = { x: event.clientX, y: event.clientY, payload };
-}
-
-async function updateDrag(event: PointerEvent): Promise<void> {
-  if (!dragArmed && !dragActive) return;
-  if (dragArmed && !dragActive) {
-    const dx = event.clientX - dragArmed.x;
-    const dy = event.clientY - dragArmed.y;
-    if (dx * dx + dy * dy < 36) return;
-    dragActive = dragArmed.payload;
-    skipPaletteClick = dragActive.kind === 'new';
-    session.setDrag({
-      kind: dragActive.kind,
-      name: dragActive.name,
-      id: dragActive.kind === 'move' ? dragActive.id : '',
-    });
-  }
-  if (!dragActive) return;
-  dragGhost.value = { label: dragActive.label, x: event.clientX, y: event.clientY };
-  cancelAnimationFrame(hitFrame);
-  hitFrame = requestAnimationFrame(() => {
-    void window.xiao.preview.hit(event.clientX, event.clientY).then((result) => {
-      lastHit = result.ok ? result.data : null;
-      dropLabel.value = lastHit ? (hitToInsert(lastHit)?.label ?? '') : '';
-      void window.xiao.preview.drop(lastHit);
-    });
-  });
-}
-
-async function finishDrag(): Promise<void> {
-  const payload = dragActive;
-  const hit = lastHit;
-  dragArmed = null;
-  dragActive = null;
-  lastHit = null;
-  dragGhost.value = null;
-  dropLabel.value = '';
-  session.setDrag(null);
-  void window.xiao.preview.drop(null);
-  if (!payload) return;
-  const at = hit ? hitToInsert(hit) : insertTarget.value;
-  if (!at) return;
-  if (payload.kind === 'new') {
-    const meta = COMPONENTS.find((item) => item.name === payload.name);
-    if (meta) await insertComponent(meta, at);
-    return;
-  }
-  await moveNode(payload.id, at);
-}
-
-function onPaletteClick(meta: ComponentMeta): void {
-  if (skipPaletteClick) {
-    skipPaletteClick = false;
-    return;
-  }
-  void insertComponent(meta);
-}
-
-function onPalettePointerDown(event: PointerEvent, meta: ComponentMeta): void {
-  armDrag(event, { kind: 'new', name: meta.name, label: meta.label });
-}
-
-function onTreePointerDown(event: PointerEvent, row: TreeRow): void {
-  if (row.node.locked) return;
-  armDrag(event, {
-    kind: 'move',
-    id: row.node.id,
-    name: row.node.name,
-    label: labelOfNode(row.node),
-  });
-}
-
-function onWindowPointerMove(event: PointerEvent): void {
-  void updateDrag(event);
-}
-
-function onWindowPointerUp(): void {
-  void finishDrag();
-}
-
 async function onPreviewPick(payload: { file: string; offset: string }): Promise<void> {
   const file = payload.file.replaceAll('\\', '/');
   const current = session.activePage.replaceAll('\\', '/');
@@ -2442,8 +2210,6 @@ onMounted(() => {
   checkInspectorHost();
   window.addEventListener('xiao-canvas', onCanvasRefresh);
   window.addEventListener('xiao:save', onSaveRequest);
-  window.addEventListener('pointermove', onWindowPointerMove);
-  window.addEventListener('pointerup', onWindowPointerUp);
   stopPick = window.xiao.preview.onPick((payload) => {
     void onPreviewPick(payload);
   });
@@ -2469,8 +2235,6 @@ watch(
 onBeforeUnmount(() => {
   window.removeEventListener('xiao-canvas', onCanvasRefresh);
   window.removeEventListener('xiao:save', onSaveRequest);
-  window.removeEventListener('pointermove', onWindowPointerMove);
-  window.removeEventListener('pointerup', onWindowPointerUp);
   stopPick();
   stopResize();
   stopCamera();
@@ -2552,68 +2316,6 @@ onBeforeUnmount(() => {
       </template>
     </WorkbenchBar>
     <div class="canvas-body">
-    <aside v-show="!sourceMode" class="palette" aria-label="组件面板">
-      <div class="palette-head">
-        <UiInput
-          v-model="search"
-          size="sm"
-          :icon="icons.seo"
-          placeholder="搜索组件"
-          aria-label="搜索组件"
-        />
-      </div>
-      <div class="palette-scroll">
-        <div v-for="group in filteredGroups" :key="group.category" class="palette-group">
-          <p class="palette-group__title">
-            <UiIcon :path="group.icon" :size="13" />
-            <span>{{ group.label }}</span>
-            <span class="palette-group__count">{{ group.items.length }}</span>
-          </p>
-          <div class="palette-list">
-            <button
-              v-for="meta in group.items"
-              :key="meta.name"
-              type="button"
-              class="palette-item"
-              :disabled="busy || Boolean(insertPending)"
-              :title="
-                insertTarget
-                  ? `放入${insertTarget.label}，也可拖到页面上`
-                  : '拖到页面上，或先选中一个容器'
-              "
-              @pointerdown="onPalettePointerDown($event, meta)"
-              @click="onPaletteClick(meta)"
-            >
-              <span class="palette-item__icon">
-                <UiIcon :path="CATEGORY_ICON[meta.category]" :size="16" />
-              </span>
-              <span class="palette-item__text">
-                <span class="palette-item__label">{{ meta.label }}</span>
-                <span class="palette-item__hint">{{ paletteHint(meta) }}</span>
-              </span>
-              <UiSpinner
-                v-if="insertPending === meta.name"
-                :size="12"
-                :label="null"
-                class="palette-item__spinner"
-              />
-            </button>
-          </div>
-        </div>
-        <UiEmpty
-          v-if="filteredGroups.length === 0"
-          title="没找到组件"
-          description="换个关键词，例如「区块」「图片」「文章」。"
-          :icon="icons.seo"
-        />
-      </div>
-      <div class="palette-foot">
-        <UiIcon :path="icons.plus" :size="13" />
-        <span v-if="insertTarget">插入到：{{ insertTarget.label }}</span>
-        <span v-else>先选中一个容器，或点「刷新结构」。</span>
-      </div>
-    </aside>
-
     <section class="stage" aria-label="页面结构">
       <header v-show="!sourceMode" class="stage-bar">
         <div class="stage-bar__left">
@@ -2645,68 +2347,6 @@ onBeforeUnmount(() => {
           <UiBadge v-if="pageRoute" class="stage-route" tone="neutral" size="sm">
             {{ pageRoute }}
           </UiBadge>
-        </div>
-        <div v-if="!sourceMode && canActOnSelected" class="stage-bar__right">
-          <UiTooltip label="上移">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiArrowUp"
-              :disabled="actionBusy"
-              aria-label="上移"
-              @click="moveSelected(-1)"
-            />
-          </UiTooltip>
-          <UiTooltip label="下移">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiArrowDown"
-              :disabled="actionBusy"
-              aria-label="下移"
-              @click="moveSelected(1)"
-            />
-          </UiTooltip>
-          <UiTooltip label="复制">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiContentCopy"
-              :disabled="actionBusy"
-              aria-label="复制"
-              @click="duplicateSelected"
-            />
-          </UiTooltip>
-          <UiTooltip label="存为区块">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiContentSaveOutline"
-              :disabled="actionBusy"
-              aria-label="存为区块"
-              @click="openSaveSection"
-            />
-          </UiTooltip>
-          <UiTooltip label="套进区块">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiViewDashboardOutline"
-              :disabled="actionBusy"
-              aria-label="套进区块"
-              @click="wrapSelected"
-            />
-          </UiTooltip>
-          <UiTooltip label="删除">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="mdiDeleteOutline"
-              :disabled="actionBusy"
-              aria-label="删除"
-              @click="removeSelected"
-            />
-          </UiTooltip>
         </div>
       </header>
 
@@ -2783,7 +2423,6 @@ onBeforeUnmount(() => {
                   :data-node-id="row.node.id"
                   :style="{ paddingLeft: `calc(var(--ui-s2) + ${row.depth * 12}px)` }"
                   @focus="focusedRowId = row.node.id"
-                  @pointerdown="onTreePointerDown($event, row)"
                   @click="selectNode(row.node)"
                   @dblclick="toggleRow(row)"
                   @keydown="onRowKey(row, index, $event)"
@@ -2818,14 +2457,6 @@ onBeforeUnmount(() => {
                   >
                     <UiIcon :path="icons.shield" :size="12" />受保护
                   </span>
-                </div>
-                <div
-                  v-if="row.node.id === insertAnchorId && insertTarget"
-                  class="insert-line"
-                  aria-hidden="true"
-                >
-                  <span class="insert-line__bar"></span>
-                  <span class="insert-line__label">插入到这里</span>
                 </div>
               </template>
             </div>
@@ -2868,7 +2499,7 @@ onBeforeUnmount(() => {
         <span v-if="selectedRow" class="stage-foot__path">{{ selectedPath }}</span>
         <div class="grow"></div>
         <UiIcon :path="icons.preview" :size="13" />
-        <span>{{ dropLabel || '拖组件到页面上；Ctrl+滚轮缩放，空格拖动画布' }}</span>
+        <span>Ctrl+滚轮缩放，空格拖动画布</span>
       </footer>
     </section>
     <div
@@ -2911,15 +2542,6 @@ onBeforeUnmount(() => {
         />
 
         <template v-else-if="selectedRow">
-          <UiPanel v-if="canStyleNode" title="样式令牌" collapsible>
-            <PageStylePanel
-              :classes="selectedClasses"
-              :covered="coveredPropNames"
-              :site-dir="session.siteDir"
-              @change="commitClass"
-            />
-          </UiPanel>
-
           <!-- 文字节点 / 单一文字子节点 -->
           <UiPanel v-if="selectedTextNode" title="文字" collapsible>
             <UiField label="文字内容" hint="改完点出输入框即写入源码">
@@ -2940,8 +2562,7 @@ onBeforeUnmount(() => {
           <!-- 正文插槽：文章内容渲染的位置，受保护 -->
           <UiPanel v-else-if="isSlotNode(selectedRow.node)" title="正文">
             <p class="hint-text">
-              这里是文章正文的位置（<code>&lt;slot /&gt;</code>）。可以拖动它、或把它套进区块/分栏；
-              不能删除，也不接受组件属性。
+              这里是文章正文的位置（<code>&lt;slot /&gt;</code>）。不能删除，也不接受组件属性。
             </p>
             <p class="inspector-tip">
               想把正文放进分栏：先在页面上插入「分栏组」，再把正文拖进分栏。
@@ -3184,32 +2805,6 @@ onBeforeUnmount(() => {
             </div>
           </UiPanel>
 
-          <UiPanel v-if="!layoutMode" title="新建页面" collapsible>
-            <div class="prop-list">
-              <UiField label="页面地址" hint="小写字母、数字和连字符，例如 about">
-                <UiInput
-                  v-model="newSlug"
-                  size="sm"
-                  placeholder="about"
-                  @keydown.enter="createPage"
-                />
-              </UiField>
-              <UiField label="模板">
-                <UiSegmented v-model="newTemplate" :items="templateItems" />
-              </UiField>
-              <UiButton
-                variant="primary"
-                size="sm"
-                :icon="icons.plus"
-                :loading="creating"
-                :disabled="!newSlug.trim()"
-                @click="createPage"
-              >
-                新建页面
-              </UiButton>
-            </div>
-          </UiPanel>
-
           <UiPanel title="提示" collapsible :default-open="false">
             <p class="hint-text">
               中间是真页面。点页面上的块选中它，右侧改属性。左边是结构，不是图层；图层只指样式里的前后关系。
@@ -3254,19 +2849,6 @@ onBeforeUnmount(() => {
     <template #actions>
       <UiButton size="sm" @click="layoutResetOpen = false">取消</UiButton>
       <UiButton variant="danger" size="sm" @click="confirmResetLayout">恢复默认</UiButton>
-    </template>
-  </UiDialog>
-
-  <UiDialog v-model="saveSectionOpen" title="存为区块" :width="460">
-    <p class="hint-text">
-      会把当前选中的结构复制成 src/components/xiao 下的普通 Astro 组件，之后可以在任意页面/版式里复用。
-    </p>
-    <UiField label="区块名称" hint="用于文件标识和「我的区块」列表，可留空">
-      <UiInput v-model="sectionLabel" placeholder="例如 产品特性三栏" />
-    </UiField>
-    <template #actions>
-      <UiButton size="sm" @click="saveSectionOpen = false">取消</UiButton>
-      <UiButton variant="primary" size="sm" @click="confirmSaveSection">存为区块</UiButton>
     </template>
   </UiDialog>
 
@@ -3325,7 +2907,7 @@ onBeforeUnmount(() => {
 
 .canvas-body {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-width: 0;
   min-height: 0;
