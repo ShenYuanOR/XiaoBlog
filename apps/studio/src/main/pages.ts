@@ -166,7 +166,8 @@ export function pageHref(siteDir: string, file: string): string {
   if (normalized === 'src/layouts/PageLayout.astro') {
     return existsSync(path.join(siteDir, 'src/pages/about.astro')) ? 'about/' : '';
   }
-  if ((SITE_PARTS as readonly string[]).includes(normalized)) {
+  // 页眉、页脚、页面壳、侧栏都画在真实页面上。打开它们时仍预览站点，避免跳到不存在的地址。
+  if (normalized.startsWith('src/components/') || normalized.startsWith('src/layouts/')) {
     return '';
   }
   if (normalized === 'src/pages/categories/[category].astro') {

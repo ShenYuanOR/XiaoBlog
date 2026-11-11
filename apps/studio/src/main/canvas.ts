@@ -17,7 +17,7 @@ import {
   type FileHistory,
 } from '@xiao/core/ast';
 import { htmlNodeComponent, htmlSnippet, manifest } from '@xiao/core/components';
-import { isHtmlPostFile, isSharedLayout, isSitePart, normalizePageFile } from '@xiao/core/site';
+import { isHtmlPostFile } from '@xiao/core/site';
 
 export interface OutlineNode {
   id: string;
@@ -29,8 +29,8 @@ export interface OutlineNode {
   children: OutlineNode[];
 }
 
-/** 页面文件：src/pages/** 下的 .astro，路径字符白名单与旧实现保持一致。 */
-const PAGE_FILE_RE = /^src\/pages\/[\w./[\]-]+\.astro$/;
+/** 站点源码里的 Astro 文件。页眉、骨架、导航和页面都走这条，不再把它们改判回首页。 */
+const SRC_ASTRO_RE = /^src\/[\w./[\]-]+\.astro$/;
 /** 文章自定义版式：src/layouts/posts/<slug>.astro（slug 规则与 content.customize 一致）。 */
 const POST_LAYOUT_RE = /^src\/layouts\/posts\/[a-z0-9]+(?:-[a-z0-9]+)*\.astro$/;
 
@@ -43,20 +43,12 @@ export function isHtmlPost(file?: string): boolean {
   return Boolean(file && isHtmlPostFile(file));
 }
 
-/** 画布可编辑的文件：站点页面、共用版式、单篇文章版式、HTML 文章正文。 */
+/** 画布可写的文件：src 下的 .astro，以及 HTML 文章正文。含 `..` 的路径一律退回首页。 */
 export function safePage(file?: string): string {
   if (!file) return 'src/pages/index.astro';
   const normalized = file.replaceAll('\\', '/');
   if (normalized.includes('..')) return 'src/pages/index.astro';
-  if (
-    PAGE_FILE_RE.test(normalized) ||
-    POST_LAYOUT_RE.test(normalized) ||
-    isSharedLayout(normalized) ||
-    isSitePart(normalized) ||
-    isHtmlPostFile(normalized)
-  ) {
-    return normalized;
-  }
+  if (SRC_ASTRO_RE.test(normalized) || isHtmlPostFile(normalized)) return normalized;
   return 'src/pages/index.astro';
 }
 
@@ -95,18 +87,25 @@ function pagePath(siteDir: string, file = 'src/pages/index.astro'): string {
   return path.join(siteDir, safePage(file));
 }
 
-/**
- * 版式文件比页面文件深一层：core 的 importEdits 按页面写死 `../components/xiao/`，
- * 插到 src/layouts/posts/*.astro 时要把新增的组件 import 再往上提一层。
- */
+const XIAO_DIR = ['src', 'components', 'xiao'];
+
+/** core 的 importEdits 按页面写死 `../components/xiao/`。落到哪份文件，就改成那份文件能解析的相对路径。 */
+function relativeXiaoDir(file: string): string {
+  const normalized = file.replaceAll('\\', '/');
+  const slash = normalized.lastIndexOf('/');
+  const from = slash >= 0 ? normalized.slice(0, slash).split('/') : [];
+  let shared = 0;
+  while (shared < from.length && shared < XIAO_DIR.length && from[shared] === XIAO_DIR[shared]) {
+    shared += 1;
+  }
+  const up = from.length - shared;
+  const down = XIAO_DIR.slice(shared).join('/');
+  if (up === 0) return down ? `./${down}/` : './';
+  return `${'../'.repeat(up)}${down ? `${down}/` : ''}`;
+}
+
 function fixInsertedImports(source: string, file: string): string {
-  if (isPostLayout(file)) {
-    return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../../components/xiao/');
-  }
-  if (normalizePageFile(file).startsWith('src/components/site/')) {
-    return source.replace(/(from\s+['"])\.\.\/components\/xiao\//g, '$1../xiao/');
-  }
-  return source;
+  return source.replaceAll("from '../components/xiao/", `from '${relativeXiaoDir(file)}`);
 }
 
 /** `<slot />` 是文章正文插槽：结构里受保护，不能删、不能改属性、不能往里塞组件。 */

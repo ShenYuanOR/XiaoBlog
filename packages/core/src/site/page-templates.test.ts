@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOutline, safePage } from '../../../../apps/studio/src/main/canvas.ts';
+import { insertComponent, readOutline, safePage } from '../../../../apps/studio/src/main/canvas.ts';
 import { customizePost } from '../../../../apps/studio/src/main/content.ts';
 import { createPage, listPages } from '../../../../apps/studio/src/main/pages.ts';
 
@@ -63,7 +63,7 @@ describe('自定义此页和页面模板', () => {
     expect(listed).not.toContain('src/layouts/posts/hello.astro');
   });
 
-  it('画布只允许页面、共用版式和单篇版式', () => {
+  it('画布允许 src 里的页面、版式和组件', () => {
     expect(safePage('src/pages/about.astro')).toBe('src/pages/about.astro');
     expect(safePage('src/layouts/PostLayout.astro')).toBe('src/layouts/PostLayout.astro');
     expect(safePage('src/layouts/posts/hello-xiao.astro')).toBe(
@@ -71,30 +71,38 @@ describe('自定义此页和页面模板', () => {
     );
     expect(safePage('src/components/site/Header.astro')).toBe('src/components/site/Header.astro');
     expect(safePage('src/components/site/Footer.astro')).toBe('src/components/site/Footer.astro');
+    expect(safePage('src/components/xiao/PageShell.astro')).toBe(
+      'src/components/xiao/PageShell.astro',
+    );
+    expect(safePage('src/components/xiao/SiteNav.astro')).toBe('src/components/xiao/SiteNav.astro');
     expect(safePage('../etc/passwd')).toBe('src/pages/index.astro');
+    expect(safePage('src/styles/custom.css')).toBe('src/pages/index.astro');
     expect(safePage('src/content/posts/hello-xiao/index.html')).toBe(
       'src/content/posts/hello-xiao/index.html',
     );
   });
 
-  it('HTML 文章画布能读出正文结构并认出提示框', () => {
-    const site = mkdtempSync(path.join(tmpdir(), 'xiao-html-'));
-    const dir = path.join(site, 'src/content/posts/html-note');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      path.join(dir, 'index.html'),
-      [
-        '---',
-        'title: HTML',
-        'date: 2026-09-12',
-        '---',
-        '<div class="x-callout x-pad-md"><p>你好</p></div>',
-        '<h2>标题</h2>',
-        '',
-      ].join('\n'),
-    );
-    const outline = readOutline(site, 'src/content/posts/html-note/index.html');
-    expect(outline.map((node) => node.name)).toEqual(['Callout', 'Heading']);
-    expect(outline[0]?.children[0]?.name).toBe('Text');
+  it('插入组件时按目标文件改写 import', () => {
+    const site = mkdtempSync(path.join(tmpdir(), 'xiao-drop-'));
+    const shellDir = path.join(site, 'src/components/xiao');
+    const headerDir = path.join(site, 'src/components/site');
+    mkdirSync(shellDir, { recursive: true });
+    mkdirSync(headerDir, { recursive: true });
+    const shell = 'src/components/xiao/PageShell.astro';
+    const header = 'src/components/site/Header.astro';
+    writeFileSync(path.join(site, shell), '---\n---\n<div class="shell"></div>\n');
+    writeFileSync(path.join(site, header), '---\n---\n<header class="topbar"></header>\n');
+    const shellRoot = readOutline(site, shell)[0];
+    const headerRoot = readOutline(site, header)[0];
+    expect(shellRoot).toBeTruthy();
+    expect(headerRoot).toBeTruthy();
+    insertComponent(site, shellRoot!.id, 0, 'Text', shell);
+    const shellText = readFileSync(path.join(site, shell), 'utf8');
+    expect(shellText).toContain("from './Text.astro'");
+    expect(shellText).toContain('<Text');
+    expect(shellText).not.toMatch(/import[^\n]*---/);
+    insertComponent(site, headerRoot!.id, 0, 'Text', header);
+    const headerText = readFileSync(path.join(site, header), 'utf8');
+    expect(headerText).toContain("from '../xiao/Text.astro'");
   });
 });

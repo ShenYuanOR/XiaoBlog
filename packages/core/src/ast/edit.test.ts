@@ -246,7 +246,8 @@ describe('补齐的三种操作', () => {
     const source = '---\n---\n<main></main>\n';
     const doc = parseAstro(source);
     const inserted = insertNode(doc, root(doc).id, 0, '<Card />');
-    expect(inserted).toContain("import Card from '../components/xiao/Card.astro';");
+    expect(inserted).toContain("import Card from '../components/xiao/Card.astro';\n---");
+    expect(() => parseAstro(inserted)).not.toThrow();
     const again = parseAstro(inserted);
     const card = root(again).children.find((child) => child.name === 'Card');
     const removed = removeNode(again, card!.id);

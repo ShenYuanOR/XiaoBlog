@@ -248,7 +248,8 @@ function importEdits(
   const lines = missing
     .map((name) => `import ${name} from '../components/xiao/${name}.astro';`)
     .join(doc.eol);
-  return [{ start: at, end: at, text: `${doc.eol}${lines}` }];
+  // 插在闭合 --- 前面时必须自带换行，否则 import 会和 --- 粘成一行，整页解析失败。
+  return [{ start: at, end: at, text: `${lines}${doc.eol}` }];
 }
 
 export function removeNode(doc: AstroDoc, nodeId: string): string {
