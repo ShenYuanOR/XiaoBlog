@@ -16,6 +16,8 @@ import {
   destroyDock,
   hideDock,
   hidePageEditor,
+  expectPreviewUrl,
+  installPreviewNavigationLock,
   isPreviewWindowOpen,
   hitPreview,
   hintDrop,
@@ -180,6 +182,7 @@ function createWindow(): BrowserWindow {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  installPreviewNavigationLock(win);
   const url = rendererLoadUrl();
   if (!app.isPackaged && url.startsWith('http') && !process.argv.includes('--probe')) {
     win.webContents.once('did-finish-load', () => {
@@ -414,6 +417,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('preview:hideDock', () => {
     hideDock();
+    return ok(null);
+  });
+  ipcMain.handle('preview:expect', (_event, name: string, url: string) => {
+    expectPreviewUrl(name, url);
     return ok(null);
   });
   ipcMain.handle('page:href', (_event, siteDir: string, file: string) =>

@@ -267,6 +267,8 @@ const api = {
       document.dispatchEvent(new CustomEvent('xiao:preview-dock', { detail: input }));
       return Promise.resolve({ ok: true, data: null });
     },
+    expect: (name: string, url: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('preview:expect', name, url),
     hideDock: (): Promise<IpcResult<null>> => {
       document.dispatchEvent(new CustomEvent('xiao:preview-hide-dock'));
       return Promise.resolve({ ok: true, data: null });

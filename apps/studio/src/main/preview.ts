@@ -207,6 +207,38 @@ export function isEmbeddedPreviewFrame(frame: { name: string } | null | undefine
   return Boolean(frame && frame.name.startsWith(PREVIEW_FRAME));
 }
 
+const expectedPreviewUrl = new Map<string, string>();
+
+function pageKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = decodeURI(parsed.pathname).replace(/\/+$/, '') || '/';
+    return `${parsed.origin}${path}`;
+  } catch {
+    return '';
+  }
+}
+
+export function expectPreviewUrl(name: string, url: string): void {
+  if (!name.startsWith(PREVIEW_FRAME) || !url) return;
+  expectedPreviewUrl.set(name, url);
+}
+
+/** 只拦预览 iframe 自己发起的跨页导航。父页面改 src 之前会先登记目标地址。 */
+export function installPreviewNavigationLock(win: BrowserWindow): void {
+  win.webContents.on('will-frame-navigate', (event) => {
+    const frame = event.frame;
+    if (!isEmbeddedPreviewFrame(frame)) return;
+    const next = event.url;
+    const expected = expectedPreviewUrl.get(frame.name);
+    if (expected && pageKey(expected) === pageKey(next)) return;
+    const current = frame?.url ?? '';
+    if (!current || current === 'about:blank') return;
+    if (pageKey(current) === pageKey(next)) return;
+    event.preventDefault();
+  });
+}
+
 function embeddedFrames(): Electron.WebFrameMain[] {
   const found: Electron.WebFrameMain[] = [];
   for (const win of BrowserWindow.getAllWindows()) {

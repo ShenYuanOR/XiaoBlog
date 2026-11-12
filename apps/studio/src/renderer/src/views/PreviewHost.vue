@@ -74,6 +74,7 @@ function onDock(event: Event): void {
   const limitRight = bounds.x + bounds.width;
   let nextX = bounds.x;
   const next: FrameBox[] = [];
+  const pending: Promise<unknown>[] = [];
   devices.forEach((device, index) => {
     const natural = requested[index] ?? widths.pc;
     const share = detail.device === 'side' ? Math.floor(natural * scale) : Math.min(natural, bounds.width);
@@ -84,13 +85,17 @@ function onDock(event: Event): void {
     if (width < 1 || height < 1) return;
     const name = `xiao-preview-dock-${index}`;
     const previous = lanes.value.find((lane) => lane.name === name);
+    const url = previous?.url === detail.url ? previous.url : detail.url;
+    pending.push(window.xiao.preview.expect(name, url));
     next.push({
       name,
-      url: previous?.url === detail.url ? previous.url : detail.url,
+      url,
       style: boxStyle(Math.round(x), Math.round(bounds.y), width, height),
     });
   });
-  lanes.value = next;
+  void Promise.all(pending).then(() => {
+    lanes.value = next;
+  });
 }
 
 function onEditor(event: Event): void {
@@ -104,9 +109,10 @@ function onEditor(event: Event): void {
     editor.value = null;
     return;
   }
-  editor.value = {
+  const url = editor.value?.url === detail.url ? editor.value.url : detail.url;
+  const frame = {
     name: 'xiao-preview-editor',
-    url: editor.value?.url === detail.url ? editor.value.url : detail.url,
+    url,
     style: boxStyle(
       Math.round(bounds.x),
       Math.round(bounds.y),
@@ -114,6 +120,9 @@ function onEditor(event: Event): void {
       Math.round(bounds.height),
     ),
   };
+  void window.xiao.preview.expect(frame.name, url).then(() => {
+    editor.value = frame;
+  });
 }
 
 function onHideDock(): void {
