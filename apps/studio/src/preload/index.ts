@@ -250,7 +250,12 @@ const api = {
       url: string,
       bounds: { x: number; y: number; width: number; height: number } | null,
       interactive = false,
-    ): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:editor', url, bounds, interactive),
+    ): Promise<IpcResult<null>> => {
+      document.dispatchEvent(
+        new CustomEvent('xiao:preview-editor', { detail: { url, bounds, interactive } }),
+      );
+      return Promise.resolve({ ok: true, data: null });
+    },
     dock: (input: {
       enabled: boolean;
       url: string;
@@ -258,8 +263,14 @@ const api = {
       bounds: { x: number; y: number; width: number; height: number };
       zoom?: number;
       interactive?: boolean;
-    }): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:dock', input),
-    hideDock: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:hideDock'),
+    }): Promise<IpcResult<null>> => {
+      document.dispatchEvent(new CustomEvent('xiao:preview-dock', { detail: input }));
+      return Promise.resolve({ ok: true, data: null });
+    },
+    hideDock: (): Promise<IpcResult<null>> => {
+      document.dispatchEvent(new CustomEvent('xiao:preview-hide-dock'));
+      return Promise.resolve({ ok: true, data: null });
+    },
     catalog: (items: { name: string; label: string }[]): void => {
       ipcRenderer.send('preview:catalog', items);
     },
@@ -319,4 +330,6 @@ const api = {
   },
 };
 
-contextBridge.exposeInMainWorld('xiao', api);
+if (process.isMainFrame !== false) {
+  contextBridge.exposeInMainWorld('xiao', api);
+}

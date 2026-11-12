@@ -20,6 +20,7 @@ import Appearance from './Appearance.vue';
 import Conflict from './Conflict.vue';
 import Canvas from './Canvas.vue';
 import DevDrawer from './DevDrawer.vue';
+import PreviewHost from './PreviewHost.vue';
 import Editor from './Editor.vue';
 import Media from './Media.vue';
 import Pages from './Pages.vue';
@@ -444,6 +445,8 @@ const modeKey = computed({
         <div v-else id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
+
+    <PreviewHost />
 
     <footer class="status">
       <span class="state" :class="session.saveState">

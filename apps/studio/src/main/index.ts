@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, session, shell } from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
@@ -11,6 +11,7 @@ import {
   focusPreview,
   focusSelector,
   isPreviewContents,
+  isPreviewFrameSender,
   applyPreviewMode,
   destroyDock,
   hideDock,
@@ -23,7 +24,6 @@ import {
   showPageEditor,
   showPreview,
   rememberCatalog,
-  sendToPreview,
   type PreviewMode,
   type DockInput,
   type StageHit,
@@ -175,6 +175,8 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // 预览 iframe 里的 preload 要能把点击事件送回主进程。
+      nodeIntegrationInSubFrames: true,
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -329,7 +331,19 @@ if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-allow-origins', '*');
 }
 
+function fromPreview(event: {
+  sender: Electron.WebContents;
+  senderFrame: { name: string } | null;
+}): boolean {
+  return isPreviewContents(event.sender) || isPreviewFrameSender(event.senderFrame);
+}
+
 app.whenReady().then(() => {
+  session.defaultSession.registerPreloadScript({
+    type: 'frame',
+    id: 'xiao-preview',
+    filePath: join(import.meta.dirname, '../preload/preview.js'),
+  });
   registerProtocol();
   ipcMain.handle('app:getInfo', () =>
     ok<AppInfo>({ name: '晓', version: app.getVersion(), packaged: app.isPackaged }),
@@ -406,7 +420,7 @@ app.whenReady().then(() => {
     ok(pageHref(siteDir, file)),
   );
   ipcMain.on('preview:text', (event, payload: { file: string; offset: string; text: string }) => {
-    if (!isPreviewContents(event.sender)) return;
+    if (!fromPreview(event)) return;
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.webContents !== event.sender) win.webContents.send('preview:onText', payload);
     }
@@ -420,7 +434,7 @@ app.whenReady().then(() => {
       event,
       payload: { file: string; offset: string; name: string; place: 'before' | 'after' | 'into' },
     ) => {
-      if (!isPreviewContents(event.sender)) return;
+      if (!fromPreview(event)) return;
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.webContents !== event.sender)
           win.webContents.send('preview:onInsertBlock', payload);
@@ -428,7 +442,7 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.on('preview:pick', (event, payload: { file: string; offset: string }) => {
-    if (!isPreviewContents(event.sender)) return;
+    if (!fromPreview(event)) return;
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('preview:onPick', payload);
     }
@@ -456,13 +470,13 @@ app.whenReady().then(() => {
     return ok(null);
   });
   ipcMain.on('preview:resize', (event, payload: { prop: 'width' | 'pad'; px: number }) => {
-    if (!isPreviewContents(event.sender)) return;
+    if (!fromPreview(event)) return;
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('preview:onResize', payload);
     }
   });
   ipcMain.on('preview:camera', (event, payload: { zoom: number }) => {
-    if (!isPreviewContents(event.sender)) return;
+    if (!fromPreview(event)) return;
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('preview:onCamera', payload);
     }

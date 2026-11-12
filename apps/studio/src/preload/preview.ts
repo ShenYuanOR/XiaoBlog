@@ -468,7 +468,11 @@ function applyZoom(next: number): void {
   refreshBoxes();
 }
 
-let interactive = !process.argv.includes('--xiao-interactive=0');
+function inPreviewFrame(): boolean {
+  return window.name.startsWith('xiao-preview');
+}
+
+let interactive = !window.name.startsWith('xiao-preview-editor');
 
 function hashLink(target: EventTarget | null): boolean {
   const element = target instanceof Element ? target.closest('a') : null;
@@ -644,23 +648,25 @@ function keepInside(): void {
   document.documentElement.style.overflowX = 'hidden';
 }
 
-ipcRenderer.on('preview:interactive', (_event, value: boolean) => {
-  interactive = value !== false;
-  if (!interactive) clearChrome();
-});
+if (inPreviewFrame()) {
+  ipcRenderer.on('preview:interactive', (_event, value: boolean) => {
+    interactive = value !== false;
+    if (!interactive) clearChrome();
+  });
 
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', () => {
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', () => {
+      keepInside();
+      bindChrome();
+    });
+  } else {
     keepInside();
     bindChrome();
-  });
-} else {
-  keepInside();
-  bindChrome();
-}
+  }
 
-contextBridge.exposeInMainWorld('__xiaoStage', {
-  hit: (x: number, y: number) => hitAt(x, y),
-  drop: (hit: StageHit | null) => showDrop(hit),
-  zoom: () => zoom,
-});
+  contextBridge.exposeInMainWorld('__xiaoStage', {
+    hit: (x: number, y: number) => hitAt(x, y),
+    drop: (hit: StageHit | null) => showDrop(hit),
+    zoom: () => zoom,
+  });
+}

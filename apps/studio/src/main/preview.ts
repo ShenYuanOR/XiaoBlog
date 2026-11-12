@@ -201,116 +201,30 @@ export async function showPreview(
   return shown;
 }
 
-let editorView: WebContentsView | null = null;
-let editorWindow: BrowserWindow | null = null;
+const PREVIEW_FRAME = 'xiao-preview';
 
-const navigationLocked = new WeakSet<WebContents>();
-const lockedUrl = new WeakMap<WebContents, string>();
+export function isEmbeddedPreviewFrame(frame: { name: string } | null | undefined): boolean {
+  return Boolean(frame && frame.name.startsWith(PREVIEW_FRAME));
+}
 
-/** 比较源站和路径。锚点不走 will-navigate，这里不用看 hash。 */
-function pageKey(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const path = decodeURI(parsed.pathname).replace(/\/+$/, '') || '/';
-    return `${parsed.origin}${path}`;
-  } catch {
-    return '';
+function embeddedFrames(): Electron.WebFrameMain[] {
+  const found: Electron.WebFrameMain[] = [];
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    for (const frame of win.webContents.mainFrame.framesInSubtree) {
+      if (frame.name.startsWith(PREVIEW_FRAME)) found.push(frame);
+    }
   }
+  return found;
 }
 
-function allowsNavigation(contents: WebContents, target: string): boolean {
-  const locked = lockedUrl.get(contents);
-  if (!locked || !target) return true;
-  return pageKey(locked) === pageKey(target);
-}
-
-/** 预览视图只能停在锁定的文章/页面上。loadURL 换篇不会触发这两事件。 */
-function bindNavigationLock(contents: WebContents): void {
-  if (navigationLocked.has(contents)) return;
-  navigationLocked.add(contents);
-  contents.on('will-navigate', (event, url) => {
-    const target = event.url || url;
-    if (allowsNavigation(contents, target)) return;
-    event.preventDefault();
-  });
-  contents.on('will-frame-navigate', (event) => {
-    if (allowsNavigation(contents, event.url)) return;
-    event.preventDefault();
-  });
-  contents.setWindowOpenHandler(({ url }) => {
-    if (allowsNavigation(contents, url)) return { action: 'allow' };
-    return { action: 'deny' };
-  });
-}
-
-function lockPreviewUrl(contents: WebContents, url: string): void {
-  bindNavigationLock(contents);
-  lockedUrl.set(contents, url);
-}
-
-const interactiveFlag = new WeakMap<WebContents, boolean>();
-const interactiveBound = new WeakSet<WebContents>();
-
-function previewContents(interactive: boolean): WebContentsView {
-  const view = new WebContentsView({
-    webPreferences: {
-      session: session.fromPartition('preview'),
-      preload: join(import.meta.dirname, '../preload/preview.js'),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      additionalArguments: [`--xiao-interactive=${interactive ? '1' : '0'}`],
-    },
-  });
-  setPreviewInteractive(view.webContents, interactive);
-  return view;
-}
-
-function setPreviewInteractive(contents: WebContents, interactive: boolean): void {
-  interactiveFlag.set(contents, interactive);
-  if (!interactiveBound.has(contents)) {
-    interactiveBound.add(contents);
-    contents.on('did-finish-load', () => {
-      const flag = interactiveFlag.get(contents);
-      if (flag === undefined || contents.isDestroyed()) return;
-      contents.send('preview:interactive', flag);
-    });
-  }
-  if (!contents.isDestroyed()) contents.send('preview:interactive', interactive);
-}
-
-export function showPageEditor(
-  win: BrowserWindow,
-  url: string,
-  bounds: { x: number; y: number; width: number; height: number },
-  interactive = false,
-): void {
-  if (bounds.width < 40 || bounds.height < 40) return;
-  if (!editorView || editorWindow !== win) {
-    hidePageEditor();
-    editorView = previewContents(interactive);
-    editorWindow = win;
-    win.contentView.addChildView(editorView);
-  }
-  setPreviewInteractive(editorView.webContents, interactive);
-  editorView.setBounds({
-    x: Math.round(bounds.x),
-    y: Math.round(bounds.y),
-    width: Math.round(bounds.width),
-    height: Math.round(bounds.height),
-  });
-  lockPreviewUrl(editorView.webContents, url);
-  const current = editorView.webContents.getURL();
-  if (current !== url) void editorView.webContents.loadURL(url);
+/** 主窗口里的预览已经是 iframe，这个入口留着避免旧调用再造原生层。 */
+export function showPageEditor(): void {
+  return;
 }
 
 export function hidePageEditor(): void {
-  if (editorView && editorWindow && !editorWindow.isDestroyed()) {
-    editorWindow.contentView.removeChildView(editorView);
-    editorView.webContents.close();
-  }
-  editorView = null;
-  editorWindow = null;
+  return;
 }
 
 export function rememberCatalog(items: { name: string; label: string }[]): void {
@@ -319,22 +233,20 @@ export function rememberCatalog(items: { name: string; label: string }[]): void 
 }
 
 export function sendToPreview(channel: string, payload: unknown): void {
-  const targets = [
-    ...views,
-    ...(editorView ? [editorView] : []),
-    ...dockLanes.map((lane) => lane.view),
-  ];
-  for (const view of targets) {
+  for (const view of views) {
     if (!view.webContents.isDestroyed()) view.webContents.send(channel, payload);
+  }
+  for (const frame of embeddedFrames()) {
+    if (!frame.isDestroyed()) frame.send(channel, payload);
   }
 }
 
 export function isPreviewContents(contents: WebContents): boolean {
-  return (
-    views.some((view) => view.webContents === contents) ||
-    editorView?.webContents === contents ||
-    dockLanes.some((lane) => lane.view.webContents === contents)
-  );
+  return views.some((view) => view.webContents === contents);
+}
+
+export function isPreviewFrameSender(frame: { name: string } | null | undefined): boolean {
+  return isEmbeddedPreviewFrame(frame);
 }
 
 export interface DockBounds {
@@ -363,126 +275,26 @@ export type StageHit = {
   tag: string;
 };
 
-type DockLane = { view: WebContentsView; device: 'phone' | 'tablet' | 'pc' };
-
-let dockLanes: DockLane[] = [];
-let dockWin: BrowserWindow | null = null;
-let dockUrl = '';
 let dockZoom = 1;
 
-function dockViews(): WebContentsView[] {
-  return dockLanes.map((lane) => lane.view);
-}
-
-function attachLane(win: BrowserWindow, lane: DockLane): void {
-  if (dockWin && dockWin !== win && !dockWin.isDestroyed()) {
-    dockWin.contentView.removeChildView(lane.view);
-  }
-  win.contentView.addChildView(lane.view);
-}
-
-async function emulateLane(lane: DockLane, width: number, height: number): Promise<void> {
-  try {
-    const contents = lane.view.webContents;
-    if (!contents.debugger.isAttached()) contents.debugger.attach('1.3');
-    await contents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
-      width,
-      height,
-      deviceScaleFactor: 1,
-      mobile: lane.device === 'phone' || (lane.device === 'tablet' && width < 768),
-    });
-  } catch {
-    // 调试器占线时先按实际宽度显示，下一次布局再仿真。
-  }
-}
-
 function sendCamera(): void {
-  for (const view of dockViews()) view.webContents.send('preview:camera', { zoom: dockZoom });
+  for (const frame of embeddedFrames()) {
+    if (!frame.name.startsWith('xiao-preview-dock')) continue;
+    if (!frame.isDestroyed()) frame.send('preview:camera', { zoom: dockZoom });
+  }
 }
 
-/** 预览坞：挂在主窗口上的单页预览，按设备宽度居中显示。 */
-export async function showDock(win: BrowserWindow, input: DockInput): Promise<void> {
-  const bounds = input.bounds;
-  if (!input.enabled || bounds.width < 120 || bounds.height < 120) {
-    hideDock();
-    return;
-  }
-  if (typeof input.zoom === 'number') dockZoom = input.zoom;
-  const devices: Array<'phone' | 'tablet' | 'pc'> =
-    input.device === 'side'
-      ? ['phone', 'tablet', 'pc']
-      : [input.device === 'phone' || input.device === 'tablet' ? input.device : 'pc'];
-  while (dockLanes.length > devices.length) {
-    const lane = dockLanes.pop();
-    if (!lane) break;
-    if (dockWin && !dockWin.isDestroyed()) dockWin.contentView.removeChildView(lane.view);
-    if (!lane.view.webContents.isDestroyed()) lane.view.webContents.close();
-  }
-  const created: DockLane[] = [];
-  while (dockLanes.length < devices.length) {
-    const device = devices[dockLanes.length] ?? 'pc';
-    const lane = { view: previewContents(input.interactive !== false), device };
-    dockLanes.push(lane);
-    created.push(lane);
-  }
-  const reparent = dockWin !== win;
-  dockLanes.forEach((lane, index) => {
-    lane.device = devices[index] ?? lane.device;
-    if (reparent || created.includes(lane)) attachLane(win, lane);
-  });
-  dockWin = win;
-  const requested = devices.map((device) => previewWidths[device]);
-  const sum = requested.reduce((total, width) => total + width, 0);
-  const scale = input.device === 'side' ? Math.min(1, bounds.width / sum) : 1;
-  const limitRight = bounds.x + bounds.width;
-  const limitBottom = bounds.y + bounds.height;
-  let nextX = bounds.x;
-  const load = dockUrl !== input.url;
-  dockUrl = input.url;
-  for (let index = 0; index < dockLanes.length; index += 1) {
-    const lane = dockLanes[index];
-    if (!lane) continue;
-    const natural = requested[index] ?? previewWidths.pc;
-    const share =
-      input.device === 'side' ? Math.floor(natural * scale) : Math.min(natural, bounds.width);
-    const x = input.device === 'side' ? nextX : bounds.x + Math.max(0, bounds.width - share) / 2;
-    const width = Math.round(Math.max(0, Math.min(share, limitRight - x)));
-    const height = Math.round(Math.max(0, limitBottom - bounds.y));
-    lane.view.setBounds({
-      x: Math.round(x),
-      y: Math.round(bounds.y),
-      width,
-      height,
-    });
-    nextX = x + width;
-    if (width < 1 || height < 1) continue;
-    lockPreviewUrl(lane.view.webContents, input.url);
-    setPreviewInteractive(lane.view.webContents, input.interactive !== false);
-    if (load) loadAuthoringPage(lane.view.webContents, input.url);
-    await emulateLane(lane, width, height);
-  }
-  sendCamera();
+/** 预览坞改由渲染进程的 iframe 绘制。这里不再创建原生层。 */
+export function showDock(): void {
+  return;
 }
 
-/** 只从窗口摘下来，保留页面状态；再次停靠时不用重新加载。 */
 export function hideDock(): void {
-  if (dockWin && !dockWin.isDestroyed()) {
-    for (const lane of dockLanes) dockWin.contentView.removeChildView(lane.view);
-  }
-  dockWin = null;
+  return;
 }
 
-/** 关闭预览坞并释放 webContents。 */
 export function destroyDock(): void {
-  if (dockWin && !dockWin.isDestroyed()) {
-    for (const lane of dockLanes) dockWin.contentView.removeChildView(lane.view);
-  }
-  for (const lane of dockLanes) {
-    if (!lane.view.webContents.isDestroyed()) lane.view.webContents.close();
-  }
-  dockLanes = [];
-  dockWin = null;
-  dockUrl = '';
+  return;
 }
 
 export function focusPreview(
@@ -492,34 +304,28 @@ export function focusPreview(
   handles?: { width?: boolean; pad?: boolean },
 ): void {
   const payload = file ? { file, offset, label, handles } : null;
-  for (const view of [...views, ...dockViews(), editorView].filter(Boolean)) {
-    view?.webContents.send('preview:focus', payload);
+  for (const view of views) view.webContents.send('preview:focus', payload);
+  for (const frame of embeddedFrames()) {
+    if (!frame.isDestroyed()) frame.send('preview:focus', payload);
   }
 }
 
 export async function focusSelector(selector: string): Promise<void> {
   const script = `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`;
-  for (const view of [...views, ...dockViews()]) await view.webContents.executeJavaScript(script);
+  for (const view of views) await view.webContents.executeJavaScript(script);
+  for (const frame of embeddedFrames()) {
+    if (!frame.isDestroyed()) await frame.executeJavaScript(script);
+  }
 }
 
 export async function hitPreview(clientX: number, clientY: number): Promise<StageHit | null> {
-  for (const lane of dockLanes) {
-    const box = lane.view.getBounds();
-    if (
-      clientX < box.x ||
-      clientX > box.x + box.width ||
-      clientY < box.y ||
-      clientY > box.y + box.height
-    ) {
-      continue;
-    }
-    const x = clientX - box.x;
-    const y = clientY - box.y;
+  for (const frame of embeddedFrames()) {
+    if (!frame.name.startsWith('xiao-preview-dock') || frame.isDestroyed()) continue;
     try {
-      const hit = (await lane.view.webContents.executeJavaScript(
-        `window.__xiaoStage?.hit(${x},${y}) ?? null`,
+      const hit = (await frame.executeJavaScript(
+        `window.__xiaoStage?.hit(${clientX},${clientY}) ?? null`,
       )) as StageHit | null;
-      return hit;
+      if (hit) return hit;
     } catch {
       return null;
     }
@@ -528,7 +334,11 @@ export async function hitPreview(clientX: number, clientY: number): Promise<Stag
 }
 
 export function hintDrop(hit: StageHit | null): void {
-  for (const view of dockViews()) view.webContents.send('preview:drop', hit);
+  for (const frame of embeddedFrames()) {
+    if (frame.name.startsWith('xiao-preview-dock') && !frame.isDestroyed()) {
+      frame.send('preview:drop', hit);
+    }
+  }
 }
 
 export function setDockZoom(zoom: number): void {
