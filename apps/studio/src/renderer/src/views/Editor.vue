@@ -1,5 +1,25 @@
 <script setup lang="ts">
-import { mdiRedo, mdiUndo } from '@mdi/js';
+import {
+  mdiCodeBraces,
+  mdiCodeTags,
+  mdiFormatBold,
+  mdiFormatHeader1,
+  mdiFormatHeader2,
+  mdiFormatHeader3,
+  mdiFormatItalic,
+  mdiFormatListBulleted,
+  mdiFormatListCheckbox,
+  mdiFormatListNumbered,
+  mdiFormatQuoteClose,
+  mdiFormatStrikethroughVariant,
+  mdiImageOutline,
+  mdiLinkVariant,
+  mdiMinus,
+  mdiRedo,
+  mdiTable,
+  mdiUndo,
+  mdiXml,
+} from '@mdi/js';
 import { Crepe } from '@milkdown/crepe';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame-dark.css';
@@ -754,12 +774,95 @@ function crepeView(): EditorView | null {
 }
 
 function crepeHistory(kind: 'undo' | 'redo'): void {
-  const view = crepeView();
-  if (!view) return;
-  const command = kind === 'undo' ? undo : redo;
-  command(view.state, view.dispatch);
-  view.focus();
+  if (!crepe || !crepeReady) return;
+  crepe.editor.action((ctx: unknown) => {
+    const view = (ctx as { get: (key: string) => EditorView }).get('editorView');
+    const command = kind === 'undo' ? undo : redo;
+    command(view.state, view.dispatch);
+    view.focus();
+  });
 }
+
+interface CrepeCommands {
+  call: (name: string, payload?: unknown) => boolean;
+}
+
+interface CrepeSchema {
+  nodes: Record<string, unknown>;
+}
+
+/** 和气泡菜单、「/」菜单用同一批命令名，不另写一套格式化。 */
+function withCrepe(run: (commands: CrepeCommands, schema: CrepeSchema) => void): void {
+  if (!crepe || !crepeReady) return;
+  crepe.editor.action((ctx: unknown) => {
+    const get = (ctx as { get: (key: string) => unknown }).get;
+    run(get('commands') as CrepeCommands, get('schema') as CrepeSchema);
+  });
+  crepeView()?.focus();
+}
+
+function runCommand(name: string, payload?: unknown): void {
+  withCrepe((commands) => {
+    commands.call(name, payload);
+  });
+}
+
+function runNode(name: string, command: 'WrapInBlockType' | 'AddBlockType', attrs?: Record<string, unknown>): void {
+  withCrepe((commands, schema) => {
+    const nodeType = schema.nodes[name];
+    if (!nodeType) return;
+    commands.call(command, { nodeType, attrs });
+  });
+}
+
+/** 通用 ToggleLink 会因缺少 href 抛错。这里走链接浮层，和气泡菜单同一套界面。 */
+function runLink(): void {
+  if (!crepe || !crepeReady) return;
+  crepe.editor.action((ctx: unknown) => {
+    const get = (ctx as { get: (key: string) => unknown }).get;
+    const view = get('editorView') as EditorView;
+    const api = get('linkTooltipAPICtx') as {
+      addLink: (from: number, to: number) => void;
+      removeLink: (from: number, to: number) => void;
+    };
+    const { from, to } = view.state.selection;
+    const link = view.state.schema.marks.link;
+    if (link && view.state.doc.rangeHasMark(from, to, link)) api.removeLink(from, to);
+    else api.addLink(from, to);
+  });
+}
+
+interface FormatAction {
+  label: string;
+  icon?: string;
+  run: () => void;
+}
+
+const formatActions: FormatAction[] = [
+  { label: '标题 1', icon: mdiFormatHeader1, run: () => runCommand('WrapInHeading', 1) },
+  { label: '标题', icon: mdiFormatHeader2, run: () => runCommand('WrapInHeading', 2) },
+  { label: '标题 3', icon: mdiFormatHeader3, run: () => runCommand('WrapInHeading', 3) },
+  { label: '加粗', icon: mdiFormatBold, run: () => runCommand('ToggleStrong') },
+  { label: '斜体', icon: mdiFormatItalic, run: () => runCommand('ToggleEmphasis') },
+  { label: '删除线', icon: mdiFormatStrikethroughVariant, run: () => runCommand('ToggleStrikeThrough') },
+  { label: '行内代码', icon: mdiCodeTags, run: () => runCommand('ToggleInlineCode') },
+  { label: '无序列表', icon: mdiFormatListBulleted, run: () => runCommand('WrapInBulletList') },
+  { label: '有序列表', icon: mdiFormatListNumbered, run: () => runCommand('WrapInOrderedList') },
+  {
+    label: '待办列表',
+    icon: mdiFormatListCheckbox,
+    run: () => runNode('list_item', 'WrapInBlockType', { checked: false }),
+  },
+  { label: '引用', icon: mdiFormatQuoteClose, run: () => runCommand('WrapInBlockquote') },
+  { label: '链接', icon: mdiLinkVariant, run: () => runLink() },
+  { label: '图片', icon: mdiImageOutline, run: () => runNode('image-block', 'AddBlockType') },
+  { label: '表格', icon: mdiTable, run: () => runCommand('InsertTable', { row: 3, col: 3 }) },
+  { label: '代码块', icon: mdiCodeBraces, run: () => runCommand('CreateCodeBlock', '') },
+  { label: '分割线', icon: mdiMinus, run: () => runCommand('InsertHr') },
+  { label: '自定义 HTML 容器', icon: mdiXml, run: () => openHtmlBox() },
+  { label: '撤销', icon: mdiUndo, run: () => crepeHistory('undo') },
+  { label: '重做', icon: mdiRedo, run: () => crepeHistory('redo') },
+];
 
 function stripSlashLine(markdown: string): string {
   return markdown
@@ -1493,6 +1596,24 @@ watch(
 
     </WorkbenchBar>
 
+    <div
+      v-if="format === 'markdown' && viewState === 'ready' && !sourceMode"
+      class="format-bar"
+      role="toolbar"
+      aria-label="写作工具栏"
+      @mousedown.prevent
+    >
+      <UiTooltip v-for="action in formatActions" :key="action.label" :label="action.label">
+        <UiButton
+          variant="ghost"
+          size="sm"
+          :icon="action.icon"
+          :aria-label="action.label"
+          @click="action.run()"
+        />
+      </UiTooltip>
+    </div>
+
     <div ref="bodyElement" class="editor-body">
       <div v-if="viewState === 'loading' && !showMonaco" class="state-loading">
         <UiSpinner :size="20" />
@@ -1716,6 +1837,17 @@ watch(
 
 .bar-label {
   display: inline;
+}
+
+.format-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: var(--ui-s1) var(--ui-s2);
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-panel);
 }
 
 .editor-body {
