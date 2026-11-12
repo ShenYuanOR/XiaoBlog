@@ -381,13 +381,14 @@ app.whenReady().then(() => {
       event,
       url: string,
       bounds: { x: number; y: number; width: number; height: number } | null,
+      interactive = false,
     ) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win || !url || !bounds) {
         hidePageEditor();
         return ok(null);
       }
-      showPageEditor(win, url, bounds);
+      showPageEditor(win, url, bounds, interactive);
       return ok(null);
     },
   );

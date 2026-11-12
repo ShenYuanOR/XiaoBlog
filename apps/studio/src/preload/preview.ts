@@ -468,7 +468,38 @@ function applyZoom(next: number): void {
   refreshBoxes();
 }
 
+let interactive = !process.argv.includes('--xiao-interactive=0');
+
+function hashLink(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target.closest('a') : null;
+  if (!(element instanceof HTMLAnchorElement)) return false;
+  return (element.getAttribute('href') || '').startsWith('#');
+}
+
+function clearChrome(): void {
+  hoverTarget = null;
+  const hover = document.getElementById('xiao-loc-hover');
+  if (hover) hover.style.display = 'none';
+  setSelected(null);
+}
+
+/** 文章预览只展示：不画悬停框，不把点击变成选中。锚点仍交给浏览器。 */
+function bindReadonly(): void {
+  const swallow = (event: Event): void => {
+    if (hashLink(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  document.addEventListener('click', swallow, true);
+  document.addEventListener('pointerdown', swallow, true);
+  document.addEventListener('mousedown', swallow, true);
+}
+
 function bindChrome(): void {
+  if (!interactive) {
+    bindReadonly();
+    return;
+  }
   document.addEventListener('mouseover', (event) => {
     hoverTarget = asElement(event.target)?.closest('[data-xiao-loc]') ?? null;
     paintHover();
@@ -497,6 +528,8 @@ function bindChrome(): void {
       if (!element || !loc) return;
       const leaf = ![...element.children].some((child) => !child.id.startsWith('xiao-'));
       if (isArticleFile(loc.file) && leaf) {
+        event.preventDefault();
+        event.stopPropagation();
         ipcRenderer.send('preview:pick', loc);
         setSelected(loc, '');
         requestAnimationFrame(() => typingEl?.focus());
@@ -610,6 +643,11 @@ function bindChrome(): void {
 function keepInside(): void {
   document.documentElement.style.overflowX = 'hidden';
 }
+
+ipcRenderer.on('preview:interactive', (_event, value: boolean) => {
+  interactive = value !== false;
+  if (!interactive) clearChrome();
+});
 
 if (document.readyState === 'loading') {
   window.addEventListener('DOMContentLoaded', () => {

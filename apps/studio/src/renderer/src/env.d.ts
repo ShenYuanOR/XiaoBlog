@@ -327,6 +327,7 @@ export interface XiaoApi {
     editor: (
       url: string,
       bounds: { x: number; y: number; width: number; height: number } | null,
+      interactive?: boolean,
     ) => Promise<IpcResult<null>>;
     dock: (input: {
       enabled: boolean;
@@ -334,6 +335,7 @@ export interface XiaoApi {
       device: 'phone' | 'tablet' | 'pc' | 'side';
       bounds: { x: number; y: number; width: number; height: number };
       zoom?: number;
+      interactive?: boolean;
     }) => Promise<IpcResult<null>>;
     hideDock: () => Promise<IpcResult<null>>;
     catalog: (items: { name: string; label: string }[]) => void;

@@ -1303,12 +1303,16 @@ function syncHtmlPreview(): void {
       return;
     }
     void window.xiao.preview.hideDock();
-    void window.xiao.preview.editor(url, {
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    });
+    void window.xiao.preview.editor(
+      url,
+      {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+      false,
+    );
   });
 }
 

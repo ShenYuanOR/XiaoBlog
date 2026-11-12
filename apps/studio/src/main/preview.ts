@@ -248,30 +248,51 @@ function lockPreviewUrl(contents: WebContents, url: string): void {
   lockedUrl.set(contents, url);
 }
 
-function previewContents(): WebContentsView {
-  return new WebContentsView({
+const interactiveFlag = new WeakMap<WebContents, boolean>();
+const interactiveBound = new WeakSet<WebContents>();
+
+function previewContents(interactive: boolean): WebContentsView {
+  const view = new WebContentsView({
     webPreferences: {
       session: session.fromPartition('preview'),
       preload: join(import.meta.dirname, '../preload/preview.js'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      additionalArguments: [`--xiao-interactive=${interactive ? '1' : '0'}`],
     },
   });
+  setPreviewInteractive(view.webContents, interactive);
+  return view;
+}
+
+function setPreviewInteractive(contents: WebContents, interactive: boolean): void {
+  interactiveFlag.set(contents, interactive);
+  if (!interactiveBound.has(contents)) {
+    interactiveBound.add(contents);
+    contents.on('did-finish-load', () => {
+      const flag = interactiveFlag.get(contents);
+      if (flag === undefined || contents.isDestroyed()) return;
+      contents.send('preview:interactive', flag);
+    });
+  }
+  if (!contents.isDestroyed()) contents.send('preview:interactive', interactive);
 }
 
 export function showPageEditor(
   win: BrowserWindow,
   url: string,
   bounds: { x: number; y: number; width: number; height: number },
+  interactive = false,
 ): void {
   if (bounds.width < 40 || bounds.height < 40) return;
   if (!editorView || editorWindow !== win) {
     hidePageEditor();
-    editorView = previewContents();
+    editorView = previewContents(interactive);
     editorWindow = win;
     win.contentView.addChildView(editorView);
   }
+  setPreviewInteractive(editorView.webContents, interactive);
   editorView.setBounds({
     x: Math.round(bounds.x),
     y: Math.round(bounds.y),
@@ -331,6 +352,8 @@ export interface DockInput {
   device: DockDevice;
   bounds: DockBounds;
   zoom?: number;
+  /** 页面画布要悬停和点选；文章预览只展示。 */
+  interactive?: boolean;
 }
 
 export type StageHit = {
@@ -398,7 +421,7 @@ export async function showDock(win: BrowserWindow, input: DockInput): Promise<vo
   const created: DockLane[] = [];
   while (dockLanes.length < devices.length) {
     const device = devices[dockLanes.length] ?? 'pc';
-    const lane = { view: previewContents(), device };
+    const lane = { view: previewContents(input.interactive !== false), device };
     dockLanes.push(lane);
     created.push(lane);
   }
@@ -434,6 +457,7 @@ export async function showDock(win: BrowserWindow, input: DockInput): Promise<vo
     nextX = x + width;
     if (width < 1 || height < 1) continue;
     lockPreviewUrl(lane.view.webContents, input.url);
+    setPreviewInteractive(lane.view.webContents, input.interactive !== false);
     if (load) loadAuthoringPage(lane.view.webContents, input.url);
     await emulateLane(lane, width, height);
   }

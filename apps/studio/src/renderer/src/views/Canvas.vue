@@ -1955,6 +1955,7 @@ function syncStage(): void {
       device,
       zoom: stageZoom.value,
       bounds,
+      interactive: true,
     });
   });
 }

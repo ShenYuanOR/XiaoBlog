@@ -249,13 +249,15 @@ const api = {
     editor: (
       url: string,
       bounds: { x: number; y: number; width: number; height: number } | null,
-    ): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:editor', url, bounds),
+      interactive = false,
+    ): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:editor', url, bounds, interactive),
     dock: (input: {
       enabled: boolean;
       url: string;
       device: 'phone' | 'tablet' | 'pc' | 'side';
       bounds: { x: number; y: number; width: number; height: number };
       zoom?: number;
+      interactive?: boolean;
     }): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:dock', input),
     hideDock: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:hideDock'),
     catalog: (items: { name: string; label: string }[]): void => {
