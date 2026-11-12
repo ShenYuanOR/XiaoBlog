@@ -1,4 +1,5 @@
 <script lang="ts">
+import 'monaco-editor/nls/lang/zh-cn.js';
 import { shikiToMonaco } from '@shikijs/monaco';
 import * as monaco from 'monaco-editor';
 import { createHighlighterCore } from 'shiki/core';
@@ -92,7 +93,6 @@ interface ProblemRow extends LintItem {
 /** 停手多久写回；与主进程 SOURCE_SYNC_MS 保持一致。 */
 const WRITE_DEBOUNCE_MS = 300;
 
-const emit = defineEmits<{ close: [] }>();
 
 const session = useSession();
 const tabs = ref<string[]>([]);
@@ -559,19 +559,6 @@ watch(
 
 <template>
   <div class="dev">
-    <header class="dev__head">
-      <span class="dev__title">源码</span>
-      <UiButton
-        class="dev__close"
-        variant="ghost"
-        size="sm"
-        :icon="icons.close"
-        aria-label="回到创作模式"
-        title="回到创作模式"
-        @click="emit('close')"
-      />
-    </header>
-
     <div class="dev__work">
       <aside class="dev__side" aria-label="文件树">
         <FileNav :active="active" @open="(file) => void openFile(file)" />
@@ -720,28 +707,6 @@ watch(
   font-family: var(--ui-font);
   font-size: var(--ui-fs-2);
   line-height: var(--ui-lh);
-}
-
-.dev__head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--ui-s2);
-  height: 32px;
-  padding: 0 var(--ui-s2);
-  border-bottom: 1px solid var(--ui-line);
-}
-
-.dev__title {
-  flex: 1;
-  min-width: 0;
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-  font-weight: 600;
-}
-
-.dev__close {
-  flex: none;
 }
 
 .dev__work {

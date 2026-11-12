@@ -361,7 +361,7 @@ const modeKey = computed({
       </aside>
 
       <main class="main">
-        <div class="view-head">
+        <div v-show="!session.devDrawer" class="view-head">
           <div class="crumbs">
             <span class="crumb-muted">{{ session.siteTitle || copy.appName }}</span>
             <UiIcon :path="icons.chevronRight" :size="14" />
@@ -380,7 +380,7 @@ const modeKey = computed({
           </div>
         </div>
 
-        <DevDrawer v-if="session.devDrawer" class="dev-main" @close="session.setMode('write')" />
+        <DevDrawer v-if="session.devDrawer" class="dev-main" />
         <div
           v-show="!session.devDrawer"
           class="view-body"

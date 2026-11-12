@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 const skip = new Set(['node_modules', 'dist', '.astro', '.git', '.xiao-recycle']);
 
@@ -61,20 +61,52 @@ export function parseEslint(stdout: string): LintRow[] {
   );
 }
 
-export function lintSource(siteDir: string, file: string): LintRow[] {
-  const relative = safeSource(file);
-  if (!relative) return [];
+let lintQueue: Promise<unknown> = Promise.resolve();
+
+function lintSourceNow(siteDir: string, relative: string): Promise<LintRow[]> {
   const eslint = path.join(siteDir, 'node_modules', 'eslint', 'bin', 'eslint.js');
-  const result = spawnSync(process.execPath, [eslint, '--format', 'json', relative], {
-    cwd: siteDir,
-    encoding: 'utf8',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    timeout: 20000,
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [eslint, '--format', 'json', relative], {
+      cwd: siteDir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      windowsHide: true,
+    });
+    let stdout = '';
+    const timer = setTimeout(() => child.kill(), 20000);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    const finish = (rows: LintRow[]) => {
+      clearTimeout(timer);
+      resolve(rows);
+    };
+    child.on('error', () => finish([]));
+    child.on('close', () => {
+      if (!stdout) {
+        finish([]);
+        return;
+      }
+      try {
+        finish(parseEslint(stdout));
+      } catch {
+        finish([]);
+      }
+    });
   });
-  if (!result.stdout) return [];
-  try {
-    return parseEslint(result.stdout);
-  } catch {
-    return [];
-  }
+}
+
+/** 一次只跑一个 ESLint，连续打开文件时排队，不堵住主进程。 */
+export function lintSource(siteDir: string, file: string): Promise<LintRow[]> {
+  const relative = safeSource(file);
+  if (!relative) return Promise.resolve([]);
+  const run = lintQueue.then(
+    () => lintSourceNow(siteDir, relative),
+    () => lintSourceNow(siteDir, relative),
+  );
+  lintQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }

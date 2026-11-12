@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import 'monaco-editor/nls/lang/zh-cn.js';
 import {
   mdiCodeBraces,
   mdiCodeTags,

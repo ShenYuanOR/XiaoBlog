@@ -803,9 +803,9 @@ app.whenReady().then(() => {
       return fail('DEV_WRITE', error instanceof Error ? error.message : '写不了文件');
     }
   });
-  ipcMain.handle('dev:lint', (_event, siteDir: string, file: string) => {
+  ipcMain.handle('dev:lint', async (_event, siteDir: string, file: string) => {
     try {
-      return ok(lintSource(siteDir, file));
+      return ok(await lintSource(siteDir, file));
     } catch (error) {
       return fail('DEV_LINT', error instanceof Error ? error.message : '检查失败');
     }

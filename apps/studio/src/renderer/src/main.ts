@@ -1,3 +1,4 @@
+import 'monaco-editor/nls/lang/zh-cn.js';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
