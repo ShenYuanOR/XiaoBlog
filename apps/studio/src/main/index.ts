@@ -176,7 +176,7 @@ function rendererLoadUrl(): string {
   return process.env.ELECTRON_RENDERER_URL ?? 'app://bundle/index.html';
 }
 
-const TITLE_BAR_HEIGHT = 48;
+const TITLE_BAR_HEIGHT = 47;
 
 function titleBarOverlay(input: { color?: string; symbolColor?: string; height?: number }): {
   color: string;

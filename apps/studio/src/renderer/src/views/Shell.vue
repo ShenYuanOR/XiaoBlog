@@ -469,6 +469,7 @@ const modeKey = computed({
 <style scoped>
 .shell {
   display: grid;
+  /* 48 里有 1px 底边。窗口按钮只占上面 47px，底边才能从按钮下面连过去。 */
   grid-template-rows: 48px minmax(0, 1fr) 24px;
   height: 100vh;
   overflow: hidden;

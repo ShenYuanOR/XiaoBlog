@@ -30,8 +30,8 @@ export function applyTheme(mode: ThemeMode = themeMode.value): void {
 /** 跟 `.top` 的面板色一致。高度对齐 Shell 顶栏那一行。 */
 export function titleBarColors(): { color: string; symbolColor: string; height: number } {
   const dark = themeMode.value === 'dark' || (themeMode.value === 'system' && systemDark());
-  if (dark) return { color: '#131822', symbolColor: '#e8ecf4', height: 48 };
-  return { color: '#ffffff', symbolColor: '#1b2230', height: 48 };
+  if (dark) return { color: '#131822', symbolColor: '#e8ecf4', height: 47 };
+  return { color: '#ffffff', symbolColor: '#1b2230', height: 47 };
 }
 
 export function syncTitleBar(): void {
