@@ -204,6 +204,50 @@ export async function showPreview(
 let editorView: WebContentsView | null = null;
 let editorWindow: BrowserWindow | null = null;
 
+const navigationLocked = new WeakSet<WebContents>();
+const lockedUrl = new WeakMap<WebContents, string>();
+
+/** 比较源站和路径。锚点不走 will-navigate，这里不用看 hash。 */
+function pageKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = decodeURI(parsed.pathname).replace(/\/+$/, '') || '/';
+    return `${parsed.origin}${path}`;
+  } catch {
+    return '';
+  }
+}
+
+function allowsNavigation(contents: WebContents, target: string): boolean {
+  const locked = lockedUrl.get(contents);
+  if (!locked || !target) return true;
+  return pageKey(locked) === pageKey(target);
+}
+
+/** 预览视图只能停在锁定的文章/页面上。loadURL 换篇不会触发这两事件。 */
+function bindNavigationLock(contents: WebContents): void {
+  if (navigationLocked.has(contents)) return;
+  navigationLocked.add(contents);
+  contents.on('will-navigate', (event, url) => {
+    const target = event.url || url;
+    if (allowsNavigation(contents, target)) return;
+    event.preventDefault();
+  });
+  contents.on('will-frame-navigate', (event) => {
+    if (allowsNavigation(contents, event.url)) return;
+    event.preventDefault();
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (allowsNavigation(contents, url)) return { action: 'allow' };
+    return { action: 'deny' };
+  });
+}
+
+function lockPreviewUrl(contents: WebContents, url: string): void {
+  bindNavigationLock(contents);
+  lockedUrl.set(contents, url);
+}
+
 function previewContents(): WebContentsView {
   return new WebContentsView({
     webPreferences: {
@@ -234,6 +278,7 @@ export function showPageEditor(
     width: Math.round(bounds.width),
     height: Math.round(bounds.height),
   });
+  lockPreviewUrl(editorView.webContents, url);
   const current = editorView.webContents.getURL();
   if (current !== url) void editorView.webContents.loadURL(url);
 }
@@ -388,6 +433,7 @@ export async function showDock(win: BrowserWindow, input: DockInput): Promise<vo
     });
     nextX = x + width;
     if (width < 1 || height < 1) continue;
+    lockPreviewUrl(lane.view.webContents, input.url);
     if (load) loadAuthoringPage(lane.view.webContents, input.url);
     await emulateLane(lane, width, height);
   }
