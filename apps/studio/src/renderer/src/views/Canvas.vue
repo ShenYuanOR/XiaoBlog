@@ -1950,7 +1950,7 @@ function syncStage(): void {
         ? session.previewDevice
         : 'pc';
     void window.xiao.preview.dock({
-      enabled: true,
+      enabled: !session.chromeOpen,
       url,
       device,
       zoom: stageZoom.value,

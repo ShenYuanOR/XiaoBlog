@@ -6,6 +6,8 @@ const dialogStack: symbol[] = [];
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { mdiClose } from '@mdi/js';
+import { concealNativePreview } from '../preview-layer.ts';
+import { useSession } from '../stores/session.ts';
 import UiIcon from './UiIcon.vue';
 
 const props = withDefaults(
@@ -24,6 +26,8 @@ const emit = defineEmits<{
 }>();
 
 const instance = Symbol('ui-dialog');
+const session = useSession();
+let overlayHeld = false;
 const uid = useId();
 const titleId = `${uid}-title`;
 const panelRef = ref<HTMLElement | null>(null);
@@ -92,9 +96,23 @@ function onDocumentKeydown(event: KeyboardEvent): void {
   }
 }
 
+function holdOverlay(open: boolean): void {
+  if (open && !overlayHeld) {
+    overlayHeld = true;
+    session.pushOverlay();
+    concealNativePreview();
+    return;
+  }
+  if (!open && overlayHeld) {
+    overlayHeld = false;
+    session.popOverlay();
+  }
+}
+
 watch(
   () => props.modelValue,
   async (value) => {
+    holdOverlay(value);
     if (value) {
       dialogStack.push(instance);
       lastActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -121,6 +139,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  holdOverlay(false);
   const index = dialogStack.lastIndexOf(instance);
   if (index >= 0) dialogStack.splice(index, 1);
   document.removeEventListener('keydown', onDocumentKeydown, true);
@@ -166,6 +185,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 对话框盖住页面；原生预览在打开时被摘掉，不跟这层抢。 */
 .ui-dialog {
   position: fixed;
   inset: 0;

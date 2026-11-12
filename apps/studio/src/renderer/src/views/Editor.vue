@@ -1279,6 +1279,10 @@ async function ensureHtmlPreview(): Promise<void> {
 }
 
 function syncHtmlPreview(): void {
+  if (sessionStore.chromeOpen) {
+    void window.xiao.preview.editor('', null);
+    return;
+  }
   const hole = htmlPreviewHole.value;
   const show = format.value === 'html' && sourceMode.value && htmlPreviewOpen.value;
   if (!hole || !show) {
@@ -1518,7 +1522,13 @@ watch(
 
 watch(
   () =>
-    [sessionStore.previewUrl, htmlPreviewOpen.value, sourceMode.value, format.value] as const,
+    [
+      sessionStore.previewUrl,
+      htmlPreviewOpen.value,
+      sourceMode.value,
+      format.value,
+      sessionStore.chromeOpen,
+    ] as const,
   () => {
     void nextTick(syncHtmlPreview);
   },

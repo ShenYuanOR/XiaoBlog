@@ -56,7 +56,17 @@ export const useSession = defineStore('session', () => {
   const listCollapsed = ref(false);
   /** 编辑台正在看源码：页面画布收起真页面，不占工作区。 */
   const workbenchSource = ref(false);
-  const chromeOpen = ref(false);
+  /** 命令面板、对话框等遮挡层的数量。大于 0 时原生预览必须让开。 */
+  const overlayCount = ref(0);
+  const chromeOpen = computed(() => overlayCount.value > 0);
+
+  function pushOverlay(): void {
+    overlayCount.value += 1;
+  }
+
+  function popOverlay(): void {
+    if (overlayCount.value > 0) overlayCount.value -= 1;
+  }
   const building = ref(false);
   const theme = ref<ThemeMode>(themeMode.value);
 
@@ -199,5 +209,7 @@ export const useSession = defineStore('session', () => {
     setConflict,
     setTheme,
     setWorkbenchSource,
+    pushOverlay,
+    popOverlay,
   };
 });

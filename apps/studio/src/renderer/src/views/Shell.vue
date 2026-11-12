@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { copy, navItems, type NavKey } from '../copy.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
+import { concealNativePreview } from '../preview-layer.ts';
 import { useSession, type PreviewDevice } from '../stores/session.ts';
 import {
   UiButton,
@@ -90,7 +91,7 @@ const commands = computed(() => [
 ]);
 
 watch(commandOpen, (open) => {
-  session.chromeOpen = open;
+  if (open) concealNativePreview();
 });
 
 function runCommand(id: string): void {

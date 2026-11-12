@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { mdiMagnify } from '@mdi/js';
+import { concealNativePreview } from '../preview-layer.ts';
+import { useSession } from '../stores/session.ts';
 import UiIcon from './UiIcon.vue';
 import UiKbd from './UiKbd.vue';
 
@@ -38,6 +40,8 @@ const emit = defineEmits<{
   close: [];
 }>();
 
+const session = useSession();
+let overlayHeld = false;
 const uid = useId();
 const listId = `${uid}-list`;
 const inputRef = ref<HTMLInputElement | null>(null);
@@ -140,9 +144,23 @@ watch(search, () => {
   activeIndex.value = 0;
 });
 
+function holdOverlay(open: boolean): void {
+  if (open && !overlayHeld) {
+    overlayHeld = true;
+    session.pushOverlay();
+    concealNativePreview();
+    return;
+  }
+  if (!open && overlayHeld) {
+    overlayHeld = false;
+    session.popOverlay();
+  }
+}
+
 watch(
   () => props.modelValue,
   async (value) => {
+    holdOverlay(value);
     if (value) {
       search.value = '';
       activeIndex.value = 0;
@@ -166,6 +184,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  holdOverlay(false);
   document.removeEventListener('keydown', onDocumentKeydown, true);
   if (savedOverflow !== null) {
     document.body.style.overflow = savedOverflow;
