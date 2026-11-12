@@ -292,6 +292,11 @@ const api = {
     getInfo: (): Promise<IpcResult<AppInfo>> => ipcRenderer.invoke('app:getInfo'),
     openExternal: (url: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('app:openExternal', url),
+    setTitleBarOverlay: (overlay: {
+      color: string;
+      symbolColor: string;
+      height: number;
+    }): Promise<IpcResult<null>> => ipcRenderer.invoke('app:titleBarOverlay', overlay),
   },
   project: {
     recent: (): Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>> =>

@@ -459,6 +459,16 @@ onBeforeUnmount(() => {
   padding: var(--ui-s8) var(--ui-s6);
   border-right: 1px solid var(--ui-line);
   background: var(--ui-panel);
+  -webkit-app-region: drag;
+}
+
+.welcome button,
+.welcome input,
+.welcome textarea,
+.welcome select,
+.welcome a,
+.welcome form {
+  -webkit-app-region: no-drag;
 }
 
 .brand-head {

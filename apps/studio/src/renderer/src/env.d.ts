@@ -354,6 +354,11 @@ export interface XiaoApi {
   app: {
     getInfo: () => Promise<IpcResult<AppInfo>>;
     openExternal: (url: string) => Promise<IpcResult<null>>;
+    setTitleBarOverlay: (overlay: {
+      color: string;
+      symbolColor: string;
+      height: number;
+    }) => Promise<IpcResult<null>>;
   };
   project: {
     recent: () => Promise<IpcResult<{ dir: string; title: string; openedAt: string }[]>>;

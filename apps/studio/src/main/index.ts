@@ -176,12 +176,30 @@ function rendererLoadUrl(): string {
   return process.env.ELECTRON_RENDERER_URL ?? 'app://bundle/index.html';
 }
 
+const TITLE_BAR_HEIGHT = 48;
+
+function titleBarOverlay(input: { color?: string; symbolColor?: string; height?: number }): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  const hex = (value: string | undefined, fallback: string) =>
+    value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+  return {
+    color: hex(input.color, '#131822'),
+    symbolColor: hex(input.symbolColor, '#e8ecf4'),
+    height: TITLE_BAR_HEIGHT,
+  };
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     show: !process.argv.includes('--probe'),
     title: '晓',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: titleBarOverlay({}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -362,6 +380,15 @@ app.whenReady().then(() => {
   registerProtocol();
   ipcMain.handle('app:getInfo', () =>
     ok<AppInfo>({ name: '晓', version: app.getVersion(), packaged: app.isPackaged }),
+  );
+  ipcMain.handle(
+    'app:titleBarOverlay',
+    (event, input: { color?: string; symbolColor?: string; height?: number }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return fail('WINDOW', '找不到主窗口');
+      win.setTitleBarOverlay(titleBarOverlay(input ?? {}));
+      return ok(null);
+    },
   );
   ipcMain.handle('app:openExternal', async (_event, url: string) => {
     if (!/^https?:\/\//i.test(url)) return fail('OPEN_URL', '只允许打开 http(s) 链接');

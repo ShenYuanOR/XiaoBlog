@@ -481,8 +481,25 @@ const modeKey = computed({
   align-items: center;
   gap: var(--ui-s3);
   padding: 0 var(--ui-s3);
+  padding-right: max(
+    138px,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
   background: var(--ui-panel);
   border-bottom: 1px solid var(--ui-line);
+  -webkit-app-region: drag;
+}
+
+.top :deep(button),
+.top :deep(button *),
+.top :deep(input),
+.top :deep(textarea),
+.top :deep(select),
+.top :deep(a),
+.top :deep(.ui-segmented),
+.top :deep(.ui-segmented *),
+.top :deep(.ui-tooltip__trigger) {
+  -webkit-app-region: no-drag;
 }
 
 .brand {

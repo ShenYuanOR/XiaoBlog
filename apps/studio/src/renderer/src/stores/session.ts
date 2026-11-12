@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { navLabel, type NavKey } from '../copy.ts';
-import { setThemeMode, themeMode, type ThemeMode } from '../theme.ts';
+import { setThemeMode, syncTitleBar, themeMode, type ThemeMode } from '../theme.ts';
 
 export type PreviewDevice = 'phone' | 'tablet' | 'pc' | 'side';
 export type PreviewMode = 'off' | 'window';
@@ -159,6 +159,7 @@ export const useSession = defineStore('session', () => {
   function setTheme(next: ThemeMode): void {
     theme.value = next;
     setThemeMode(next);
+    syncTitleBar();
   }
 
   return {
