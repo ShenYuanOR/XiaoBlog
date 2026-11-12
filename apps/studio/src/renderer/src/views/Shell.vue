@@ -433,16 +433,7 @@ const modeKey = computed({
       </main>
 
       <aside v-if="showList" class="inspector" :class="{ rail: inspectorRail }">
-        <UiTooltip v-if="inspectorRail" label="展开属性">
-          <UiButton
-            variant="ghost"
-            size="sm"
-            :icon="icons.list"
-            aria-label="展开属性"
-            @click="session.inspectorOpen = true"
-          />
-        </UiTooltip>
-        <div v-else id="inspector-host" class="inspector-host"></div>
+        <div v-if="!inspectorRail" id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
 
