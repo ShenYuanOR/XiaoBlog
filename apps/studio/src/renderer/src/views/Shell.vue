@@ -54,7 +54,10 @@ const navOptions = navItems.map((item) => ({
   icon: icons[item.icon],
 }));
 const showList = computed(
-  () => Boolean(session.siteDir) && (session.nav === 'posts' || session.nav === 'pages'),
+  () =>
+    Boolean(session.siteDir) &&
+    session.mode !== 'develop' &&
+    (session.nav === 'posts' || session.nav === 'pages'),
 );
 const layoutOpen = computed(() => session.nav === 'posts' && Boolean(session.layoutSlug));
 const showCanvas = computed(
