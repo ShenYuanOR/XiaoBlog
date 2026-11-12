@@ -70,19 +70,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
-import { UiBadge, UiButton, UiEmpty, UiIcon, UiRow, UiSpinner, UiTabs } from '../ui/index.ts';
+import { UiBadge, UiButton, UiEmpty, UiIcon, UiRow, UiSpinner } from '../ui/index.ts';
 import FileNav from './FileNav.vue';
 
 /**
- * 开发者抽屉（视图 J）：文件 / 代码 / 输出 / 问题。
- * - 文件：FileNav 文件树，点文件在「代码」页签打开；
- * - 代码：多标签 Monaco（worker、Shiki 高亮沿用旧 Develop.vue 配置），停手 300ms 写回 dev.write；
- * - 输出：session.logs，等宽字体、自动滚到底；
- * - 问题：dev.lint 的 ESLint 结果，点击跳到对应文件行。
+ * 开发者模式的 IDE：左侧文件树常驻，中间多标签 Monaco，底部输出/问题可收起。
+ * Monaco、Shiki、写回和 lint 沿用原来的逻辑。
  * 只维护自己的视图状态，不改 store / Shell / 主进程。
  */
-
-type TabKey = 'files' | 'code' | 'output' | 'problems';
 
 interface LintItem {
   line: number;
@@ -100,8 +95,9 @@ const WRITE_DEBOUNCE_MS = 300;
 const emit = defineEmits<{ close: [] }>();
 
 const session = useSession();
-const tab = ref<TabKey>('files');
 const tabs = ref<string[]>([]);
+const panelOpen = ref(false);
+const panelTab = ref<'output' | 'problems'>('output');
 const active = ref('');
 const host = ref<HTMLElement | null>(null);
 const consoleEl = ref<HTMLElement | null>(null);
@@ -119,22 +115,6 @@ const savedText = new Map<string, string>();
 const timers = new Map<string, number>();
 const lintedFiles = new Set<string>();
 const lintingFiles = new Set<string>();
-
-const tabItems = [
-  { key: 'files', label: '文件', icon: icons.files },
-  { key: 'code', label: '代码', icon: icons.editor },
-  { key: 'output', label: '输出', icon: icons.console },
-  { key: 'problems', label: '问题', icon: icons.alert },
-];
-
-const tabModel = computed<string>({
-  get: () => tab.value,
-  set: (value) => {
-    if (value === 'files' || value === 'code' || value === 'output' || value === 'problems') {
-      tab.value = value;
-    }
-  },
-});
 
 const logText = computed(() => (session.logs ? stripAnsi(session.logs) : ''));
 
@@ -318,9 +298,17 @@ async function ensureEditor(): Promise<void> {
   if (active.value) editor.setModel(models.get(active.value) ?? null);
 }
 
+function togglePanel(next: 'output' | 'problems'): void {
+  if (panelOpen.value && panelTab.value === next) {
+    panelOpen.value = false;
+    return;
+  }
+  panelTab.value = next;
+  panelOpen.value = true;
+}
+
 async function openFile(file: string, line?: number): Promise<void> {
   if (!file) return;
-  tab.value = 'code';
   if (!tabs.value.includes(file)) tabs.value = [...tabs.value, file];
   active.value = file;
   await ensureEditor();
@@ -485,7 +473,7 @@ async function lintAll(): Promise<void> {
     return;
   }
   if (!tabs.value.length) {
-    notify('先在「文件」页签打开一个源码文件，再检查。', 'info', 'dev-lint');
+    notify('先在左侧文件树打开一个源码文件，再检查。', 'info', 'dev-lint');
     return;
   }
   await Promise.all(tabs.value.map((file) => lintFile(file)));
@@ -528,25 +516,20 @@ onBeforeUnmount(() => {
   models.clear();
 });
 
-watch(tab, (value) => {
-  if (value === 'code') {
-    void nextTick(async () => {
-      await ensureEditor();
-      const model = active.value ? models.get(active.value) : undefined;
-      if (model) editor?.setModel(model);
-    });
-  } else if (value === 'output') {
+watch([panelOpen, panelTab], ([open, which]) => {
+  if (!open) return;
+  if (which === 'output') {
     void nextTick(scrollConsole);
-  } else if (value === 'problems') {
-    const missing = tabs.value.filter((file) => !lintedFiles.has(file));
-    if (missing.length > 0) void Promise.all(missing.map((file) => lintFile(file)));
+    return;
   }
+  const missing = tabs.value.filter((file) => !lintedFiles.has(file));
+  if (missing.length > 0) void Promise.all(missing.map((file) => lintFile(file)));
 });
 
 watch(
   () => session.logs,
   () => {
-    if (tab.value === 'output') void nextTick(scrollConsole);
+    if (panelOpen.value && panelTab.value === 'output') void nextTick(scrollConsole);
   },
 );
 
@@ -577,53 +560,24 @@ watch(
 <template>
   <div class="dev">
     <header class="dev__head">
-      <UiTabs v-model="tabModel" :items="tabItems" class="dev__tabs" />
+      <span class="dev__title">源码</span>
       <UiButton
         class="dev__close"
         variant="ghost"
         size="sm"
         :icon="icons.close"
-        aria-label="关闭开发者抽屉"
-        title="关闭开发者抽屉"
+        aria-label="回到创作模式"
+        title="回到创作模式"
         @click="emit('close')"
       />
     </header>
 
-    <div class="dev__body">
-      <!-- 文件 -->
-      <section v-if="tab === 'files'" class="pane files">
-        <div class="files__tree">
-          <FileNav :active="active" @open="(file) => void openFile(file)" />
-        </div>
-        <aside class="files__side" aria-label="已打开文件">
-          <h3 class="files__title">已打开</h3>
-          <div v-if="tabs.length" class="files__list">
-            <UiRow
-              v-for="file in tabs"
-              :key="file"
-              :selected="file === active"
-              @click="openFile(file)"
-            >
-              <template #icon>
-                <UiIcon :path="icons.editor" :size="16" />
-              </template>
-              <span :title="file">{{ basename(file) }}</span>
-              <template #meta>
-                <span v-if="dirty[file]" class="files__dot" aria-label="有未保存改动" />
-              </template>
-            </UiRow>
-          </div>
-          <UiEmpty
-            v-else
-            :icon="icons.editor"
-            title="还没打开文件"
-            description="在左侧点一个文件，就会在「代码」页签里打开。"
-          />
-        </aside>
-      </section>
+    <div class="dev__work">
+      <aside class="dev__side" aria-label="文件树">
+        <FileNav :active="active" @open="(file) => void openFile(file)" />
+      </aside>
 
-      <!-- 代码：一直挂载，用 v-show 保留各标签的 Monaco 状态 -->
-      <section v-show="tab === 'code'" class="pane code">
+      <section class="dev__editor">
         <div v-if="tabs.length" class="code__tabs" role="tablist" aria-label="打开的文件">
           <div
             v-for="file in tabs"
@@ -662,12 +616,33 @@ watch(
           class="code__empty"
           :icon="icons.editor"
           title="还没打开文件"
-          description="在「文件」页签点一个文件，这里会用 Monaco 打开可编辑的标签页。"
+          description="在左侧文件树点一个文件，这里会新开一个标签。"
         />
       </section>
+    </div>
 
-      <!-- 输出 -->
-      <section v-if="tab === 'output'" class="pane output">
+    <section class="dev__panel" :class="{ 'is-open': panelOpen }">
+      <div class="dev__panel-bar">
+        <button
+          type="button"
+          class="dev__panel-tab"
+          :class="{ 'is-active': panelOpen && panelTab === 'output' }"
+          @click="togglePanel('output')"
+        >
+          输出
+        </button>
+        <button
+          type="button"
+          class="dev__panel-tab"
+          :class="{ 'is-active': panelOpen && panelTab === 'problems' }"
+          @click="togglePanel('problems')"
+        >
+          问题<span v-if="problemRows.length"> {{ problemRows.length }}</span>
+        </button>
+      </div>
+
+      <div v-if="panelOpen" class="dev__panel-body">
+      <section v-if="panelTab === 'output'" class="pane output">
         <pre v-if="logText" ref="consoleEl" class="output__log">{{ logText }}</pre>
         <UiEmpty
           v-else
@@ -677,8 +652,7 @@ watch(
         />
       </section>
 
-      <!-- 问题 -->
-      <section v-if="tab === 'problems'" class="pane problems">
+      <section v-else class="pane problems">
         <div class="problems__head">
           <UiButton
             size="sm"
@@ -725,11 +699,12 @@ watch(
           :description="
             tabs.length
               ? 'ESLint 没有报告问题。改完源码后会自动再检查。'
-              : '先在「文件」页签打开一个源码文件，再回来检查。'
+              : '先在左侧文件树打开一个源码文件，再回来检查。'
           "
         />
       </section>
-    </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -752,23 +727,86 @@ watch(
   flex: none;
   align-items: center;
   gap: var(--ui-s2);
-  padding-right: var(--ui-s2);
+  height: 32px;
+  padding: 0 var(--ui-s2);
+  border-bottom: 1px solid var(--ui-line);
 }
 
-.dev__tabs {
+.dev__title {
   flex: 1;
   min-width: 0;
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-1);
+  font-weight: 600;
 }
 
 .dev__close {
   flex: none;
 }
 
-.dev__body {
+.dev__work {
   display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
+}
+
+.dev__side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 260px;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--ui-line);
+}
+
+.dev__editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dev__panel {
+  flex: none;
+  border-top: 1px solid var(--ui-line);
+  background: var(--ui-bg);
+}
+
+.dev__panel-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s1);
+  height: 28px;
+  padding: 0 var(--ui-s2);
+}
+
+.dev__panel-tab {
+  height: 22px;
+  padding: 0 var(--ui-s2);
+  border: 0;
+  border-radius: var(--ui-r-sm);
+  background: transparent;
+  color: var(--ui-text-3);
+  font: inherit;
+  font-size: var(--ui-fs-1);
+  cursor: pointer;
+}
+
+.dev__panel-tab.is-active {
+  background: var(--ui-active);
+  color: var(--ui-text);
+}
+
+.dev__panel-body {
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--ui-line);
 }
 
 .pane {
@@ -780,47 +818,6 @@ watch(
   overflow: hidden;
 }
 
-/* 文件 */
-.files {
-  flex-direction: row;
-}
-
-.files__tree {
-  flex: none;
-  width: 280px;
-  max-width: 42%;
-  min-height: 0;
-  overflow: hidden;
-  border-right: 1px solid var(--ui-line);
-}
-
-.files__side {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--ui-s1);
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  padding: var(--ui-s2);
-}
-
-.files__title {
-  margin: 0;
-  padding: 0 var(--ui-s2);
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  font-weight: 600;
-  line-height: var(--ui-lh);
-}
-
-.files__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s1);
-}
-
-.files__dot,
 .code__dot {
   display: inline-block;
   flex: none;
