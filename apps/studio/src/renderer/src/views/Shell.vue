@@ -74,7 +74,6 @@ const showEditor = computed(
 );
 const showInspector = computed(() => showList.value && session.inspectorOpen);
 const inspectorRail = computed(() => showList.value && !session.inspectorOpen);
-const listRail = computed(() => showList.value && session.listCollapsed);
 const hasSite = computed(() => Boolean(session.siteDir));
 const listToggleLabel = computed(() => {
   const name = session.nav === 'posts' ? '文章列表' : '页面列表';
@@ -321,15 +320,13 @@ const modeKey = computed({
       class="body"
       :class="{
         'has-list': showList && !session.listCollapsed,
-        'list-rail': listRail,
         'has-inspector': showInspector,
-        'inspector-rail': inspectorRail,
       }"
     >
       <aside
         v-if="showList"
         class="list edge"
-        :class="{ collapsed: session.listCollapsed, 'is-rail': session.listCollapsed }"
+        :class="{ 'is-rail': session.listCollapsed }"
       >
         <UiTooltip :label="listToggleLabel">
           <UiButton
@@ -553,6 +550,7 @@ const modeKey = computed({
 }
 
 .body {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 0;
@@ -560,10 +558,6 @@ const modeKey = computed({
 
 .body.has-list {
   grid-template-columns: 272px minmax(0, 1fr);
-}
-
-.body.list-rail {
-  grid-template-columns: 44px minmax(0, 1fr);
 }
 
 .body.has-inspector {
@@ -574,32 +568,12 @@ const modeKey = computed({
   grid-template-columns: 272px minmax(0, 1fr) 320px;
 }
 
-.body.list-rail.has-inspector {
-  grid-template-columns: 44px minmax(0, 1fr) 320px;
-}
-
-.body.inspector-rail {
-  grid-template-columns: minmax(0, 1fr) 44px;
-}
-
-.body.has-list.inspector-rail {
-  grid-template-columns: 272px minmax(0, 1fr) 44px;
-}
-
-.body.list-rail.inspector-rail {
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
-}
-
 .list {
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--ui-panel);
   border-right: 1px solid var(--ui-line);
-}
-
-.list.collapsed {
-  width: 44px;
 }
 
 .list-head {
@@ -706,11 +680,47 @@ const modeKey = computed({
   left: 6px;
 }
 
-.edge.is-rail .edge-toggle {
+.edge.is-rail {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: auto;
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+
+.list.is-rail {
+  left: 0;
+}
+
+.inspector.is-rail {
+  right: 0;
+}
+
+.edge.is-rail :deep(.ui-tooltip__trigger) {
+  pointer-events: auto;
+}
+
+.edge.is-rail :deep(.edge-toggle) {
   top: 8px;
+  width: 32px;
+  height: 32px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  box-shadow: var(--ui-shadow-1);
+  pointer-events: auto;
+}
+
+.list.is-rail :deep(.edge-toggle) {
   right: auto;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
+}
+
+.inspector.is-rail :deep(.edge-toggle) {
+  right: 8px;
+  left: auto;
 }
 
 .inspector:not(.is-rail) :deep(.inspector-head) {
