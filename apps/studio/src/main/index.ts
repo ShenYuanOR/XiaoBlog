@@ -2,7 +2,17 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  net,
+  protocol,
+  safeStorage,
+  session,
+  shell,
+} from 'electron';
 import { fail, ok } from '@xiao/core/ipc';
 import type { AppInfo, RuntimeKind } from '@xiao/core/ipc';
 import { RuntimeService } from './runtime.ts';
@@ -342,6 +352,8 @@ function fromPreview(event: {
 }
 
 app.whenReady().then(() => {
+  // 全局去掉 File/Edit/View/Window。只对主窗口 setMenu 的话，以后新建的窗口还会冒出来。
+  Menu.setApplicationMenu(null);
   session.defaultSession.registerPreloadScript({
     type: 'frame',
     id: 'xiao-preview',
