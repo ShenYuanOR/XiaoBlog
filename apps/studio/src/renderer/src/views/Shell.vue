@@ -76,6 +76,11 @@ const showInspector = computed(() => showList.value && session.inspectorOpen);
 const inspectorRail = computed(() => showList.value && !session.inspectorOpen);
 const listRail = computed(() => showList.value && session.listCollapsed);
 const hasSite = computed(() => Boolean(session.siteDir));
+const listToggleLabel = computed(() => {
+  const name = session.nav === 'posts' ? '文章列表' : '页面列表';
+  return session.listCollapsed ? `展开${name}` : `收起${name}`;
+});
+const inspectorToggleLabel = computed(() => (session.inspectorOpen ? '收成窄栏' : '展开属性栏'));
 
 const commands = computed(() => [
   ...navItems.map((item) => ({
@@ -321,32 +326,26 @@ const modeKey = computed({
         'inspector-rail': inspectorRail,
       }"
     >
-      <aside v-if="showList" class="list" :class="{ collapsed: session.listCollapsed }">
-        <header class="list-head">
-          <template v-if="!session.listCollapsed">
-            <h2>{{ navItem?.label }}</h2>
-            <span class="list-hint">{{
-              session.nav === 'posts' ? (layoutOpen ? '这篇的版式' : '选题写作') : '选择页面'
-            }}</span>
-            <UiTooltip :label="session.nav === 'posts' ? '收起文章列表' : '收起页面列表'">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                :icon="icons.chevronLeft"
-                :aria-label="session.nav === 'posts' ? '收起文章列表' : '收起页面列表'"
-                @click="session.listCollapsed = true"
-              />
-            </UiTooltip>
-          </template>
-          <UiTooltip v-else :label="session.nav === 'posts' ? '展开文章列表' : '展开页面列表'">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :icon="icons.chevronRight"
-              :aria-label="session.nav === 'posts' ? '展开文章列表' : '展开页面列表'"
-              @click="session.listCollapsed = false"
-            />
-          </UiTooltip>
+      <aside
+        v-if="showList"
+        class="list edge"
+        :class="{ collapsed: session.listCollapsed, 'is-rail': session.listCollapsed }"
+      >
+        <UiTooltip :label="listToggleLabel">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            class="edge-toggle"
+            :icon="session.listCollapsed ? icons.chevronRight : icons.chevronLeft"
+            :aria-label="listToggleLabel"
+            @click="session.listCollapsed = !session.listCollapsed"
+          />
+        </UiTooltip>
+        <header v-if="!session.listCollapsed" class="list-head">
+          <h2>{{ navItem?.label }}</h2>
+          <span class="list-hint">{{
+            session.nav === 'posts' ? (layoutOpen ? '这篇的版式' : '选题写作') : '选择页面'
+          }}</span>
         </header>
         <div v-show="!session.listCollapsed" class="list-body">
           <Posts v-if="session.nav === 'posts' && hasSite" :active="slug" @select="selectPost" />
@@ -379,18 +378,8 @@ const modeKey = computed({
               <span>版式</span>
             </template>
           </div>
-          <div class="view-actions">
-            <UiSegmented v-if="showCanvas && !session.workbenchSource" v-model="previewDeviceKey" :items="deviceItems" />
-            <UiTooltip v-if="showList" :label="session.inspectorOpen ? '收成窄栏' : '展开属性栏'">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                :icon="icons.list"
-                :class="{ on: session.inspectorOpen }"
-                :aria-label="session.inspectorOpen ? '收成窄栏' : '展开属性栏'"
-                @click="session.inspectorOpen = !session.inspectorOpen"
-              />
-            </UiTooltip>
+          <div v-if="showCanvas && !session.workbenchSource" class="view-actions">
+            <UiSegmented v-model="previewDeviceKey" :items="deviceItems" />
           </div>
         </div>
 
@@ -432,18 +421,18 @@ const modeKey = computed({
 
       </main>
 
-      <aside v-if="showList" class="inspector" :class="{ rail: inspectorRail }">
-        <button
-          v-if="inspectorRail"
-          type="button"
-          class="rail-open"
-          aria-label="展开属性栏"
-          @click="session.inspectorOpen = true"
-        >
-          <UiIcon :path="icons.chevronLeft" :size="16" />
-          <span>属性</span>
-        </button>
-        <div v-else id="inspector-host" class="inspector-host"></div>
+      <aside v-if="showList" class="inspector edge edge-end" :class="{ 'is-rail': inspectorRail }">
+        <UiTooltip :label="inspectorToggleLabel">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            class="edge-toggle"
+            :icon="session.inspectorOpen ? icons.chevronRight : icons.chevronLeft"
+            :aria-label="inspectorToggleLabel"
+            @click="session.inspectorOpen = !session.inspectorOpen"
+          />
+        </UiTooltip>
+        <div v-if="session.inspectorOpen" id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
 
@@ -600,13 +589,8 @@ const modeKey = computed({
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-s1);
-  padding: var(--ui-s2) var(--ui-s3);
+  padding: var(--ui-s2) 40px var(--ui-s2) var(--ui-s3);
   border-bottom: 1px solid var(--ui-line);
-}
-
-.list.collapsed .list-head {
-  justify-content: center;
-  padding: var(--ui-s2) 0;
 }
 
 .list-head h2 {
@@ -688,35 +672,31 @@ const modeKey = computed({
   border-left: 1px solid var(--ui-line);
 }
 
-.inspector.rail {
-  padding: 0;
+.edge {
+  position: relative;
 }
 
-.rail-open {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--ui-s2);
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: var(--ui-s3) 0;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  letter-spacing: 0.16em;
+.edge-toggle {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 6px;
 }
 
-.rail-open span {
-  writing-mode: vertical-rl;
+.edge-end .edge-toggle {
+  right: auto;
+  left: 6px;
 }
 
-.rail-open:hover,
-.rail-open:focus-visible {
-  color: var(--ui-text);
-  background: var(--ui-hover);
+.edge.is-rail .edge-toggle {
+  top: 8px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.inspector:not(.is-rail) :deep(.inspector-head) {
+  padding-left: 36px;
 }
 
 .inspector-host {
