@@ -433,7 +433,17 @@ const modeKey = computed({
       </main>
 
       <aside v-if="showList" class="inspector" :class="{ rail: inspectorRail }">
-        <div v-if="!inspectorRail" id="inspector-host" class="inspector-host"></div>
+        <button
+          v-if="inspectorRail"
+          type="button"
+          class="rail-open"
+          aria-label="展开属性栏"
+          @click="session.inspectorOpen = true"
+        >
+          <UiIcon :path="icons.chevronLeft" :size="16" />
+          <span>属性</span>
+        </button>
+        <div v-else id="inspector-host" class="inspector-host"></div>
       </aside>
     </div>
 
@@ -679,8 +689,34 @@ const modeKey = computed({
 }
 
 .inspector.rail {
+  padding: 0;
+}
+
+.rail-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   align-items: center;
-  padding-top: var(--ui-s2);
+  gap: var(--ui-s2);
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: var(--ui-s3) 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  letter-spacing: 0.16em;
+}
+
+.rail-open span {
+  writing-mode: vertical-rl;
+}
+
+.rail-open:hover,
+.rail-open:focus-visible {
+  color: var(--ui-text);
+  background: var(--ui-hover);
 }
 
 .inspector-host {
