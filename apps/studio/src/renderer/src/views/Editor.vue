@@ -1550,15 +1550,6 @@ watch(
           <h3>{{ isPage ? '页面属性' : '文章属性' }}</h3>
           <div class="inspector-head-actions">
             <UiBadge :tone="saveTone" dot>{{ saveText }}</UiBadge>
-            <UiTooltip label="收起文章属性">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                :icon="icons.chevronRight"
-                aria-label="收起文章属性"
-                @click="sessionStore.inspectorOpen = false"
-              />
-            </UiTooltip>
           </div>
         </header>
 
