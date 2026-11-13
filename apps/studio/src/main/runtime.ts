@@ -84,7 +84,14 @@ export class RuntimeService {
     }
     let useNode = false;
     const run = async (offline: boolean): Promise<number> => {
-      const args = installArgs(offline).concat(['--ignore-workspace', '--store-dir', store]);
+      // hoisted：Windows 上 pnpm 11 会把依赖做成 \??\Global 联接，Node 不跟随，
+      // astro 因此找不到 yargs-parser 并立刻退出。平铺后从站点 node_modules 就能解析。
+      const args = installArgs(offline).concat([
+        '--ignore-workspace',
+        '--config.node-linker=hoisted',
+        '--store-dir',
+        store,
+      ]);
       if (useNode) return this.spawnNodePnpm(task, siteDir, args);
       const code = await this.spawnPnpm(task, siteDir, args);
       if (code === 0) return code;
