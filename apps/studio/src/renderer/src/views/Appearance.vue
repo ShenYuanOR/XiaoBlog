@@ -1080,8 +1080,19 @@ async function save(): Promise<void> {
   saving.value = true;
   rejected.value = [];
   session.setSaveState('saving');
-  const result = await window.xiao.settings.write(session.siteDir, next);
-  saving.value = false;
+  let result: Awaited<ReturnType<typeof window.xiao.settings.write>> | null = null;
+  try {
+    // rawConfig 存在 ref 里会变成响应式代理，直接送 IPC 会抛 An object could not be cloned。
+    const payload = JSON.parse(JSON.stringify(next)) as Record<string, unknown>;
+    result = await window.xiao.settings.write(session.siteDir, payload);
+  } catch (error) {
+    session.setSaveState('dirty');
+    const message = error instanceof Error ? error.message : '保存失败';
+    notify(`没有写入：${message}`, 'error', 'appearance-save');
+    return;
+  } finally {
+    saving.value = false;
+  }
   if (!result.ok) {
     session.setSaveState('dirty');
     notify(result.message, 'error', 'appearance-save');

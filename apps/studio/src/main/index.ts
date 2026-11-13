@@ -571,8 +571,21 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('settings:write', (_event, siteDir: string, config: SiteConfig) => {
-    const errors = writeConfig(siteDir, config);
-    return ok(errors);
+    try {
+      const errors = writeConfig(siteDir, config);
+      return ok(errors);
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      const message = error instanceof Error ? error.message : '写不了配置';
+      console.error(`settings:write ${code || 'ERR'} ${message}`);
+      if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
+        return fail(
+          'SETTINGS_WRITE',
+          `配置文件写不进去（${code}）。文件可能是只读的，或被安全软件锁住了。解除占用后再保存。`,
+        );
+      }
+      return fail('SETTINGS_WRITE', message);
+    }
   });
   ipcMain.handle('canvas:components', () => ok(manifest.map((item) => item.name)));
   ipcMain.handle('canvas:outline', (_event, siteDir: string, file?: string) => {
