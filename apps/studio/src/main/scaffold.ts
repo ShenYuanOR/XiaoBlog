@@ -12,6 +12,7 @@ const skip = new Set([
   'release',
   'release2',
   '.xiao-recycle',
+  '.pnpm-store',
 ]);
 
 export function siteFolderName(title: string): string {

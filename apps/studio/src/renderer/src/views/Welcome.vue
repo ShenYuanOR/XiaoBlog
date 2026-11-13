@@ -34,6 +34,7 @@ const creating = ref(false);
 const opening = ref(false);
 const openingDir = ref('');
 const errorText = ref('');
+const errorLog = ref('');
 const openError = ref('');
 const versionText = ref('开发版');
 
@@ -73,17 +74,30 @@ function startSteps(): void {
   ];
 }
 
-function explainCreateError(message: string): string {
+function explainCreateError(message: string): { text: string; log: string } {
+  const log = message.startsWith('依赖没有装好\n') ? message.slice('依赖没有装好\n'.length).trim() : '';
   if (message.includes('已经存在')) {
-    return `新建失败：同名文件夹已经存在。换一个站点名称，或先处理掉那个文件夹再试。`;
+    return {
+      text: '新建失败：同名文件夹已经存在。换一个站点名称，或先处理掉那个文件夹再试。',
+      log: '',
+    };
   }
   if (message.includes('模板')) {
-    return `新建失败：找不到内置的站点模板。安装包可能不完整，建议重新安装晓。`;
+    return {
+      text: '新建失败：找不到内置的站点模板。安装包可能不完整，建议重新安装晓。',
+      log: '',
+    };
   }
   if (message.includes('依赖')) {
-    return `新建失败：依赖没有安装成功。检查网络和磁盘空间后重试；离线包缺失时可以先用「打开文件夹」进入已装好的站点。`;
+    return {
+      text: '新建失败：依赖没有安装成功。可以展开下面的安装日志看具体原因，也可以检查网络、磁盘空间，或安全软件是否拦截了 pnpm。',
+      log,
+    };
   }
-  return `新建失败：${message}。可以换一个父目录或站点名称再试。`;
+  return {
+    text: `新建失败：${message}。可以换一个父目录或站点名称再试。`,
+    log: '',
+  };
 }
 
 function explainOpenError(message: string): string {
@@ -143,6 +157,7 @@ async function pickParent(): Promise<void> {
 async function submit(): Promise<void> {
   if (creating.value) return;
   errorText.value = '';
+  errorLog.value = '';
   if (!parent.value) {
     errorText.value = '还没选父目录：点「选择目录」，挑一个用来放站点的文件夹。';
     return;
@@ -162,7 +177,9 @@ async function submit(): Promise<void> {
   stopSteps();
   creating.value = false;
   if (!result.ok) {
-    errorText.value = explainCreateError(result.message);
+    const explained = explainCreateError(result.message);
+    errorText.value = explained.text;
+    errorLog.value = explained.log;
     return;
   }
   notify(`站点「${result.data.title}」已建好，正在进入`, 'info', 'welcome-create');
@@ -299,7 +316,13 @@ onBeforeUnmount(() => {
 
           <div v-if="errorText" class="alert" role="alert">
             <span class="alert-icon"><UiIcon :path="icons.alert" :size="16" /></span>
-            <span class="alert-text">{{ errorText }}</span>
+            <div class="alert-body">
+              <span class="alert-text">{{ errorText }}</span>
+              <details v-if="errorLog" class="alert-log">
+                <summary>查看安装日志</summary>
+                <pre>{{ errorLog }}</pre>
+              </details>
+            </div>
           </div>
 
           <div v-if="creating" class="steps" aria-live="polite">
@@ -635,9 +658,32 @@ onBeforeUnmount(() => {
   color: var(--ui-danger);
 }
 
+.alert-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+}
+
 .alert-text {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.alert-log summary {
+  cursor: pointer;
+  color: var(--ui-text);
+  font-weight: 600;
+}
+
+.alert-log pre {
+  max-height: 220px;
+  margin: var(--ui-s2) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--ui-font-mono, ui-monospace, Consolas, monospace);
+  font-size: var(--ui-fs-1);
 }
 
 .steps {

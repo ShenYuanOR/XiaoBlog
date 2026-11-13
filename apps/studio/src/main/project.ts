@@ -83,7 +83,11 @@ export async function createSite(
   if (existsSync(lockfilePath())) placeLockfile(dir, lockfilePath());
   writeSiteBasics(dir, title, author.trim() || '晓');
   const installed = await runtime.start('install', dir);
-  if (installed.code !== 0) throw new Error('依赖没有装好');
+  if (installed.code !== 0) {
+    const detail = installed.log?.replace(/\u001b\[[0-9;]*m/g, '').trim() ?? '';
+    const tail = detail.length > 8000 ? detail.slice(-8000) : detail;
+    throw new Error(tail ? `依赖没有装好\n${tail}` : '依赖没有装好');
+  }
   await initRepository(dir, author.trim() || '晓');
   await runtime.start('dev', dir);
   remember(dir, title);

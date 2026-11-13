@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
@@ -22,6 +22,7 @@ interface LiveTask {
 
 export class RuntimeService {
   private live = new Map<string, LiveTask>();
+  private logs = new Map<string, string>();
 
   constructor(private readonly hooks: RuntimeHooks) {}
 
@@ -40,7 +41,10 @@ export class RuntimeService {
       : path.join(process.cwd(), 'resources', 'pnpm', 'pnpm.exe');
   }
 
-  async start(kind: RuntimeKind, siteDir: string): Promise<RuntimeStart & { code?: number }> {
+  async start(
+    kind: RuntimeKind,
+    siteDir: string,
+  ): Promise<RuntimeStart & { code?: number; log?: string }> {
     this.stopAll();
     const taskId = randomUUID();
     const task: LiveTask = { taskId, kind };
@@ -49,7 +53,9 @@ export class RuntimeService {
     this.hooks.onStart(start);
     if (kind === 'install') {
       const code = await this.install(task, siteDir);
-      return { ...start, code };
+      const log = this.logs.get(taskId) ?? '';
+      this.logs.delete(taskId);
+      return { ...start, code, log };
     }
     const port = kind === 'dev' ? await freePort() : undefined;
     this.spawnAstro(task, siteDir, port);
@@ -68,12 +74,33 @@ export class RuntimeService {
   }
 
   private async install(task: LiveTask, siteDir: string): Promise<number> {
-    const store = storeDirFor(siteDir);
-    const first = await this.spawnPnpm(
-      task,
-      siteDir,
-      installArgs(true).concat(['--store-dir', store]),
-    );
+    const preferred = storeDirFor(siteDir);
+    const store = canUseStore(preferred) ? preferred : path.join(siteDir, '.pnpm-store');
+    if (store !== preferred) {
+      this.hooks.onLog({
+        taskId: task.taskId,
+        text: `离线仓库 ${preferred} 写不进去，改用站点里的 .pnpm-store。\n`,
+      });
+    }
+    let useNode = false;
+    const run = async (offline: boolean): Promise<number> => {
+      const args = installArgs(offline).concat(['--ignore-workspace', '--store-dir', store]);
+      if (useNode) return this.spawnNodePnpm(task, siteDir, args);
+      const code = await this.spawnPnpm(task, siteDir, args);
+      if (code === 0) return code;
+      const fallback = nodePnpmLauncher();
+      if (!fallback) return code;
+      useNode = true;
+      const locked = this.deniedStoreLock(task.taskId);
+      this.hooks.onLog({
+        taskId: task.taskId,
+        text: locked
+          ? '内置 pnpm 打不开本机安装锁（拒绝访问）。改用系统里的 pnpm。\n'
+          : '内置 pnpm 安装失败。改用系统里的 pnpm。\n',
+      });
+      return this.spawnNodePnpm(task, siteDir, args);
+    };
+    const first = await run(true);
     if (first === 0) {
       this.finish(task, 0);
       return 0;
@@ -82,17 +109,37 @@ export class RuntimeService {
       taskId: task.taskId,
       text: '离线安装失败。请联网后重试，正在改用优先离线安装。\n',
     });
-    const second = await this.spawnPnpm(
-      task,
-      siteDir,
-      installArgs(false).concat(['--store-dir', store]),
-    );
+    const second = await run(false);
     this.finish(task, second, second === 0 ? undefined : '依赖没有装好');
     return second;
   }
 
+  private deniedStoreLock(taskId: string): boolean {
+    return (this.logs.get(taskId) ?? '').includes('ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK');
+  }
+
   private spawnPnpm(task: LiveTask, siteDir: string, args: string[]): Promise<number> {
     return this.spawn(task, this.pnpmPath(), args, siteDir, false);
+  }
+
+  /** 内置 pnpm.exe 在这台机器上打不开安装锁时，改走本机 Node 版 pnpm。 */
+  private spawnNodePnpm(task: LiveTask, siteDir: string, args: string[]): Promise<number> {
+    const fallback = nodePnpmLauncher();
+    if (!fallback) {
+      this.hooks.onLog({
+        taskId: task.taskId,
+        text: '没有找到系统里的 pnpm，安装停在内置 pnpm 的报错上。\n',
+      });
+      return Promise.resolve(1);
+    }
+    const [command, ...rest] = args;
+    return this.spawn(
+      task,
+      fallback.command,
+      [fallback.script, command ?? 'install', '--pm-on-fail=ignore', ...rest],
+      siteDir,
+      false,
+    );
   }
 
   private spawnAstro(task: LiveTask, siteDir: string, port?: number): void {
@@ -129,6 +176,9 @@ export class RuntimeService {
     let buffer = '';
     const take = (chunk: Buffer): void => {
       const text = chunk.toString();
+      const prev = this.logs.get(task.taskId) ?? '';
+      const next = `${prev}${text}`;
+      this.logs.set(task.taskId, next.length > 20000 ? next.slice(-20000) : next);
       this.hooks.onLog({ taskId: task.taskId, text });
       if (!watchReady) return;
       buffer += text;
@@ -149,6 +199,35 @@ export class RuntimeService {
     this.live.delete(task.taskId);
     this.hooks.onExit({ taskId: task.taskId, code, ...(message ? { message } : {}) });
   }
+}
+
+/** 本机 Node 安装的 pnpm。内置 exe 被安全软件拒绝访问锁文件时用它。 */
+function canUseStore(dir: string): boolean {
+  try {
+    mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.xiao-write-probe');
+    writeFileSync(probe, 'ok');
+    unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function nodePnpmLauncher(): { command: string; script: string } | null {
+  if (process.platform !== 'win32') return null;
+  const found = spawnSync('where.exe', ['pnpm'], { encoding: 'utf8', windowsHide: true });
+  if (found.status !== 0) return null;
+  for (const line of found.stdout.split(/\r?\n/)) {
+    const hit = line.trim();
+    if (!hit) continue;
+    const dir = path.dirname(hit);
+    const script = path.join(dir, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
+    if (!existsSync(script)) continue;
+    const node = path.join(dir, 'node.exe');
+    return { command: existsSync(node) ? node : 'node', script };
+  }
+  return null;
 }
 
 export function killTree(pid: number | undefined): void {

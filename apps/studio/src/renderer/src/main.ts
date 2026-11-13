@@ -24,6 +24,7 @@ const pinia = createPinia();
 createApp(App).use(pinia).use(router).mount('#app');
 const session = useSession(pinia);
 let liveTaskId = '';
+let liveKind = '';
 window.xiao.preview.onWindow((event) => {
   session.previewWindowOpen = event.open;
   if (!event.open) session.setPreviewMode('off');
@@ -41,6 +42,7 @@ window.xiao.runtime.onReady((event) => {
 });
 window.xiao.runtime.onStart((event) => {
   liveTaskId = event.taskId;
+  liveKind = event.kind;
   session.building = true;
   session.previewUrl = '';
   session.previewSiteDir = '';
@@ -51,7 +53,7 @@ window.xiao.runtime.onExit((event) => {
   session.previewUrl = '';
   session.previewSiteDir = '';
   session.pushLog(event.message ? `${event.message}\n` : `进程结束 ${event.code}\n`);
-  if (event.code !== 0) {
+  if (event.code !== 0 && liveKind === 'dev') {
     notify(
       '站点预览停了。点顶栏「预览」再开独立窗口；页面画布也会一起停。若刚换过站点，等依赖装好后再试。',
       'error',
