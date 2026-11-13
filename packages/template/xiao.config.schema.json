@@ -116,6 +116,7 @@
       "description": "色板覆盖项，均可不填。",
       "properties": {
         "accent": { "type": "string" },
+        "accentInk": { "type": "string" },
         "accentSoft": { "type": "string" },
         "onAccent": { "type": "string" },
         "bg": { "type": "string" },

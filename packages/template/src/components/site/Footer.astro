@@ -1,5 +1,13 @@
 ---
-import SiteCopyright from '../xiao/SiteCopyright.astro';
+import { loadConfig } from '../../lib/config';
+
+const config = loadConfig();
+const name = config.author.name.trim() || config.site.title;
 ---
 
-<SiteCopyright />
+<footer class="footer">
+  <p>
+    © {config.site.since} {name}
+  </p>
+  <p>由「晓」驱动</p>
+</footer>

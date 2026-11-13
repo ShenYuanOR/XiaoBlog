@@ -32,6 +32,8 @@ export type AdvancedField =
 /** 一套色板。键名与 xiao.config.json 的 theme.colors.light / .dark 一致。 */
 export interface Palette {
   accent: string;
+  /** 文字级强调。缺省时沿用 accent。亮色小字不能直接用过浅的 accent。 */
+  accentInk?: string;
   accentSoft: string;
   onAccent: string;
   bg: string;
@@ -156,27 +158,29 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     summary: '默认。冷墨底配破晓金。',
     colors: {
       light: {
-        accent: '#8d651c',
+        accent: '#d9a441',
+        accentInk: '#8d651c',
         accentSoft: '#f2e9d9',
-        onAccent: '#f7f8fa',
+        onAccent: '#11151c',
         bg: '#f7f8fa',
         surface: '#eef0f3',
         text: '#1c2026',
-        text2: '#53565b',
-        text3: '#696c70',
-        line: '#d0d1d4',
+        text2: '#5a6270',
+        text3: '#8b92a0',
+        line: '#dfe3e8',
         scrim: 'rgb(17 21 28 / 45%)',
       },
       dark: {
         accent: '#d9a441',
+        accentInk: '#d9a441',
         accentSoft: '#3d3424',
         onAccent: '#11151c',
         bg: '#11151c',
         surface: '#161b24',
         text: '#e8eaef',
-        text2: '#b2b5ba',
-        text3: '#878a90',
-        line: '#383b42',
+        text2: '#a7adb8',
+        text3: '#6b7280',
+        line: '#262c38',
         scrim: 'rgb(17 21 28 / 62%)',
       },
     },
@@ -187,7 +191,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     density: 'normal',
     radius: 'md',
     contentWidth: 'prose',
-    shadow: 'soft',
+    shadow: 'none',
     motion: true,
     advancedFields: [
       'scale',
@@ -409,6 +413,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
 
 export const COLOR_KEYS = [
   'accent',
+  'accentInk',
   'accentSoft',
   'onAccent',
   'bg',
@@ -423,6 +428,7 @@ export const COLOR_KEYS = [
 /** Palette 键 → CSS 变量名。 */
 export const COLOR_VARS: Record<keyof Palette, string> = {
   accent: '--color-accent',
+  accentInk: '--color-accent-ink',
   accentSoft: '--color-accent-soft',
   onAccent: '--color-on-accent',
   bg: '--color-bg',

@@ -53,6 +53,7 @@ const CONTENT_WIDTHS = ['narrow', 'prose', 'wide', 'full'] as const;
 const SHADOWS = ['none', 'soft', 'strong'] as const;
 const COLOR_KEYS = [
   'accent',
+  'accentInk',
   'accentSoft',
   'onAccent',
   'bg',

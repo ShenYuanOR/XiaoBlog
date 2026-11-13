@@ -38,7 +38,7 @@ const heads = articleHeads({
     <SideTree slot="side" posts={posts} current={post.id} />
     <article class="prose">
       <PostTitle post={post} />
-      <PostMeta post={post} />
+      <PostMeta post={post} separator="" />
       <Toc headings={headings} mobile />
       <slot />
       <PostTags post={post} />

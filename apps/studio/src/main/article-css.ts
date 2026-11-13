@@ -71,6 +71,7 @@ const DENSITY_FACTORS: Record<string, number> = { compact: 0.85, normal: 1 };
 
 const COLOR_VARS: Record<string, string> = {
   accent: '--color-accent',
+  accentInk: '--color-accent-ink',
   accentSoft: '--color-accent-soft',
   onAccent: '--color-on-accent',
   bg: '--color-bg',

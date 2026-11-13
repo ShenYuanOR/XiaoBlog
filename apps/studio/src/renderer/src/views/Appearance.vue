@@ -47,6 +47,7 @@ type ShadowId = 'none' | 'soft' | 'strong';
 
 interface Palette {
   accent: string;
+  accentInk?: string;
   accentSoft: string;
   onAccent: string;
   bg: string;
@@ -168,27 +169,29 @@ const PRESETS: PresetDef[] = [
     summary: '默认。冷墨底配破晓金。',
     colors: {
       light: {
-        accent: '#8d651c',
+        accent: '#d9a441',
+        accentInk: '#8d651c',
         accentSoft: '#f2e9d9',
-        onAccent: '#f7f8fa',
+        onAccent: '#11151c',
         bg: '#f7f8fa',
         surface: '#eef0f3',
         text: '#1c2026',
-        text2: '#53565b',
-        text3: '#696c70',
-        line: '#d0d1d4',
+        text2: '#5a6270',
+        text3: '#8b92a0',
+        line: '#dfe3e8',
         scrim: 'rgb(17 21 28 / 45%)',
       },
       dark: {
         accent: '#d9a441',
+        accentInk: '#d9a441',
         accentSoft: '#3d3424',
         onAccent: '#11151c',
         bg: '#11151c',
         surface: '#161b24',
         text: '#e8eaef',
-        text2: '#b2b5ba',
-        text3: '#878a90',
-        line: '#383b42',
+        text2: '#a7adb8',
+        text3: '#6b7280',
+        line: '#262c38',
         scrim: 'rgb(17 21 28 / 62%)',
       },
     },
@@ -199,7 +202,7 @@ const PRESETS: PresetDef[] = [
     density: 'normal',
     radius: 'md',
     contentWidth: 'prose',
-    shadow: 'soft',
+    shadow: 'none',
     motion: true,
     advancedFields: ['scale', 'lineHeight', 'density', 'radius', 'contentWidth', 'shadow', 'motion', 'breakpoints'],
   },
@@ -412,6 +415,7 @@ const PRESETS: PresetDef[] = [
 
 const COLOR_VARS: Record<keyof Palette, string> = {
   accent: '--pv-accent',
+  accentInk: '--pv-accent-ink',
   accentSoft: '--pv-accent-soft',
   onAccent: '--pv-on-accent',
   bg: '--pv-bg',
@@ -836,7 +840,10 @@ const previewVars = computed<Record<string, string>>(() => {
     draft.font === 'mono' || draft.font === 'mono-heading' ? FONT_STACKS.mono : fontBody;
 
   const vars: Record<string, string> = {};
-  for (const key of COLOR_KEYS) vars[COLOR_VARS[key]] = palette[key];
+  for (const key of COLOR_KEYS) {
+    const value = palette[key];
+    if (value) vars[COLOR_VARS[key]] = value;
+  }
   vars['--pv-font-body'] = fontBody;
   vars['--pv-font-heading'] = fontHeading;
   vars['--pv-font-mono'] = FONT_STACKS.mono;
