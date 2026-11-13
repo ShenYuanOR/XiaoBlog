@@ -10,6 +10,8 @@ const posts = await publishedPosts();
 const heads = websiteHeads();
 const hero = config.site.heroImage?.trim() ?? '';
 const avatar = config.author.avatar?.trim() ?? '';
+const subtitle = config.site.subtitle?.trim() ?? '';
+const display = subtitle || config.site.title;
 
 const groups: { year: string; posts: typeof posts }[] = [];
 for (const post of posts) {
@@ -30,6 +32,7 @@ function dayLabel(date: string): string {
   description={config.site.description}
   heads={heads}
   showHeading={false}
+  sidebar="none"
   page="index"
 >
   <header class="home-identity">
@@ -45,8 +48,8 @@ function dayLabel(date: string): string {
         )
       }
       <div>
-        <h1 class="home-display">{config.site.title}</h1>
-        {config.site.subtitle && <p class="home-sign">{config.site.subtitle}</p>}
+        {subtitle && <p class="home-kicker">{config.site.title}</p>}
+        <h1 class="home-display">{display}</h1>
         {config.author.bio && <p class="home-bio">{config.author.bio}</p>}
       </div>
     </div>

@@ -346,9 +346,7 @@ a {
 }
 
 .shell.is-side-none {
-  grid-template-columns:
-    minmax(0, var(--page-width, var(--w-content)))
-    var(--page-toc, var(--w-toc));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .shell.is-side-right {
@@ -514,7 +512,7 @@ a {
 }
 
 .home-identity {
-  padding: var(--space-7) 0 var(--space-5);
+  padding: var(--space-7) 0 0;
 }
 
 .home-hero {
@@ -549,6 +547,14 @@ a {
   letter-spacing: -0.03em;
 }
 
+.home-kicker {
+  margin: 0 0 0.2em;
+  color: var(--color-text-3);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
 .home-sign {
   margin: 0.4em 0 0;
   color: var(--color-text);
@@ -564,7 +570,7 @@ a {
 }
 
 .home-year {
-  margin-top: var(--space-8);
+  margin-top: var(--space-6);
 }
 
 .home-year-label {
