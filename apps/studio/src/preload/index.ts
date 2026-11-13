@@ -269,6 +269,7 @@ const api = {
     },
     expect: (name: string, url: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke('preview:expect', name, url),
+    reload: (): Promise<IpcResult<null>> => ipcRenderer.invoke('preview:reload'),
     hideDock: (): Promise<IpcResult<null>> => {
       document.dispatchEvent(new CustomEvent('xiao:preview-hide-dock'));
       return Promise.resolve({ ok: true, data: null });

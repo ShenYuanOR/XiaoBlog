@@ -1,4 +1,5 @@
-import raw from '../../xiao.config.json';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { Breakpoint } from './breakpoints';
 import {
   BASE_FONT_SIZES,
@@ -103,8 +104,10 @@ export interface ResolvedTheme {
 /** 2.0 默认预设。旧配置没写 preset 时不会套用它（否则颜色会突变）。 */
 export const DEFAULT_PRESET: PresetId = 'midnight';
 
+/** 每次渲染读磁盘。astro dev 下一次请求就能看到刚保存的配置，不用整站重建。 */
 export function loadConfig(): XiaoConfig {
-  return raw as XiaoConfig;
+  const file = fileURLToPath(new URL('../../xiao.config.json', import.meta.url));
+  return JSON.parse(readFileSync(file, 'utf8')) as XiaoConfig;
 }
 
 const FONT_IDS = ['sans', 'serif', 'mono', 'custom', 'mono-heading'] as const;

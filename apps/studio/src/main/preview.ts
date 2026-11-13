@@ -239,6 +239,16 @@ export function installPreviewNavigationLock(win: BrowserWindow): void {
   });
 }
 
+export function reloadPreviewDocuments(): void {
+  for (const frame of embeddedFrames()) {
+    if (!frame.url || frame.url === 'about:blank') continue;
+    void frame.executeJavaScript('location.reload()').catch(() => undefined);
+  }
+  for (const view of views) {
+    if (!view.webContents.isDestroyed()) view.webContents.reload();
+  }
+}
+
 function embeddedFrames(): Electron.WebFrameMain[] {
   const found: Electron.WebFrameMain[] = [];
   for (const win of BrowserWindow.getAllWindows()) {

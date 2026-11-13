@@ -338,6 +338,7 @@ export interface XiaoApi {
       interactive?: boolean;
     }) => Promise<IpcResult<null>>;
     expect: (name: string, url: string) => Promise<IpcResult<null>>;
+    reload: () => Promise<IpcResult<null>>;
     hideDock: () => Promise<IpcResult<null>>;
     catalog: (items: { name: string; label: string }[]) => void;
     onInsertBlock: (

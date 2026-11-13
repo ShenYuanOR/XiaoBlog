@@ -1060,7 +1060,20 @@ async function save(): Promise<void> {
   rawConfig.value = next;
   savedSnapshot.value = snapshotAtSave;
   session.setSaveState(dirty.value ? 'dirty' : 'saved');
-  notify('已写入，重新构建后生效', 'info', 'appearance-save');
+  notify('已写入。预览会重新载入当前页。', 'info', 'appearance-save');
+  void refreshPreview(false);
+}
+
+async function refreshPreview(announce = true): Promise<void> {
+  const result = await window.xiao.preview.reload();
+  if (!announce) return;
+  if (!result.ok) {
+    notify(`预览没能刷新：${result.message}`, 'error', 'appearance-preview');
+    return;
+  }
+  if (!session.previewUrl && !session.previewWindowOpen) {
+    notify('配置已在磁盘上。打开页面或文章预览后，再点一次「刷新预览」。', 'info', 'appearance-preview');
+  }
 }
 
 function openCustomCss(): void {
@@ -1136,10 +1149,11 @@ onBeforeUnmount(() => {
         <header class="page-head">
           <div class="page-titles">
             <h2>外观</h2>
-            <p>预设决定整体气质，令牌决定字号、间距与圆角。保存后需要重新构建，全站才会变。</p>
+            <p>预设决定整体气质，令牌决定字号、间距与圆角。保存后点「刷新预览」，正在看的页面会按新配置重载。</p>
           </div>
           <div class="page-actions">
             <UiBadge :tone="dirty ? 'warn' : 'ok'" dot>{{ dirty ? '有未保存改动' : '已保存' }}</UiBadge>
+            <UiButton @click="refreshPreview()">刷新预览</UiButton>
             <UiButton
               :icon="icons.refresh"
               aria-label="还原未保存的改动"
@@ -1282,7 +1296,7 @@ onBeforeUnmount(() => {
         <UiPanel title="断点">
           <p class="section-lead">
             断点决定「平板 / 手机」这类样式在哪些宽度生效。默认：平板 ≤1023、手机 ≤767。改成自己的数值后
-            <strong>保存并重新构建</strong>才生效。标识会写进样式类名（如 <code>x-md-pad-lg</code>），
+            <strong>保存后点「刷新预览」</strong>才生效。标识会写进样式类名（如 <code>x-md-pad-lg</code>），
             已保存的标识不要改；删掉断点后，内容里它的旧类名会失效（不会自动清理）。
           </p>
           <div class="bp-list">

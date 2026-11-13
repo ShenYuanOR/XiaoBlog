@@ -28,6 +28,7 @@ import {
   hidePageEditor,
   expectPreviewUrl,
   installPreviewNavigationLock,
+  reloadPreviewDocuments,
   isPreviewWindowOpen,
   hitPreview,
   hintDrop,
@@ -460,6 +461,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('preview:expect', (_event, name: string, url: string) => {
     expectPreviewUrl(name, url);
+    return ok(null);
+  });
+  ipcMain.handle('preview:reload', () => {
+    reloadPreviewDocuments();
     return ok(null);
   });
   ipcMain.handle('page:href', (_event, siteDir: string, file: string) =>
