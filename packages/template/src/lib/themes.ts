@@ -18,6 +18,16 @@ export type DensityId = 'compact' | 'normal';
 export type RadiusId = 'none' | 'sm' | 'md' | 'lg' | 'pill';
 export type ContentWidthId = 'narrow' | 'prose' | 'wide' | 'full';
 export type ShadowId = 'none' | 'soft' | 'strong';
+/** 套件可以开关的高级项。主色调和字体不在这里，所有套件都开放。 */
+export type AdvancedField =
+  | 'scale'
+  | 'lineHeight'
+  | 'density'
+  | 'radius'
+  | 'contentWidth'
+  | 'shadow'
+  | 'motion'
+  | 'breakpoints';
 
 /** 一套色板。键名与 xiao.config.json 的 theme.colors.light / .dark 一致。 */
 export interface Palette {
@@ -47,6 +57,8 @@ export interface ThemePreset {
   contentWidth: ContentWidthId;
   shadow: ShadowId;
   motion: boolean;
+  /** 这个套件允许用户改的高级项。没列出的项在切换时回到本套件默认值。 */
+  advancedFields: AdvancedField[];
 }
 
 export const PRESET_IDS: PresetId[] = [
@@ -178,6 +190,16 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'prose',
     shadow: 'soft',
     motion: true,
+    advancedFields: [
+      'scale',
+      'lineHeight',
+      'density',
+      'radius',
+      'contentWidth',
+      'shadow',
+      'motion',
+      'breakpoints',
+    ],
   },
   paper: {
     id: 'paper',
@@ -218,6 +240,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'narrow',
     shadow: 'none',
     motion: true,
+    advancedFields: ['scale', 'lineHeight', 'contentWidth'],
   },
   magazine: {
     id: 'magazine',
@@ -258,6 +281,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'wide',
     shadow: 'soft',
     motion: true,
+    advancedFields: ['scale', 'contentWidth', 'shadow', 'motion'],
   },
   terminal: {
     id: 'terminal',
@@ -298,6 +322,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'prose',
     shadow: 'none',
     motion: false,
+    advancedFields: [],
   },
   warm: {
     id: 'warm',
@@ -338,6 +363,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'prose',
     shadow: 'soft',
     motion: true,
+    advancedFields: ['radius', 'shadow', 'motion'],
   },
   minimal: {
     id: 'minimal',
@@ -378,6 +404,7 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
     contentWidth: 'prose',
     shadow: 'none',
     motion: false,
+    advancedFields: ['radius', 'contentWidth'],
   },
 };
 

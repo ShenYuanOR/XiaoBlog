@@ -22,10 +22,19 @@ import {
  * 外观页：预设主题 + 令牌面板 + 本地实时预览。
  *
  * 说明：预设与令牌的取值表是 packages/template/src/lib/themes.ts 的镜像（Studio 渲染层不能直接
- * 引模板源码，也不能为此加 IPC），两边必须同步：改动模板预设时同步本文件的 PRESETS 与尺度表。
+ * 引模板源码，也不能为此加 IPC），两边必须同步：改动模板预设时同步本文件的 PRESETS、advancedFields 与尺度表。
  */
 
 type PresetId = 'midnight' | 'paper' | 'magazine' | 'terminal' | 'warm' | 'minimal';
+type AdvancedField =
+  | 'scale'
+  | 'lineHeight'
+  | 'density'
+  | 'radius'
+  | 'contentWidth'
+  | 'shadow'
+  | 'motion'
+  | 'breakpoints';
 type Scheme = 'auto' | 'light' | 'dark';
 type SchemeName = 'light' | 'dark';
 type LegacyFontId = 'sans' | 'serif' | 'mono' | 'mono-heading' | 'custom';
@@ -63,6 +72,7 @@ interface PresetDef {
   contentWidth: ContentWidthId;
   shadow: ShadowId;
   motion: boolean;
+  advancedFields: AdvancedField[];
 }
 
 interface ThemeDraft {
@@ -191,6 +201,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'prose',
     shadow: 'soft',
     motion: true,
+    advancedFields: ['scale', 'lineHeight', 'density', 'radius', 'contentWidth', 'shadow', 'motion', 'breakpoints'],
   },
   {
     id: 'paper',
@@ -231,6 +242,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'narrow',
     shadow: 'none',
     motion: true,
+    advancedFields: ['scale', 'lineHeight', 'contentWidth'],
   },
   {
     id: 'magazine',
@@ -271,6 +283,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'wide',
     shadow: 'soft',
     motion: true,
+    advancedFields: ['scale', 'contentWidth', 'shadow', 'motion'],
   },
   {
     id: 'terminal',
@@ -311,6 +324,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'prose',
     shadow: 'none',
     motion: false,
+    advancedFields: [],
   },
   {
     id: 'warm',
@@ -351,6 +365,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'prose',
     shadow: 'soft',
     motion: true,
+    advancedFields: ['radius', 'shadow', 'motion'],
   },
   {
     id: 'minimal',
@@ -391,6 +406,7 @@ const PRESETS: PresetDef[] = [
     contentWidth: 'prose',
     shadow: 'none',
     motion: false,
+    advancedFields: ['radius', 'contentWidth'],
   },
 ];
 
@@ -711,6 +727,26 @@ const activePreset = computed<PresetDef | null>(() =>
   draft.preset ? (presetOf(draft.preset) ?? null) : null,
 );
 
+const ALL_ADVANCED: AdvancedField[] = [
+  'scale',
+  'lineHeight',
+  'density',
+  'radius',
+  'contentWidth',
+  'shadow',
+  'motion',
+  'breakpoints',
+];
+
+function allows(field: AdvancedField): boolean {
+  if (!activePreset.value) return true;
+  return activePreset.value.advancedFields.includes(field);
+}
+
+const advancedTokenOpen = computed(() =>
+  ALL_ADVANCED.some((field) => field !== 'breakpoints' && allows(field)),
+);
+
 const fontOptions = computed(() =>
   draft.font === 'mono-heading'
     ? [...FONT_OPTIONS, { value: 'mono-heading', label: '等宽标题（旧配置）' }]
@@ -932,6 +968,7 @@ function applyPreset(preset: PresetDef): void {
   draft.contentWidth = preset.contentWidth;
   draft.shadow = preset.shadow;
   draft.motion = preset.motion;
+  if (!preset.advancedFields.includes('breakpoints')) resetBreakpoints();
   void save();
 }
 
@@ -1229,13 +1266,24 @@ onBeforeUnmount(() => {
           </div>
         </UiPanel>
 
-        <UiPanel title="色板">
+        <UiPanel title="基础">
+          <p class="section-lead">主色调和字体每个套件都能改。</p>
           <div class="token-grid">
             <UiField label="亮暗模式" hint="auto 跟随系统；站点右上角仍可临时切换。">
               <UiSelect v-model="colorScheme" :options="SCHEME_OPTIONS" />
             </UiField>
             <UiField label="色相" :hint="hueNote">
               <UiSlider v-model="hue" :min="0" :max="360" unit="°" />
+            </UiField>
+            <UiField label="字体">
+              <UiSelect v-model="font" :options="fontOptions" />
+            </UiField>
+            <UiField
+              v-if="fontStackVisible"
+              label="自定义字体栈"
+              hint="按 CSS font-family 写法填，例如 'Source Han Serif SC', serif。"
+            >
+              <UiInput v-model="draft.fontStack" placeholder="'Noto Serif SC', serif" />
             </UiField>
           </div>
           <div class="palette-strip">
@@ -1247,44 +1295,33 @@ onBeforeUnmount(() => {
               </span>
             </div>
           </div>
+          <p v-if="activePreset && !advancedTokenOpen && !allows('breakpoints')" class="section-lead">
+            这个套件只开放主色调和字体。
+          </p>
         </UiPanel>
 
-        <UiPanel title="排版">
+        <UiPanel v-if="advancedTokenOpen" title="高级">
+          <p class="section-lead">只显示当前套件开放的项。切换套件时，没开放的项会回到该套件的默认值。</p>
           <div class="token-grid">
-            <UiField label="字体">
-              <UiSelect v-model="font" :options="fontOptions" />
-            </UiField>
-            <UiField
-              v-if="fontStackVisible"
-              label="自定义字体栈"
-              hint="按 CSS font-family 写法填，例如 'Source Han Serif SC', serif。"
-            >
-              <UiInput v-model="draft.fontStack" placeholder="'Noto Serif SC', serif" />
-            </UiField>
-            <UiField label="字号刻度" hint="同时缩放字号与组件间距，保证按钮、卡片、正文一起变。">
+            <UiField v-if="allows('scale')" label="字号刻度" hint="同时缩放字号与组件间距，保证按钮、卡片、正文一起变。">
               <UiSegmented v-model="scale" :items="SCALE_OPTIONS" />
             </UiField>
-            <UiField label="行高">
+            <UiField v-if="allows('lineHeight')" label="行高">
               <UiSegmented v-model="lineHeight" :items="LINE_HEIGHT_OPTIONS" />
             </UiField>
-          </div>
-        </UiPanel>
-
-        <UiPanel title="布局与质感">
-          <div class="token-grid">
-            <UiField label="密度" hint="只压缩间距，不缩字号。">
+            <UiField v-if="allows('density')" label="密度" hint="只压缩间距，不缩字号。">
               <UiSegmented v-model="density" :items="DENSITY_OPTIONS" />
             </UiField>
-            <UiField label="圆角">
+            <UiField v-if="allows('radius')" label="圆角">
               <UiSelect v-model="radius" :options="RADIUS_OPTIONS" />
             </UiField>
-            <UiField label="内容宽度">
+            <UiField v-if="allows('contentWidth')" label="内容宽度">
               <UiSelect v-model="contentWidth" :options="WIDTH_OPTIONS" />
             </UiField>
-            <UiField label="阴影">
+            <UiField v-if="allows('shadow')" label="阴影">
               <UiSelect v-model="shadow" :options="SHADOW_OPTIONS" />
             </UiField>
-            <UiField label="动效" hint="关闭后过渡时长归零，尊重系统的“减少动态效果”。">
+            <UiField v-if="allows('motion')" label="动效" hint="关闭后过渡时长归零，尊重系统的“减少动态效果”。">
               <div class="switch-row">
                 <UiSwitch v-model="motion" />
                 <span>{{ motion ? '开启' : '关闭' }}</span>
@@ -1293,7 +1330,7 @@ onBeforeUnmount(() => {
           </div>
         </UiPanel>
 
-        <UiPanel title="断点">
+        <UiPanel v-if="allows('breakpoints')" title="断点">
           <p class="section-lead">
             断点决定「平板 / 手机」这类样式在哪些宽度生效。默认：平板 ≤1023、手机 ≤767。改成自己的数值后
             <strong>保存后点「刷新预览」</strong>才生效。标识会写进样式类名（如 <code>x-md-pad-lg</code>），
