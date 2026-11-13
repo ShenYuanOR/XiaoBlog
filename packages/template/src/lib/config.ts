@@ -67,6 +67,8 @@ export interface XiaoConfig {
     description: string;
     favicon: string;
     ogImage: string;
+    /** 首页横幅。留空则不显示，不用占位图。 */
+    heroImage?: string;
     since: number;
   };
   author: { name: string; avatar: string; bio: string; email: string };

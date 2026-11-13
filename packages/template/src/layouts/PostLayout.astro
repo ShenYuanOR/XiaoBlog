@@ -3,7 +3,6 @@ import Base from './BaseLayout.astro';
 import PageShell from '../components/xiao/PageShell.astro';
 import PostLicense from '../components/xiao/PostLicense.astro';
 import PostMeta from '../components/xiao/PostMeta.astro';
-import PostPager from '../components/xiao/PostPager.astro';
 import PostTags from '../components/xiao/PostTags.astro';
 import PostTitle from '../components/xiao/PostTitle.astro';
 import SideTree from '../components/site/SideTree.astro';
@@ -21,7 +20,7 @@ interface Props {
   /** 版式根节点的附加 class。 */
   class?: string;
 }
-const { post, headings, prev, next, page, class: extraClass } = Astro.props;
+const { post, headings, page, class: extraClass } = Astro.props;
 const posts = await publishedPosts();
 const heads = articleHeads({
   slug: post.id,
@@ -43,7 +42,6 @@ const heads = articleHeads({
       <Toc headings={headings} mobile />
       <slot />
       <PostTags post={post} />
-      <PostPager prev={prev} next={next} />
       <PostLicense />
     </article>
     <Toc slot="toc" headings={headings} />

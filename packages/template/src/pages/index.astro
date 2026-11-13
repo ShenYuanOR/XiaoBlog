@@ -1,13 +1,28 @@
 ---
 import PageLayout from '../layouts/PageLayout.astro';
-import { loadConfig } from '../lib/config';
-import { publishedPosts } from '../lib/posts';
-import { websiteHeads } from '../lib/seo';
 import { withBase } from '../lib/base';
+import { loadConfig } from '../lib/config';
+import { publishedPosts, readingMinutes } from '../lib/posts';
+import { websiteHeads } from '../lib/seo';
 
 const config = loadConfig();
 const posts = await publishedPosts();
 const heads = websiteHeads();
+const hero = config.site.heroImage?.trim() ?? '';
+const avatar = config.author.avatar?.trim() ?? '';
+
+const groups: { year: string; posts: typeof posts }[] = [];
+for (const post of posts) {
+  const year = post.data.date.slice(0, 4);
+  const last = groups.at(-1);
+  if (!last || last.year !== year) groups.push({ year, posts: [post] });
+  else last.posts.push(post);
+}
+
+function dayLabel(date: string): string {
+  const [, month, day] = date.slice(0, 10).split('-');
+  return `${Number(month)}月${Number(day)}日`;
+}
 ---
 
 <PageLayout
@@ -17,23 +32,59 @@ const heads = websiteHeads();
   showHeading={false}
   page="index"
 >
-  <header class="home-intro">
-    <h1>{config.site.title}</h1>
-    <p class="subtitle">{config.site.subtitle}</p>
-    <p class="bio">{config.author.bio}</p>
+  <header class="home-identity">
+    {
+      hero && (
+        <img class="home-hero" src={withBase(hero)} alt="" />
+      )
+    }
+    <div class="home-identity-row">
+      {
+        avatar && (
+          <img class="home-avatar" src={withBase(avatar)} alt="" />
+        )
+      }
+      <div>
+        <h1 class="home-display">{config.site.title}</h1>
+        {config.site.subtitle && <p class="home-sign">{config.site.subtitle}</p>}
+        {config.author.bio && <p class="home-bio">{config.author.bio}</p>}
+      </div>
+    </div>
   </header>
-  <h2>最近更新</h2>
-  <ul class="recent">
-    {posts.map((post) => (
-      <li>
-        <div class="recent-row">
-          <a class="recent-title" href={withBase(`posts/${post.id}/`)}>
-            {post.data.title}
-          </a>
-          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
-        </div>
-        {post.data.description && <p>{post.data.description}</p>}
-      </li>
-    ))}
-  </ul>
+
+  <div class="home-years">
+    {
+      groups.map((group) => (
+        <section class="home-year">
+          <h2 class="home-year-label">{group.year}</h2>
+          <ol class="home-posts">
+            {group.posts.map((post) => (
+              <li class="home-post">
+                <time class="home-date" datetime={post.data.date}>
+                  {dayLabel(post.data.date)}
+                </time>
+                <div class="home-post-body">
+                  <a class="home-post-title" href={withBase(`posts/${post.id}/`)}>
+                    {post.data.title}
+                  </a>
+                  {post.data.description && <p class="home-post-desc">{post.data.description}</p>}
+                  <p class="home-meta">
+                    <span>预计阅读 {readingMinutes(post.body)} 分钟</span>
+                    {post.data.category && (
+                      <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
+                        {post.data.category}
+                      </a>
+                    )}
+                    {post.data.tags.slice(0, 3).map((tag) => (
+                      <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
+                    ))}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))
+    }
+  </div>
 </PageLayout>

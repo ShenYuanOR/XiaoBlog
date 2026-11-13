@@ -10,6 +10,7 @@
     "description": "一个用 Astro 搭建的笔记站。",
     "favicon": "/favicon.svg",
     "ogImage": "",
+    "heroImage": "",
     "since": 2026
   },
   "author": {

@@ -12,6 +12,7 @@ export interface SiteConfig {
     description: string;
     favicon: string;
     ogImage: string;
+    heroImage?: string;
     since: number;
   };
   author: { name: string; avatar: string; bio: string; email: string };
