@@ -147,38 +147,37 @@ export const CONTENT_WIDTHS: Record<ContentWidthId, string> = {
 export const DURATIONS = { normal: '150ms', slow: '200ms' };
 
 /**
- * 6 套预设。midnight 是 2.0 默认（深色专业风：墨蓝底 + 蓝强调）。
- * 色板取 studio-ui-v2.md §3 的同一族色值，让 Studio 与站点观感一致。
+ * 6 套预设。midnight 是默认：冷墨底配破晓金，不是蓝强调。
  */
 export const PRESETS: Record<PresetId, ThemePreset> = {
   midnight: {
     id: 'midnight',
     name: '深夜',
-    summary: '默认。深色专业风，墨蓝底配蓝色强调。',
+    summary: '默认。冷墨底配破晓金。',
     colors: {
       light: {
-        accent: '#2f6bf0',
-        accentSoft: '#e8eefc',
-        onAccent: '#ffffff',
-        bg: '#ffffff',
-        surface: '#f6f8fb',
-        text: '#1b2230',
-        text2: '#5a6577',
-        text3: '#8b94a3',
-        line: '#e2e5ea',
-        scrim: 'rgb(15 23 42 / 40%)',
+        accent: '#8d651c',
+        accentSoft: '#f2e9d9',
+        onAccent: '#f7f8fa',
+        bg: '#f7f8fa',
+        surface: '#eef0f3',
+        text: '#1c2026',
+        text2: '#53565b',
+        text3: '#696c70',
+        line: '#d0d1d4',
+        scrim: 'rgb(17 21 28 / 45%)',
       },
       dark: {
-        accent: '#6d9bff',
-        accentSoft: '#1b2740',
-        onAccent: '#0d1017',
-        bg: '#0d1017',
-        surface: '#151a22',
-        text: '#e8ecf4',
-        text2: '#9aa7bd',
-        text3: '#6c7889',
-        line: '#222b3a',
-        scrim: 'rgb(0 0 0 / 60%)',
+        accent: '#d9a441',
+        accentSoft: '#3d3424',
+        onAccent: '#11151c',
+        bg: '#11151c',
+        surface: '#161b24',
+        text: '#e8eaef',
+        text2: '#b2b5ba',
+        text3: '#878a90',
+        line: '#383b42',
+        scrim: 'rgb(17 21 28 / 62%)',
       },
     },
     font: 'sans',

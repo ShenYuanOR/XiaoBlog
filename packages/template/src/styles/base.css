@@ -513,6 +513,7 @@ a {
 
 .home-identity {
   padding: var(--space-7) 0 0;
+  text-align: left;
 }
 
 .home-hero {
@@ -526,7 +527,8 @@ a {
 
 .home-identity-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: var(--space-5);
 }
 
@@ -589,24 +591,25 @@ a {
 
 .home-post {
   display: grid;
-  grid-template-columns: 7em minmax(0, 1fr);
-  gap: var(--space-4);
-  padding: var(--space-4) 0;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: var(--space-5);
+  padding: var(--space-5) 0;
   border-top: 1px solid var(--color-line);
 }
 
 .home-date {
-  color: var(--color-text);
+  color: var(--color-accent);
   font-size: clamp(1.35rem, 2.4vw, 1.75rem);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: -0.03em;
 }
 
 .home-post-title {
   color: var(--color-text);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .home-post-desc {
