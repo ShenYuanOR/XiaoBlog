@@ -3,21 +3,39 @@ import '../styles/base.css';
 import '../styles/prose.css';
 import '../styles/xiao.css';
 import '../styles/custom.css';
+import { loadConfig, titleOf } from '../lib/config';
+import { pageHeads } from '../lib/seo';
 
 interface Props {
   title?: string;
   description?: string;
 }
 const { title = '', description = '' } = Astro.props;
+const config = loadConfig();
+const heads = pageHeads({
+  kind: 'page',
+  path: Astro.url.pathname,
+  title: title || config.site.title,
+  description,
+});
 ---
 
 <!doctype html>
-<html lang="zh">
+<html lang={config.site.lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
+    <title>{titleOf(title, config)}</title>
     {description && <meta name="description" content={description} />}
+    {heads.map((entry) =>
+      entry.tag === 'script' ? (
+        <script type={entry.attrs?.type} set:html={entry.children} />
+      ) : entry.tag === 'meta' ? (
+        <meta {...entry.attrs} />
+      ) : (
+        <link {...entry.attrs} />
+      ),
+    )}
   </head>
   <body>
     <slot />

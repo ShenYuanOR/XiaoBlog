@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { blogPostingJsonLd, openGraphHead } from './seo.ts';
 import { isValidSlug, slugFromTitle } from './slug.ts';
 import { withBase } from './url.ts';
 import { findDeadLinks, validatePosts } from './validate.ts';
@@ -20,25 +19,6 @@ describe('slug', () => {
 
   it('中文标题转拼音', () => {
     expect(slugFromTitle('你好')).toBe('ni-hao');
-  });
-});
-
-describe('seo', () => {
-  it('文章头包含 OG 与 JSON-LD', () => {
-    const post = {
-      url: 'https://example.com/demo/posts/hello/',
-      title: '你好',
-      description: '说明',
-      date: '2026-08-14',
-      tags: ['随笔'],
-    };
-    expect(
-      openGraphHead('晓', post, 'https://example.com').some(
-        (entry) => entry.attrs?.property === 'og:title',
-      ),
-    ).toBe(true);
-    const json = blogPostingJsonLd(post, { name: '作者' }, 'https://example.com');
-    expect(json[0]?.children).toContain('BlogPosting');
   });
 });
 

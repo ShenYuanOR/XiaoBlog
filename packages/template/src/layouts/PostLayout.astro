@@ -14,7 +14,7 @@ import Toc from '../components/site/Toc.astro';
 import { withBase } from '../lib/base';
 import { loadConfig } from '../lib/config';
 import type { PostEntry } from '../lib/posts';
-import { articleHeads } from '../lib/seo';
+import { excerptFromBody, pageHeads } from '../lib/seo';
 
 interface Props {
   post: PostEntry;
@@ -28,23 +28,31 @@ interface Props {
 }
 const { post, headings, page, class: extraClass } = Astro.props;
 const config = loadConfig();
-const heads = articleHeads({
-  slug: post.id,
+const cover = post.data.cover;
+const coverSrc =
+  typeof cover === 'string'
+    ? cover
+    : cover && typeof cover === 'object' && 'src' in cover
+      ? (cover as { src: string }).src
+      : undefined;
+const seoDescription = post.data.description?.trim() || excerptFromBody(post.body);
+const heads = pageHeads({
+  kind: 'article',
+  path: withBase(`posts/${post.id}/`),
   title: post.data.title,
-  description: post.data.description ?? post.data.title,
+  description: seoDescription,
+  image: coverSrc,
   date: post.data.date,
   updated: post.data.updated,
   tags: post.data.tags,
+  category: post.data.category,
   noindex: post.data.noindex,
 });
-const cover = post.format === 'md' ? post.data.cover : undefined;
-const coverSrc =
-  cover && typeof cover === 'object' && 'src' in cover ? (cover as { src: string }).src : undefined;
 const siteHero = config.site.heroImage?.trim();
 const heroSrc = coverSrc ?? (siteHero ? withBase(siteHero) : undefined);
 ---
 
-<Base title={post.data.title} description={post.data.description} heads={heads} page={page}>
+<Base title={post.data.title} description={seoDescription} heads={heads} page={page}>
   <Hero src={heroSrc} size="medium">
     <PostTitle post={post} />
     <PostMeta post={post} separator="" />
