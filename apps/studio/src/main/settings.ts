@@ -296,7 +296,7 @@ export function patchConfig(siteDir: string, patch: SettingsPatch): string[] {
   const current = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch.set ?? {})) applyPath(current, key, value);
   for (const key of patch.unset ?? []) removePath(current, key);
-  return writeConfig(siteDir, current as SiteConfig);
+  return writeConfig(siteDir, current as unknown as SiteConfig);
 }
 
 export function writeConfig(siteDir: string, config: SiteConfig): string[] {
