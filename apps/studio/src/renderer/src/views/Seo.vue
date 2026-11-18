@@ -49,6 +49,7 @@ interface PostItem {
   title: string;
   category: string;
   draft: boolean;
+  format?: 'markdown' | 'html';
 }
 
 type BadgeTone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
@@ -205,21 +206,90 @@ function levelTone(level: string): BadgeTone {
   return levels[level]?.tone ?? 'neutral';
 }
 
+const drafts = ref<Record<string, string>>({});
+
+function draftKey(issue: Issue): string {
+  return `${issue.fix?.slug ?? ''}:${issue.fix?.field ?? ''}`;
+}
+
+function editable(issue: Issue): boolean {
+  return (
+    issue.fix?.kind === 'post' &&
+    (issue.fix.field === 'title' || issue.fix.field === 'description') &&
+    Boolean(issue.fix.slug)
+  );
+}
+
+function fieldValue(source: string, key: string): string {
+  const match = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(source);
+  const raw = match?.[1]?.trim() ?? '';
+  if (raw.length >= 2 && ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith('"') && raw.endsWith('"')))) {
+    return raw.slice(1, -1).replace(/''/g, "'");
+  }
+  return raw;
+}
+
+function setField(source: string, key: string, value: string): string {
+  const newline = source.includes('\r\n') ? '\r\n' : '\n';
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source);
+  if (!match) return source;
+  const line = `${key}: '${value.replace(/'/g, "''")}'`;
+  const body = source.slice(match[0].length);
+  const current = match[1] ?? '';
+  const next = new RegExp(`^${key}:.*$`, 'm').test(current)
+    ? current.replace(new RegExp(`^${key}:.*$`, 'm'), line)
+    : `${current}${newline}${line}`;
+  return `---${newline}${next}${newline}---${newline}${body}`;
+}
+
+async function loadDraft(issue: Issue): Promise<void> {
+  const slug = issue.fix?.slug;
+  const field = issue.fix?.field;
+  const siteDir = session.siteDir;
+  if (!siteDir || !slug || (field !== 'title' && field !== 'description')) return;
+  const key = draftKey(issue);
+  if (drafts.value[key] !== undefined) return;
+  const read = await window.xiao.content.read(siteDir, slug);
+  if (drafts.value[key] !== undefined) return;
+  drafts.value[key] = read.ok ? fieldValue(read.data, field) : '';
+}
+
+async function saveDraft(issue: Issue): Promise<void> {
+  const slug = issue.fix?.slug;
+  const field = issue.fix?.field;
+  const siteDir = session.siteDir;
+  if (!siteDir || !slug || (field !== 'title' && field !== 'description')) return;
+  const read = await window.xiao.content.read(siteDir, slug);
+  if (!read.ok) {
+    notify(`读不到文章：${read.message}`, 'error', 'seo-save');
+    return;
+  }
+  const next = setField(read.data, field, drafts.value[draftKey(issue)] ?? '');
+  const write = await window.xiao.content.write(siteDir, slug, next);
+  if (!write.ok) {
+    notify(`没有保存：${write.message}`, 'error', 'seo-save');
+    return;
+  }
+  notify('已写入文章。请再点一次「体检」。', 'info', 'seo-save');
+}
+
 function openPost(slug: string, title: string): void {
   if (!slug) return;
+  const post = posts.value.find((item) => item.slug === slug);
   session.activePost = slug;
+  session.activePostFormat = post?.format ?? 'markdown';
   window.dispatchEvent(new CustomEvent('xiao:open-post', { detail: { slug } }));
-  session.setNav('posts');
-  notify(`已切到「文章」。请在左侧点选「${title}」。`, 'info', 'seo-fix');
+  notify(`已打开「${title}」。`, 'info', 'seo-fix');
 }
 
 function openSettings(field?: string): void {
   session.setNav('settings');
-  notify(
-    field ? `已切到「设置」，请修改${field}。` : '已切到「设置」。',
-    'info',
-    'seo-fix',
-  );
+  if (field === 'twitter') {
+    notify('已切到「设置」。Twitter 账号还没有单独的输入框。', 'info', 'seo-fix');
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('xiao:focus-setting', { detail: { field } }));
+  notify(field === 'ogImage' ? '已切到「设置」的默认分享图。' : '已切到「设置」的站点地址。', 'info', 'seo-fix');
 }
 
 function fixIssue(issue: Issue): void {
@@ -237,7 +307,7 @@ function fixIssue(issue: Issue): void {
     issue.rule === 'og-image-missing' ||
     issue.rule === 'html-lang-missing'
   ) {
-    openSettings(issue.rule.startsWith('site-url') ? '站点地址' : '分享图');
+    openSettings(issue.rule.startsWith('site-url') ? 'url' : 'ogImage');
     return;
   }
   notify('这条要到对应页面里改。', 'info', 'seo-fix');
@@ -354,7 +424,7 @@ watch(
             <template v-if="generatedLabel">上次生成于 {{ generatedLabel }}。</template>
           </p>
         </div>
-        <UiButton size="sm" :icon="icons.refresh" :loading="auditing" @click="runAudit">
+        <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
           {{ auditing ? '正在构建并体检…' : '体检' }}
         </UiButton>
       </header>
@@ -403,9 +473,19 @@ watch(
                     <p>{{ issue.detail }}</p>
                     <p class="dim">{{ hintOf(issue.rule) }}</p>
                   </div>
-                  <UiButton size="sm" variant="ghost" @click="fixIssue(issue)">
-                    {{ issue.fix?.kind === 'settings' || issue.rule.startsWith('site-url') ? '去设置' : '打开文章' }}
-                  </UiButton>
+                  <div class="issue-actions">
+                    <label v-if="editable(issue)" class="edit">
+                      <input
+                        v-model="drafts[draftKey(issue)]"
+                        :placeholder="issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
+                        @focus="loadDraft(issue)"
+                      />
+                      <UiButton size="sm" @click="saveDraft(issue)">保存</UiButton>
+                    </label>
+                    <UiButton size="sm" variant="ghost" @click="fixIssue(issue)">
+                      {{ issue.fix?.kind === 'settings' || issue.rule.startsWith('site-url') ? '去设置' : '打开文章' }}
+                    </UiButton>
+                  </div>
                 </article>
               </section>
             </div>
@@ -586,6 +666,30 @@ watch(
 .group-head h2 {
   margin: 0;
   font-size: var(--ui-fs-3);
+}
+
+.issue-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ui-s2);
+}
+
+.edit {
+  display: flex;
+  gap: var(--ui-s2);
+  align-items: center;
+}
+
+.edit input {
+  width: 220px;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-raise);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: var(--ui-fs-2);
 }
 
 .issue {

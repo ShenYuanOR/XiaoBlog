@@ -1038,8 +1038,9 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('content:write', (_event, siteDir: string, slug: string, markdown: string) => {
-    writePostFile(siteDir, slug, markdown);
-    watcher?.noteWrite(join(siteDir, 'src', 'content', 'posts', slug, 'index.md'), markdown);
+    const format = writePostFile(siteDir, slug, markdown);
+    const file = format === 'html' ? 'index.html' : 'index.md';
+    watcher?.noteWrite(join(siteDir, 'src', 'content', 'posts', slug, file), markdown);
     return ok(null);
   });
   ipcMain.handle(

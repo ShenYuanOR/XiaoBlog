@@ -462,6 +462,7 @@ onBeforeUnmount(() => {
             <UiInput v-model="form.site.subtitle" placeholder="随手记" />
           </UiField>
           <UiField
+            id="setting-url"
             label="站点地址"
             required
             hint="部署后的完整地址，用于 canonical、RSS 和 sitemap。"
@@ -481,7 +482,7 @@ onBeforeUnmount(() => {
           <UiField label="图标路径" hint="public 里的相对路径，例如 /favicon.svg。">
             <UiInput v-model="form.site.favicon" placeholder="/favicon.svg" />
           </UiField>
-          <UiField label="默认分享图" hint="留空则不输出 og:image。">
+          <UiField id="setting-ogImage" label="默认分享图" hint="留空则不输出 og:image。">
             <UiInput v-model="form.site.ogImage" placeholder="/og.png" />
           </UiField>
           <div class="span-2">

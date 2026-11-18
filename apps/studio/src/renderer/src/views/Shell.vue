@@ -204,6 +204,25 @@ function onOpenPost(event: Event): void {
   slug.value = detail.slug;
 }
 
+/** 设置页要等配置读完才渲染输入框，事件先到就多等一会儿。 */
+function onFocusSetting(event: Event): void {
+  const field = (event as CustomEvent<{ field?: string }>).detail?.field ?? '';
+  const id = field === 'url' ? 'setting-url' : field === 'ogImage' ? 'setting-ogImage' : '';
+  if (!id) return;
+  const started = Date.now();
+  const tick = (): void => {
+    const node = document.getElementById(id);
+    const input = node?.querySelector('input');
+    if (input instanceof HTMLInputElement) {
+      node?.scrollIntoView({ block: 'center' });
+      input.focus();
+      return;
+    }
+    if (Date.now() - started < 5000) window.setTimeout(tick, 80);
+  };
+  tick();
+}
+
 function onPreviewWindow(event: Event): void {
   const path = (event as CustomEvent<{ path?: string }>).detail?.path ?? '';
   void openFormalPreview(path);
@@ -214,12 +233,14 @@ onMounted(() => {
   void window.xiao.preview.hideDock();
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('xiao:open-post', onOpenPost);
+  window.addEventListener('xiao:focus-setting', onFocusSetting);
   window.addEventListener('xiao:preview-window', onPreviewWindow);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('xiao:preview-window', onPreviewWindow);
+  window.removeEventListener('xiao:focus-setting', onFocusSetting);
   window.removeEventListener('xiao:open-post', onOpenPost);
 });
 
