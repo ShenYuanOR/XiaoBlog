@@ -118,6 +118,7 @@ export function auditBuiltSite(dist, config = {}) {
   const redirectRoutes = new Set();
   const noindexRoutes = new Set();
   const siteOgUsers = [];
+  const missingOgRoutes = [];
   if (placeholderUrl(siteUrl)) {
     issues.push({
       level: 'error',
@@ -213,13 +214,16 @@ export function auditBuiltSite(dist, config = {}) {
       issues.push({ level: 'warn', rule: 'og-description-missing', route, detail: '缺少 og:description' });
     }
     if (!ogImage) {
-      issues.push({
-        level: 'warn',
-        rule: 'og-image-missing',
-        route,
-        detail: '缺少 og:image',
-        fix: postFix(route, 'cover') ?? { kind: 'settings', field: 'ogImage' },
-      });
+      if (!siteOgImage) missingOgRoutes.push(route);
+      else {
+        issues.push({
+          level: 'warn',
+          rule: 'og-image-missing',
+          route,
+          detail: '缺少 og:image',
+          fix: postFix(route, 'cover') ?? { kind: 'settings', field: 'ogImage' },
+        });
+      }
     } else if (siteUrl && ogImage.startsWith(siteUrl)) {
       const relative = decodeURIComponent(new URL(ogImage).pathname).replace(/^\/+/, '');
       if (relative && !existsSync(path.join(dist, relative))) {
@@ -310,6 +314,15 @@ export function auditBuiltSite(dist, config = {}) {
         fix: { kind: 'settings', field: 'description' },
       });
     }
+  }
+  if (missingOgRoutes.length > 0) {
+    issues.push({
+      level: 'warn',
+      rule: 'og-image-missing',
+      route: '/',
+      detail: `没有设置默认分享图，${missingOgRoutes.length} 个页面分享时没有图`,
+      fix: { kind: 'settings', field: 'ogImage' },
+    });
   }
   if (siteOgUsers.length > 0) {
     issues.push({

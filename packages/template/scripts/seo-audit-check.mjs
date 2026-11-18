@@ -85,4 +85,31 @@ const missingOg = mergedResult.issues.filter((issue) => issue.rule === 'og-image
 if (missingOg.length !== 1) throw new Error(`缺失的默认分享图应该合并成一条，实际 ${missingOg.length}`);
 if (missingOg[0].fix?.field !== 'ogImage') throw new Error('默认分享图的修复入口应该是设置里的分享图');
 if (!missingOg[0].detail.includes('2 个页面')) throw new Error(`默认分享图没有写上页面数：${missingOg[0].detail}`);
+
+const emptyOg = mkdtempSync(path.join(tmpdir(), 'xiao-seo-og-'));
+writeFileSync(path.join(emptyOg, 'cover.png'), 'png');
+const emptyPages = {
+  'index.html': `<html lang="zh-CN"><head><title>首页</title><meta name="description" content="${'摘'.repeat(40)}"><link rel="canonical" href="https://example.com/"><meta property="og:title" content="首页"><meta property="og:description" content="${'摘'.repeat(40)}"></head><body><h1>首页</h1></body></html>`,
+  'about/index.html': `<html lang="zh-CN"><head><title>关于</title><meta name="description" content="${'摘'.repeat(40)}"><link rel="canonical" href="https://example.com/about/"><meta property="og:title" content="关于"><meta property="og:description" content="${'摘'.repeat(40)}"></head><body><h1>关于</h1></body></html>`,
+  'posts/covered/index.html': `<html lang="zh-CN"><head><title>有封面</title><meta name="description" content="${'摘'.repeat(40)}"><link rel="canonical" href="https://example.com/posts/covered/"><meta property="og:title" content="有封面"><meta property="og:description" content="${'摘'.repeat(40)}"><meta property="og:image" content="https://example.com/cover.png"></head><body><h1>有封面</h1></body></html>`,
+};
+for (const [file, html] of Object.entries(emptyPages)) {
+  const full = path.join(emptyOg, file);
+  mkdirSync(path.dirname(full), { recursive: true });
+  writeFileSync(full, html);
+}
+const emptyResult = auditBuiltSite(emptyOg, { site: { url: 'https://example.com', ogImage: '' } });
+rmSync(emptyOg, { recursive: true, force: true });
+const emptyMissing = emptyResult.issues.filter((issue) => issue.rule === 'og-image-missing');
+if (emptyMissing.length !== 1) {
+  throw new Error(`没设默认分享图应该合并成一条，实际 ${emptyMissing.map((issue) => issue.detail).join(' | ')}`);
+}
+if (!emptyMissing[0].detail.includes('没有设置默认分享图') || !emptyMissing[0].detail.includes('2 个页面')) {
+  throw new Error(`默认分享图文案不对：${emptyMissing[0].detail}`);
+}
+if (emptyMissing[0].fix?.field !== 'ogImage') throw new Error('没设默认分享图应该去设置页聚焦分享图');
+const covered = emptyResult.issues.filter(
+  (issue) => issue.route === '/posts/covered' && issue.rule.startsWith('og-image'),
+);
+if (covered.length !== 0) throw new Error(`有封面的文章不该被算进缺少分享图：${covered.map((issue) => issue.rule).join(',')}`);
 console.log('SEO_AUDIT_CHECKS_OK');

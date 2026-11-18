@@ -73,6 +73,8 @@ const views = {
 };
 
 export function getStaticPaths() {
+  // 组件演示只给开发时看。生产构建不生成这些路由，sitemap 也不会收录。
+  if (!import.meta.env.DEV) return [];
   return [
     'Section',
     'Container',
