@@ -34,6 +34,8 @@ export interface RuntimeExitEvent {
   taskId: string;
   code: number;
   message?: string;
+  /** 被下一次构建或安装主动停掉，不是预览自己崩溃。 */
+  replaced?: boolean;
 }
 
 export function ok<T>(data: T): IpcOk<T> {

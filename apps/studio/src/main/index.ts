@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -368,6 +368,17 @@ function fromPreview(event: {
   senderFrame: { name: string } | null;
 }): boolean {
   return isPreviewContents(event.sender) || isPreviewFrameSender(event.senderFrame);
+}
+
+function readableBuildError(log: string): string {
+  const plain = log.replace(/\u001b\[[0-9;]*m/g, '');
+  const lines = plain
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^[├└]/.test(line));
+  const focused = lines.filter((line) => /不合法|死链|Error|error|失败|Invalid|未通过|Could not/.test(line));
+  const reason = (focused.length > 0 ? focused : lines).slice(-6).join('\n');
+  return reason || '构建没有完成';
 }
 
 app.whenReady().then(() => {
@@ -958,20 +969,33 @@ app.whenReady().then(() => {
       return fail('SEO_CHECK', error instanceof Error ? error.message : '体检失败');
     }
   });
+
   ipcMain.handle('seo:audit', async (_event, siteDir: string) => {
     if (!siteDir) return fail('SEO_AUDIT', '还没有选择站点');
+    const reportPath = join(siteDir, '.xiao', 'seo-report.json');
+    const resumePreview = runtime.devRunning(siteDir);
     try {
-      const task = await runtime.start('build', siteDir);
-      const reportPath = join(siteDir, '.xiao', 'seo-report.json');
-      if (existsSync(reportPath)) {
-        return ok({
-          code: task.code ?? 0,
-          report: JSON.parse(readFileSync(reportPath, 'utf8')),
-        });
+      try {
+        unlinkSync(reportPath);
+      } catch {
+        // 没有旧报告可删。删掉是为了别把上次的成功报告当成这次的结果。
       }
-      const log = (task.log ?? '').trim();
-      const tail = log.length > 4000 ? log.slice(-4000) : log;
-      return fail('SEO_AUDIT', tail || '构建失败，没有生成体检报告');
+      const task = await runtime.start('build', siteDir);
+      let previewError = '';
+      if (resumePreview) {
+        const resumed = await runtime.resumeDev(siteDir);
+        if (!resumed.ok) previewError = resumed.message;
+      }
+      const code = task.code ?? 1;
+      const buildFailed = code !== 0;
+      const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+      return ok({
+        code,
+        buildFailed,
+        report,
+        message: buildFailed ? readableBuildError(task.log ?? '') : '',
+        previewError,
+      });
     } catch (error) {
       return fail('SEO_AUDIT', error instanceof Error ? error.message : '体检失败');
     }

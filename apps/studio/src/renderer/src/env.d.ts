@@ -265,6 +265,7 @@ export interface XiaoApi {
     audit: (siteDir: string) => Promise<
       IpcResult<{
         code: number;
+        buildFailed: boolean;
         report: {
           generatedAt: string;
           siteUrl: string;
@@ -277,7 +278,9 @@ export interface XiaoApi {
             canonical: string;
             ogImage: string;
           }[];
-        };
+        } | null;
+        message: string;
+        previewError: string;
       }>
     >;
     report: (siteDir: string) => Promise<IpcResult<Record<string, unknown> | null>>;

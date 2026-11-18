@@ -486,7 +486,13 @@ onBeforeUnmount(() => {
             <UiInput v-model="form.site.ogImage" placeholder="/og.png" />
           </UiField>
           <div class="span-2">
-            <UiField label="简介" required hint="搜索结果与 RSS 的默认摘要。" :error="errors['site.description']">
+            <UiField
+              id="setting-description"
+              label="简介"
+              required
+              hint="搜索结果与 RSS 的默认摘要。"
+              :error="errors['site.description']"
+            >
               <UiTextarea v-model="form.site.description" :rows="3" placeholder="一个用 Astro 搭建的笔记站。" />
             </UiField>
           </div>

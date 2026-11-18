@@ -77,6 +77,30 @@ function placeholderUrl(siteUrl) {
   }
 }
 
+/** Astro 给 redirects 生成的跳转页：只有 meta refresh，没有正常文档。 */
+function isRedirectPage(html) {
+  return /<meta\b[^>]*\bhttp-equiv\s*=\s*["']refresh["']/i.test(html);
+}
+
+function imagePath(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (/^https?:\/\//i.test(text)) {
+    try {
+      return decodeURIComponent(new URL(text).pathname).replace(/^\/+/, '');
+    } catch {
+      return '';
+    }
+  }
+  return text.replace(/^\/+/, '');
+}
+
+function usesSiteOg(ogImage, siteOgImage) {
+  const left = imagePath(ogImage);
+  const right = imagePath(siteOgImage);
+  return Boolean(left) && left === right;
+}
+
 /**
  * 读构建产物。返回 issues 和每页抽取出的真实标签。
  * @param {string} dist
@@ -84,11 +108,16 @@ function placeholderUrl(siteUrl) {
  */
 export function auditBuiltSite(dist, config = {}) {
   const siteUrl = (config.site?.url || '').trim();
+  const siteDescription = (config.site?.description || '').trim();
+  const siteOgImage = (config.site?.ogImage || '').trim();
   const files = walk(dist).filter(
     (file) => file.endsWith('.html') && !file.includes(`${path.sep}pagefind${path.sep}`),
   );
   const pages = [];
   const issues = [];
+  const redirectRoutes = new Set();
+  const noindexRoutes = new Set();
+  const siteOgUsers = [];
   if (placeholderUrl(siteUrl)) {
     issues.push({
       level: 'error',
@@ -113,13 +142,19 @@ export function auditBuiltSite(dist, config = {}) {
     const noindex = /noindex/i.test(robots);
     const h1 = html.match(/<h1\b/gi)?.length ?? 0;
     pages.push({ route, title, description, canonical, ogImage });
+    if (isRedirectPage(html)) {
+      redirectRoutes.add(route);
+      continue;
+    }
     if (noindex) {
+      noindexRoutes.add(route);
       issues.push({
         level: 'info',
         rule: 'noindex',
         route,
         detail: '这个页面标记了 noindex，不会被搜索引擎收录',
       });
+      continue;
     }
     if (!lang) {
       issues.push({ level: 'error', rule: 'html-lang-missing', route, detail: '<html> 没有 lang' });
@@ -149,7 +184,7 @@ export function auditBuiltSite(dist, config = {}) {
         detail: '页面没有 description',
         fix: postFix(route, 'description'),
       });
-    } else {
+    } else if (description !== siteDescription) {
       const width = displayWidth(description);
       if (width < 60 || width > 160) {
         issues.push({
@@ -188,13 +223,16 @@ export function auditBuiltSite(dist, config = {}) {
     } else if (siteUrl && ogImage.startsWith(siteUrl)) {
       const relative = decodeURIComponent(new URL(ogImage).pathname).replace(/^\/+/, '');
       if (relative && !existsSync(path.join(dist, relative))) {
-        issues.push({
-          level: 'error',
-          rule: 'og-image-missing-file',
-          route,
-          detail: `og:image 指向的文件不在构建产物里：${relative}`,
-          fix: postFix(route, 'cover') ?? { kind: 'settings', field: 'ogImage' },
-        });
+        if (usesSiteOg(ogImage, siteOgImage)) siteOgUsers.push(route);
+        else {
+          issues.push({
+            level: 'error',
+            rule: 'og-image-missing-file',
+            route,
+            detail: `og:image 指向的文件不在构建产物里：${relative}`,
+            fix: postFix(route, 'cover') ?? { kind: 'settings', field: 'ogImage' },
+          });
+        }
       }
     }
     if (h1 !== 1) {
@@ -216,16 +254,14 @@ export function auditBuiltSite(dist, config = {}) {
       });
     }
   }
-  const indexable = pages.filter((page) => {
-    const file = files.find((item) => routeOf(item, dist) === page.route);
-    if (!file) return true;
-    return !/noindex/i.test(meta(readFileSync(file, 'utf8'), 'robots', 'name'));
-  });
+  const indexable = pages.filter(
+    (page) => !redirectRoutes.has(page.route) && !noindexRoutes.has(page.route),
+  );
   const titleCounts = new Map();
   const descriptionCounts = new Map();
   for (const page of indexable) {
     if (page.title) titleCounts.set(page.title, (titleCounts.get(page.title) ?? 0) + 1);
-    if (page.description) {
+    if (page.description && page.description !== siteDescription) {
       descriptionCounts.set(page.description, (descriptionCounts.get(page.description) ?? 0) + 1);
     }
   }
@@ -239,7 +275,11 @@ export function auditBuiltSite(dist, config = {}) {
         fix: postFix(page.route, 'title'),
       });
     }
-    if (page.description && (descriptionCounts.get(page.description) ?? 0) > 1) {
+    if (
+      page.description &&
+      page.description !== siteDescription &&
+      (descriptionCounts.get(page.description) ?? 0) > 1
+    ) {
       issues.push({
         level: 'warn',
         rule: 'description-duplicate',
@@ -249,10 +289,42 @@ export function auditBuiltSite(dist, config = {}) {
       });
     }
   }
+  if (siteDescription) {
+    const users = indexable.filter((page) => page.description === siteDescription);
+    const width = displayWidth(siteDescription);
+    if (users.length > 0 && (width < 60 || width > 160)) {
+      const tooLong = width > 160;
+      issues.push({
+        level: 'warn',
+        rule: tooLong ? 'description-too-long' : 'description-too-short',
+        route: '/',
+        detail: `站点简介${tooLong ? '太长' : '太短'}（${width}），${users.length} 个页面在用它作摘要`,
+        fix: { kind: 'settings', field: 'description' },
+      });
+    } else if (users.length > 1) {
+      issues.push({
+        level: 'warn',
+        rule: 'description-duplicate',
+        route: '/',
+        detail: `站点简介被 ${users.length} 个页面当作摘要，内容重复`,
+        fix: { kind: 'settings', field: 'description' },
+      });
+    }
+  }
+  if (siteOgUsers.length > 0) {
+    issues.push({
+      level: 'error',
+      rule: 'og-image-missing-file',
+      route: '/',
+      detail: `默认分享图不在构建产物里：${imagePath(siteOgImage)}，${siteOgUsers.length} 个页面在用它`,
+      fix: { kind: 'settings', field: 'ogImage' },
+    });
+  }
   for (const item of checkBuiltSite(dist)) {
     const splitAt = item.indexOf(' -> ');
     const route = splitAt >= 0 ? item.slice(0, splitAt) : '/';
     const href = splitAt >= 0 ? item.slice(splitAt + 4) : item;
+    if (redirectRoutes.has(route) || noindexRoutes.has(route)) continue;
     issues.push({
       level: 'error',
       rule: 'dead-link',

@@ -17,12 +17,16 @@ export interface RuntimeHooks {
 interface LiveTask {
   taskId: string;
   kind: RuntimeKind;
+  siteDir: string;
   child?: ChildProcess;
+  readyUrl?: string;
 }
 
 export class RuntimeService {
   private live = new Map<string, LiveTask>();
   private logs = new Map<string, string>();
+  /** stopAll 主动杀掉的任务。退出事件不能当成预览崩溃。 */
+  private replaced = new Set<string>();
 
   constructor(private readonly hooks: RuntimeHooks) {}
 
@@ -41,13 +45,37 @@ export class RuntimeService {
       : path.join(process.cwd(), 'resources', 'pnpm', 'pnpm.exe');
   }
 
+  /** 这个站点的 dev 预览是否还在跑。必须在 start('build') 之前问，构建会先停掉它。 */
+  devRunning(siteDir: string): boolean {
+    const target = path.resolve(siteDir).toLowerCase();
+    for (const task of this.live.values()) {
+      if (task.kind === 'dev' && path.resolve(task.siteDir).toLowerCase() === target) return true;
+    }
+    return false;
+  }
+
+  /** 重新拉起 dev，并等到预览地址出来或进程退出。 */
+  async resumeDev(
+    siteDir: string,
+  ): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+    const started = await this.start('dev', siteDir);
+    const deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+      const task = this.live.get(started.taskId);
+      if (!task) return { ok: false, message: '预览进程退出了' };
+      if (task.readyUrl) return { ok: true, url: task.readyUrl };
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    return { ok: false, message: '预览超过两分钟还没就绪' };
+  }
+
   async start(
     kind: RuntimeKind,
     siteDir: string,
   ): Promise<RuntimeStart & { code?: number; log?: string }> {
     this.stopAll();
     const taskId = randomUUID();
-    const task: LiveTask = { taskId, kind };
+    const task: LiveTask = { taskId, kind, siteDir };
     this.live.set(taskId, task);
     const start = { taskId, kind };
     this.hooks.onStart(start);
@@ -76,7 +104,10 @@ export class RuntimeService {
   }
 
   stopAll(): void {
-    for (const task of this.live.values()) killTree(task.child?.pid);
+    for (const task of this.live.values()) {
+      this.replaced.add(task.taskId);
+      killTree(task.child?.pid);
+    }
     this.live.clear();
   }
 
@@ -199,6 +230,7 @@ export class RuntimeService {
       const url = readyUrl(buffer);
       if (!url) return;
       watchReady = false;
+      task.readyUrl = url;
       this.hooks.onReady({ taskId: task.taskId, url });
     };
     child.stdout?.on('data', take);
@@ -210,8 +242,14 @@ export class RuntimeService {
   }
 
   private finish(task: LiveTask, code: number, message?: string): void {
+    const replaced = this.replaced.delete(task.taskId);
     this.live.delete(task.taskId);
-    this.hooks.onExit({ taskId: task.taskId, code, ...(message ? { message } : {}) });
+    this.hooks.onExit({
+      taskId: task.taskId,
+      code,
+      ...(replaced ? { replaced: true } : {}),
+      ...(message ? { message } : {}),
+    });
   }
 }
 

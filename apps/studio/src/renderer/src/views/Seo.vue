@@ -282,6 +282,12 @@ function openPost(slug: string, title: string): void {
   notify(`已打开「${title}」。`, 'info', 'seo-fix');
 }
 
+function settingsFieldLabel(field?: string): string {
+  if (field === 'ogImage') return '默认分享图';
+  if (field === 'description') return '站点简介';
+  return '站点地址';
+}
+
 function openSettings(field?: string): void {
   session.setNav('settings');
   if (field === 'twitter') {
@@ -289,7 +295,7 @@ function openSettings(field?: string): void {
     return;
   }
   window.dispatchEvent(new CustomEvent('xiao:focus-setting', { detail: { field } }));
-  notify(field === 'ogImage' ? '已切到「设置」的默认分享图。' : '已切到「设置」的站点地址。', 'info', 'seo-fix');
+  notify(`已切到「设置」的${settingsFieldLabel(field)}。`, 'info', 'seo-fix');
 }
 
 function fixIssue(issue: Issue): void {
@@ -372,17 +378,30 @@ async function runAudit(): Promise<void> {
   try {
     const result = await window.xiao.seo.audit(siteDir);
     if (!result.ok) {
-      errorText.value = result.message;
-      notify('体检没有完成。构建失败时，原因会写在这里。', 'error', 'seo-audit');
+      report.value = null;
+      errorText.value = `构建未通过。\n${result.message}`;
+      notify('构建未通过。', 'error', 'seo-audit');
       return;
     }
     report.value = result.data.report;
-    selectedRoute.value =
-      result.data.report.pages.find((page) => page.route === '/')?.route ??
-      result.data.report.pages[0]?.route ??
-      '';
+    if (result.data.report) {
+      selectedRoute.value =
+        result.data.report.pages.find((page) => page.route === '/')?.route ??
+        result.data.report.pages[0]?.route ??
+        '';
+    }
     await loadCheck(siteDir);
-    notify('体检完成。', 'info', 'seo-audit');
+    if (result.data.buildFailed) {
+      errorText.value = `构建未通过。\n${result.data.message || '构建没有完成'}`;
+      notify('构建未通过。', 'error', 'seo-audit');
+    } else {
+      notify('体检完成。', 'info', 'seo-audit');
+    }
+    if (result.data.previewError) {
+      const line = `预览没有恢复：${result.data.previewError}`;
+      errorText.value = errorText.value ? `${errorText.value}\n${line}` : line;
+      notify(line, 'error', 'seo-preview');
+    }
   } finally {
     auditing.value = false;
   }
@@ -420,7 +439,7 @@ watch(
         <div class="head-text">
           <h1>SEO 体检</h1>
           <p class="dim">
-            体检会构建站点，再读 dist 里的真实 HTML。
+            体检会构建站点，再读 dist 里的真实 HTML。预览如果开着，结束后会重新打开。
             <template v-if="generatedLabel">上次生成于 {{ generatedLabel }}。</template>
           </p>
         </div>

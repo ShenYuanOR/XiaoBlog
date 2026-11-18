@@ -207,13 +207,14 @@ function onOpenPost(event: Event): void {
 /** 设置页要等配置读完才渲染输入框，事件先到就多等一会儿。 */
 function onFocusSetting(event: Event): void {
   const field = (event as CustomEvent<{ field?: string }>).detail?.field ?? '';
-  const id = field === 'url' ? 'setting-url' : field === 'ogImage' ? 'setting-ogImage' : '';
+  const id =
+    field === 'url' ? 'setting-url' : field === 'ogImage' ? 'setting-ogImage' : field === 'description' ? 'setting-description' : '';
   if (!id) return;
   const started = Date.now();
   const tick = (): void => {
     const node = document.getElementById(id);
-    const input = node?.querySelector('input');
-    if (input instanceof HTMLInputElement) {
+    const input = node?.querySelector('input, textarea');
+    if (input instanceof HTMLElement) {
       node?.scrollIntoView({ block: 'center' });
       input.focus();
       return;

@@ -48,6 +48,7 @@ window.xiao.runtime.onStart((event) => {
   session.previewSiteDir = '';
 });
 window.xiao.runtime.onExit((event) => {
+  if (event.replaced) return;
   if (event.taskId !== liveTaskId) return;
   session.building = false;
   session.previewUrl = '';
