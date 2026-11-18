@@ -3,7 +3,7 @@ import path from 'node:path';
 
 /**
  * 显示宽度：汉字和全角算 2，其余算 1。
- * Studio 的 apps/studio/src/main/seo.ts 有一份同步副本，改规则时两处一起改。
+ * Studio 的 apps/studio/src/main/seo.ts 和 apps/studio/src/renderer/src/views/Seo.vue 各有一份同步副本，改规则时三处一起改。
  */
 export function displayWidth(text) {
   let width = 0;

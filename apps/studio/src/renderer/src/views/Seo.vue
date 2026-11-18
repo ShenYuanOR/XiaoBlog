@@ -38,82 +38,110 @@ interface SeoReport {
 interface PostItem {
   slug: string;
   title: string;
-  category: string;
-  draft: boolean;
-  format?: 'markdown' | 'html';
+  description: string;
+  cover: string;
+  format: 'markdown' | 'html';
 }
 
-interface IssueRow {
-  issue: Issue;
-  name: string;
-  value: string;
+interface Tag {
+  level: 'error' | 'warn';
+  text: string;
 }
 
-interface RuleGroup {
-  key: string;
-  level: string;
-  rule: string;
-  hint: string;
-  scope: string;
-  rows: IssueRow[];
+/** 显示宽度：汉字和全角算 2，其余算 1。与 main/seo.ts、seo-audit.mjs 保持一致，改规则时三处一起改。 */
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    width +=
+      (code >= 0x1100 && code <= 0x115f) ||
+      (code >= 0x2e80 && code <= 0xa4cf) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe10 && code <= 0xfe6f) ||
+      (code >= 0xff00 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6)
+        ? 2
+        : 1;
+  }
+  return width;
 }
 
-const RULE_LABELS: Record<string, string> = {
-  'site-url-missing': '站点地址还没填',
-  'site-url-placeholder': '站点地址还是占位',
-  'slug-invalid': '地址标识不合法',
-  'slug-duplicate': '地址标识重复',
-  'title-missing': '缺少标题',
-  'title-too-long': '标题太长',
-  'title-duplicate': '标题重复',
-  'description-missing': '缺少摘要',
-  'description-too-short': '摘要太短',
-  'description-too-long': '摘要太长',
-  'description-duplicate': '摘要重复',
+/** 与 packages/template/src/lib/seo.ts 的 excerptFromBody 一致，只给没写摘要的文章估算自动摘要。 */
+function excerptFromBody(body: string, limit = 80): string {
+  const text = body
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/[*_~>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [...text].slice(0, limit).join('').trim();
+}
+
+function charsOf(text: string): number {
+  return Math.round(displayWidth(text) / 2);
+}
+
+function placeholderUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'example.com' || host.endsWith('.example.com') || host === 'example.org' || host === 'localhost';
+  } catch {
+    return true;
+  }
+}
+
+const REPORT_LABELS: Record<string, string> = {
   'canonical-missing': '缺少 canonical',
-  'canonical-invalid': 'canonical 不是本站绝对地址',
+  'canonical-invalid': 'canonical 不对',
   'og-title-missing': '缺少 og:title',
   'og-description-missing': '缺少 og:description',
-  'og-image-missing': '缺少分享图',
   'og-image-missing-file': '分享图文件不存在',
   'h1-count': 'h1 数量不对',
   'img-alt-missing': '图片缺少 alt',
   'image-too-large': '图片超过 2 MB',
-  'dead-link': '站内死链',
-  noindex: '不收录',
   'html-lang-missing': '缺少语言标记',
-  'post-tags-missing': '文章没有标签',
-  'post-category-missing': '文章没有分类',
+  'dead-link': '站内死链',
 };
 
-const RULE_HINTS: Record<string, string> = {
-  'site-url-missing': '到「设置」填写部署后的完整地址，例如 https://name.github.io。',
-  'site-url-placeholder': '这个地址不能拿去发布，改成部署后的真实地址。',
-  'slug-invalid': '地址标识只能用小写字母、数字和连字符。',
-  'slug-duplicate': '两个目录用了同一个地址标识，改掉其中一个。',
-  'title-too-long': '搜索结果大约显示 30 个汉字。把标题缩短后再体检。',
-  'description-missing': '摘要会出现在搜索结果和分享卡片里。',
-  'description-too-short': '摘要会显示在搜索结果里，太短时搜索引擎会自己截正文；建议 30–80 个汉字。',
-  'description-too-long': '摘要大约要 30 到 80 个汉字，太长会被截断。',
-  'og-image-missing': '没有分享图时，转发到社交平台只有文字卡片。',
-  'og-image-missing-file': '分享图地址指向的文件不在构建产物里，换一张存在的图。',
-  'img-alt-missing': '给图片补上 alt，读屏和搜索才能知道图里是什么。',
-  'dead-link': '这个站内链接没有对应页面。',
-  noindex: '这篇文章标记了不收录，搜索引擎不会索引它。',
-};
+const LIVE_RULES = new Set([
+  'site-url-missing',
+  'site-url-placeholder',
+  'title-too-long',
+  'title-duplicate',
+  'description-missing',
+  'description-too-short',
+  'description-too-long',
+  'description-duplicate',
+  'og-image-missing',
+]);
 
 const session = useSession();
 const loading = ref(false);
 const auditing = ref(false);
+const savingSite = ref(false);
+const savingPost = ref(false);
 const errorText = ref('');
 const report = ref<SeoReport | null>(null);
-const checkIssues = ref<Issue[]>([]);
 const posts = ref<PostItem[]>([]);
-const drafts = ref<Record<string, string>>({});
-const openKey = ref('');
-const infoOpen = ref(false);
+const excerpts = ref<Record<string, string>>({});
+const rawConfig = ref<Record<string, unknown> | null>(null);
+const siteTitle = ref('');
+const titleTemplate = ref('%s');
+const siteUrl = ref('');
+const siteDescription = ref('');
+const siteOgImage = ref('');
+const filter = ref<'all' | 'problem' | 'ok'>('all');
+const query = ref('');
+const openSlug = ref('');
+const editTitle = ref('');
+const editDescription = ref('');
 const previewOpen = ref(false);
-const previewRoute = ref('/');
+const previewSlug = ref('');
 
 function asReport(value: unknown): SeoReport | null {
   if (!value || typeof value !== 'object') return null;
@@ -122,168 +150,182 @@ function asReport(value: unknown): SeoReport | null {
   return raw as unknown as SeoReport;
 }
 
-function labelOf(rule: string): string {
-  return RULE_LABELS[rule] ?? rule;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function hintOf(rule: string): string {
-  return RULE_HINTS[rule] ?? '按说明改完后，再点一次「体检」。';
+function clock(raw: string): string {
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function postSlug(route: string): string {
-  const match = /\/posts\/([^/]+)/.exec(route);
-  return match?.[1] ? decodeURIComponent(match[1]) : '';
-}
+const reportClock = computed(() => (report.value ? clock(report.value.generatedAt) : ''));
 
-function postTitle(route: string, fallback: string): string {
-  const slug = postSlug(route);
-  return posts.value.find((post) => post.slug === slug)?.title || fallback || route;
-}
-
-function pageOf(route: string): ReportPage | undefined {
-  return report.value?.pages.find((page) => page.route === route);
-}
-
-/** 已有构建报告时，构建前检查只留下 slug 问题，避免和报告里的首页、文章重复开一组。 */
-const listedChecks = computed(() =>
-  report.value ? checkIssues.value.filter((issue) => issue.rule.startsWith('slug')) : checkIssues.value,
-);
-const actionable = computed(() =>
-  [...(report.value?.issues ?? []), ...listedChecks.value].filter((issue) => issue.level !== 'info'),
-);
-const infoIssues = computed(() =>
-  [...(report.value?.issues ?? []), ...listedChecks.value].filter((issue) => issue.level === 'info'),
-);
-
-const counts = computed(() => ({
-  errors: actionable.value.filter((issue) => issue.level === 'error').length,
-  warns: actionable.value.filter((issue) => issue.level === 'warn').length,
-}));
-
-function issueSlug(issue: Issue): string {
-  return issue.fix?.slug || postSlug(issue.route);
-}
-
-function rowRank(issue: Issue): number {
-  if (issue.fix?.kind === 'settings') return 0;
-  if (issue.route === '/') return 1;
-  return 2;
-}
-
-function rowName(issue: Issue): string {
-  if (issue.fix?.kind === 'settings' && issue.fix.field === 'description') return '站点简介（首页）';
-  if (issue.route === '/' && issue.fix?.kind !== 'post') return '首页';
-  const slug = issueSlug(issue);
-  if (slug) return postTitle(`/posts/${slug}`, slug);
-  return issue.route || '站点';
-}
-
-function rowValue(issue: Issue): string {
-  return issue.detail.match(/宽度 (\d+)/)?.[1] || issue.detail.match(/（(\d+)）/)?.[1] || '';
-}
-
-function scopeText(issues: Issue[]): string {
-  if (issues.length === 1) {
-    const issue = issues[0];
-    if (!issue) return '站点';
-    if (issue.rule.startsWith('site-url')) return '站点';
-    const many = issue.detail.match(/首页和 (\d+) 篇文章/);
-    if (many) return `首页 + ${many[1]} 篇文章`;
-    if (issue.detail.includes('首页在用')) return '首页';
-    const slug = issueSlug(issue);
-    if (slug) return postTitle(`/posts/${slug}`, slug);
-    if (issue.route === '/') return '首页';
-    return '站点';
-  }
-  const home = issues.some(
-    (issue) => issue.route === '/' || (issue.fix?.kind === 'settings' && issue.fix.field === 'description'),
-  );
-  const slugs = new Set(issues.map((issue) => issueSlug(issue)).filter(Boolean));
-  if (home && slugs.size > 0) return `首页 + ${slugs.size} 篇文章`;
-  if (home) return '首页';
-  if (slugs.size > 0) return `${slugs.size} 篇文章`;
-  return `${issues.length} 处`;
-}
-
-const ruleGroups = computed((): RuleGroup[] => {
-  const map = new Map<string, Issue[]>();
-  for (const issue of actionable.value) {
-    const key = issue.rule;
-    map.set(key, [...(map.get(key) ?? []), issue]);
-  }
-  return [...map.entries()].map(([rule, issues]) => ({
-    key: rule,
-    level: issues[0]?.level === 'error' ? 'error' : 'warn',
-    rule,
-    hint: hintOf(rule),
-    scope: scopeText(issues),
-    rows: issues
-      .map((issue) => ({ issue, name: rowName(issue), value: rowValue(issue) }))
-      .sort((a, b) => rowRank(a.issue) - rowRank(b.issue)),
-  }));
+const urlStatus = computed(() => {
+  const url = siteUrl.value.trim();
+  if (!url) return { tone: 'error', text: '还没填' };
+  if (placeholderUrl(url)) return { tone: 'error', text: '占位，不能发布' };
+  return { tone: 'ok', text: '可以发布' };
 });
 
-const sections = computed(() =>
-  (['error', 'warn'] as const)
-    .map((level) => ({
-      level,
-      label: level === 'error' ? '错误' : '警告',
-      groups: ruleGroups.value.filter((group) => group.level === level),
-    }))
-    .filter((section) => section.groups.length > 0),
-);
+const descriptionStatus = computed(() => {
+  const text = siteDescription.value.trim();
+  const count = charsOf(text);
+  if (!text) return { tone: 'warn', text: '没写，建议 30–80 字' };
+  if (displayWidth(text) < 60 || displayWidth(text) > 160) {
+    return { tone: 'warn', text: `约 ${count} 字，建议 30–80 字` };
+  }
+  return { tone: 'ok', text: `约 ${count} 字` };
+});
+
+const postsWithoutCover = computed(() => posts.value.filter((post) => !post.cover.trim()).length);
+
+const ogStatus = computed(() => {
+  if (!siteOgImage.value.trim()) {
+    return { tone: 'warn', text: `未设置，${postsWithoutCover.value} 篇文章分享时没有图` };
+  }
+  return { tone: 'ok', text: '已设置' };
+});
+
+function liveTitle(post: PostItem): string {
+  return openSlug.value === post.slug ? editTitle.value : post.title;
+}
+
+function liveDescription(post: PostItem): string {
+  return openSlug.value === post.slug ? editDescription.value : post.description;
+}
+
+function effectiveDescription(post: PostItem): string {
+  return liveDescription(post).trim() || excerpts.value[post.slug] || '';
+}
+
+function reportIssuesFor(slug: string): Issue[] {
+  return (report.value?.issues ?? []).filter((issue) => {
+    if (LIVE_RULES.has(issue.rule)) return false;
+    return issue.route === `/posts/${slug}`;
+  });
+}
+
+function tagsFor(post: PostItem): Tag[] {
+  const tags: Tag[] = [];
+  const title = liveTitle(post).trim();
+  const written = liveDescription(post).trim();
+  if (displayWidth(title) > 60) {
+    tags.push({ level: 'warn', text: `标题太长（约 ${charsOf(title)} 字）` });
+  }
+  if (!written) {
+    tags.push({ level: 'warn', text: '没写摘要（自动截取正文）' });
+  } else if (displayWidth(written) < 60) {
+    tags.push({ level: 'warn', text: `摘要太短（约 ${charsOf(written)} 字）` });
+  } else if (displayWidth(written) > 160) {
+    tags.push({ level: 'warn', text: `摘要太长（约 ${charsOf(written)} 字）` });
+  }
+  const mine = effectiveDescription(post);
+  if (mine) {
+    const other = posts.value.find(
+      (item) => item.slug !== post.slug && effectiveDescription(item) === mine,
+    );
+    if (other) tags.push({ level: 'warn', text: `摘要与《${liveTitle(other)}》重复` });
+  }
+  if (!post.cover.trim() && !siteOgImage.value.trim()) {
+    tags.push({ level: 'warn', text: '无分享图' });
+  }
+  for (const issue of reportIssuesFor(post.slug)) {
+    tags.push({
+      level: issue.level === 'error' ? 'error' : 'warn',
+      text: REPORT_LABELS[issue.rule] ?? issue.rule,
+    });
+  }
+  return tags;
+}
+
+function rowLevel(post: PostItem): 'error' | 'warn' | 'ok' {
+  const tags = tagsFor(post);
+  if (tags.some((tag) => tag.level === 'error')) return 'error';
+  if (tags.length > 0) return 'warn';
+  return 'ok';
+}
+
+const problemCount = computed(() => posts.value.filter((post) => rowLevel(post) !== 'ok').length);
+const okCount = computed(() => posts.value.length - problemCount.value);
+
+const visiblePosts = computed(() => {
+  const keyword = query.value.trim();
+  return [...posts.value]
+    .filter((post) => {
+      if (keyword && !liveTitle(post).includes(keyword) && !post.title.includes(keyword)) return false;
+      const level = rowLevel(post);
+      if (filter.value === 'problem') return level !== 'ok';
+      if (filter.value === 'ok') return level === 'ok';
+      return true;
+    })
+    .sort((a, b) => {
+      const order = { error: 0, warn: 1, ok: 2 };
+      const diff = order[rowLevel(a)] - order[rowLevel(b)];
+      return diff || a.title.localeCompare(b.title, 'zh-CN');
+    });
+});
 
 const summaryLine = computed(() => {
   if (auditing.value) return '正在构建并体检。预览如果开着，结束后会重新打开。';
-  if (!report.value) return '还没有体检。点「体检」后，这里只列出首页和文章的问题。';
-  const date = new Date(report.value.generatedAt);
-  const time = Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-  if (counts.value.errors === 0 && counts.value.warns === 0) {
-    const articles = report.value.pages.filter((page) => page.route.startsWith('/posts/')).length;
-    return `首页和 ${articles} 篇文章都没有问题${time ? ` · ${time} 体检` : ''}`;
-  }
-  return `${counts.value.errors} 个错误 · ${counts.value.warns} 个警告${time ? ` · ${time} 体检` : ''}`;
+  if (!report.value) return `${problemCount.value} 篇有问题 · 点体检检查生成后的页面`;
+  return `${problemCount.value} 篇有问题 · 上次体检 ${reportClock.value}`;
 });
 
-const previewPage = computed(() => pageOf(previewRoute.value));
-const previewTitle = computed(() => {
-  const page = previewPage.value;
-  if (!page) return '预览';
-  return page.route === '/' ? '首页预览' : postTitle(page.route, page.title || page.route);
+const editTitleCount = computed(() => charsOf(editTitle.value.trim()));
+const editDescCount = computed(() => charsOf(editDescription.value.trim()));
+const editTitleTone = computed(() => (displayWidth(editTitle.value.trim()) > 60 ? 'warn' : 'ok'));
+const editDescTone = computed(() => {
+  const text = editDescription.value.trim();
+  if (!text) return 'warn';
+  const width = displayWidth(text);
+  return width < 60 || width > 160 ? 'warn' : 'ok';
 });
+
+function templatedTitle(title: string): string {
+  const pageTitle = title.trim();
+  if (!pageTitle || pageTitle === siteTitle.value) return siteTitle.value || pageTitle;
+  return (titleTemplate.value || '%s').replace('%s', pageTitle);
+}
+
+const previewPost = computed(() => posts.value.find((post) => post.slug === previewSlug.value));
+const previewTitle = computed(() => (previewPost.value ? templatedTitle(liveTitle(previewPost.value)) : ''));
+const previewDescription = computed(() => (previewPost.value ? effectiveDescription(previewPost.value) : ''));
 const previewImage = computed(() => {
-  const ogImage = previewPage.value?.ogImage ?? '';
-  if (!ogImage || !session.previewUrl) return ogImage;
+  const source = previewPost.value?.cover.trim() || siteOgImage.value.trim();
+  if (!source) return '';
+  if (/^https?:\/\//i.test(source)) return source;
+  if (!session.previewUrl) return source;
   try {
-    const image = new URL(ogImage);
     const preview = new URL(session.previewUrl);
-    return `${preview.origin}${image.pathname}`;
+    return `${preview.origin}${source.startsWith('/') ? source : `/${source}`}`;
   } catch {
-    return ogImage;
+    return source;
   }
 });
 
-function toggleGroup(key: string): void {
-  openKey.value = openKey.value === key ? '' : key;
+function serpUrl(slug: string): string {
+  const root = siteUrl.value.trim().replace(/\/+$/, '');
+  if (!root) return `/posts/${slug}/`;
+  return `${root}/posts/${slug}/`;
 }
 
-function openPreview(route: string): void {
-  previewRoute.value = route || '/';
+function toggle(slug: string): void {
+  if (openSlug.value === slug) {
+    openSlug.value = '';
+    return;
+  }
+  const post = posts.value.find((item) => item.slug === slug);
+  if (!post) return;
+  editTitle.value = post.title;
+  editDescription.value = post.description;
+  openSlug.value = slug;
+}
+
+function openCard(slug: string): void {
+  previewSlug.value = slug;
   previewOpen.value = true;
-}
-
-function draftKey(issue: Issue): string {
-  return `${issue.fix?.slug ?? ''}:${issue.fix?.field ?? ''}`;
-}
-
-function editable(issue: Issue): boolean {
-  return (
-    issue.fix?.kind === 'post' &&
-    (issue.fix.field === 'title' || issue.fix.field === 'description') &&
-    Boolean(issue.fix.slug)
-  );
 }
 
 function fieldValue(source: string, key: string): string {
@@ -308,35 +350,118 @@ function setField(source: string, key: string, value: string): string {
   return `---${newline}${next}${newline}---${newline}${body}`;
 }
 
-async function loadDraft(issue: Issue): Promise<void> {
-  const slug = issue.fix?.slug;
-  const field = issue.fix?.field;
-  const siteDir = session.siteDir;
-  if (!siteDir || !slug || (field !== 'title' && field !== 'description')) return;
-  const key = draftKey(issue);
-  if (drafts.value[key] !== undefined) return;
-  const read = await window.xiao.content.read(siteDir, slug);
-  if (drafts.value[key] !== undefined) return;
-  drafts.value[key] = read.ok ? fieldValue(read.data, field) : '';
+function bodyOf(source: string): string {
+  return source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 }
 
-async function saveDraft(issue: Issue): Promise<void> {
-  const slug = issue.fix?.slug;
-  const field = issue.fix?.field;
+async function loadExcerpts(siteDir: string): Promise<void> {
+  const missing = posts.value.filter((post) => !post.description.trim());
+  const next: Record<string, string> = {};
+  await Promise.all(
+    missing.map(async (post) => {
+      const read = await window.xiao.content.read(siteDir, post.slug);
+      next[post.slug] = read.ok ? excerptFromBody(bodyOf(read.data)) : '';
+    }),
+  );
+  excerpts.value = next;
+}
+
+function applyConfig(config: Record<string, unknown>): void {
+  rawConfig.value = config;
+  const site = isRecord(config.site) ? config.site : {};
+  const seo = isRecord(config.seo) ? config.seo : {};
+  siteTitle.value = typeof site.title === 'string' ? site.title : '';
+  titleTemplate.value = typeof seo.titleTemplate === 'string' ? seo.titleTemplate : '%s';
+  siteUrl.value = typeof site.url === 'string' ? site.url : '';
+  siteDescription.value = typeof site.description === 'string' ? site.description : '';
+  siteOgImage.value = typeof site.ogImage === 'string' ? site.ogImage : '';
+}
+
+async function load(): Promise<void> {
   const siteDir = session.siteDir;
-  if (!siteDir || !slug || (field !== 'title' && field !== 'description')) return;
+  if (!siteDir) {
+    report.value = null;
+    posts.value = [];
+    rawConfig.value = null;
+    return;
+  }
+  loading.value = true;
+  errorText.value = '';
+  try {
+    const [saved, listed, settings] = await Promise.all([
+      window.xiao.seo.report(siteDir),
+      window.xiao.content.list(siteDir),
+      window.xiao.settings.read(siteDir),
+    ]);
+    report.value = saved.ok ? asReport(saved.data) : null;
+    posts.value = listed.ok
+      ? listed.data.map((post) => ({
+          slug: post.slug,
+          title: post.title,
+          description: post.description,
+          cover: post.cover,
+          format: post.format,
+        }))
+      : [];
+    if (settings.ok && isRecord(settings.data)) applyConfig(settings.data);
+    await loadExcerpts(siteDir);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function saveSite(): Promise<void> {
+  const siteDir = session.siteDir;
+  const config = rawConfig.value;
+  if (!siteDir || !config || savingSite.value) return;
+  const next = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  const site = isRecord(next.site) ? next.site : {};
+  site.url = siteUrl.value.trim();
+  site.description = siteDescription.value;
+  site.ogImage = siteOgImage.value.trim();
+  next.site = site;
+  savingSite.value = true;
+  try {
+    const result = await window.xiao.settings.write(siteDir, next);
+    if (!result.ok) {
+      notify(result.message, 'error', 'seo-site');
+      return;
+    }
+    if (result.data.length > 0) {
+      notify(`没有写入：${result.data.join('、')}`, 'error', 'seo-site');
+      return;
+    }
+    rawConfig.value = next;
+    notify('站点设置已保存。', 'info', 'seo-site');
+  } finally {
+    savingSite.value = false;
+  }
+}
+
+async function savePost(): Promise<void> {
+  const siteDir = session.siteDir;
+  const slug = openSlug.value;
+  const post = posts.value.find((item) => item.slug === slug);
+  if (!siteDir || !post || savingPost.value) return;
+  savingPost.value = true;
   const read = await window.xiao.content.read(siteDir, slug);
   if (!read.ok) {
+    savingPost.value = false;
     notify(`读不到文章：${read.message}`, 'error', 'seo-save');
     return;
   }
-  const next = setField(read.data, field, drafts.value[draftKey(issue)] ?? '');
+  const next = setField(setField(read.data, 'title', editTitle.value.trim()), 'description', editDescription.value.trim());
   const write = await window.xiao.content.write(siteDir, slug, next);
+  savingPost.value = false;
   if (!write.ok) {
     notify(`没有保存：${write.message}`, 'error', 'seo-save');
     return;
   }
-  notify('已写入文章。请再点一次「体检」。', 'info', 'seo-save');
+  post.title = editTitle.value.trim();
+  post.description = editDescription.value.trim();
+  if (!post.description) excerpts.value[post.slug] = excerptFromBody(bodyOf(next));
+  else delete excerpts.value[post.slug];
+  notify('已保存。这一行的状态已经按新内容更新。', 'info', 'seo-save');
 }
 
 function openPost(slug: string, title: string): void {
@@ -346,89 +471,6 @@ function openPost(slug: string, title: string): void {
   session.activePostFormat = post?.format ?? 'markdown';
   window.dispatchEvent(new CustomEvent('xiao:open-post', { detail: { slug } }));
   notify(`已打开「${title}」。`, 'info', 'seo-fix');
-}
-
-function settingsFieldLabel(field?: string): string {
-  if (field === 'ogImage') return '默认分享图';
-  if (field === 'description') return '站点简介';
-  return '站点地址';
-}
-
-function openSettings(field?: string): void {
-  previewOpen.value = false;
-  session.setNav('settings');
-  if (field === 'twitter') {
-    notify('已切到「设置」。Twitter 账号还没有单独的输入框。', 'info', 'seo-fix');
-    return;
-  }
-  window.dispatchEvent(new CustomEvent('xiao:focus-setting', { detail: { field } }));
-  notify(`已切到「设置」的${settingsFieldLabel(field)}。`, 'info', 'seo-fix');
-}
-
-function fixIssue(issue: Issue): void {
-  if (issue.fix?.kind === 'settings') {
-    openSettings(issue.fix.field);
-    return;
-  }
-  const slug = issueSlug(issue);
-  if (slug) {
-    openPost(slug, postTitle(issue.route, slug));
-    return;
-  }
-  if (issue.rule.startsWith('site-url') || issue.rule === 'og-image-missing' || issue.rule === 'html-lang-missing') {
-    openSettings(issue.rule.startsWith('site-url') ? 'url' : 'ogImage');
-    return;
-  }
-  notify('这条要到对应页面里改。', 'info', 'seo-fix');
-}
-
-function settingsAction(issue: Issue): boolean {
-  return issue.fix?.kind === 'settings' || issue.rule.startsWith('site-url');
-}
-
-async function loadCheck(siteDir: string): Promise<void> {
-  const check = await window.xiao.seo.check(siteDir);
-  if (!check.ok) {
-    checkIssues.value = [];
-    return;
-  }
-  checkIssues.value = check.data.map((row) => ({
-    level: row.level,
-    rule: row.rule,
-    detail: row.detail,
-    route: row.rule.startsWith('slug') ? `/posts/${row.detail}` : '构建前',
-    fix:
-      row.rule.startsWith('site-url')
-        ? { kind: 'settings', field: 'url' }
-        : row.rule === 'og-image-missing'
-          ? { kind: 'settings', field: 'ogImage' }
-          : row.rule.startsWith('slug')
-            ? { kind: 'post', slug: row.detail }
-            : undefined,
-  }));
-}
-
-async function load(): Promise<void> {
-  const siteDir = session.siteDir;
-  if (!siteDir) {
-    report.value = null;
-    checkIssues.value = [];
-    posts.value = [];
-    return;
-  }
-  loading.value = true;
-  errorText.value = '';
-  try {
-    const [saved, listed] = await Promise.all([
-      window.xiao.seo.report(siteDir),
-      window.xiao.content.list(siteDir),
-    ]);
-    report.value = saved.ok ? asReport(saved.data) : null;
-    posts.value = listed.ok ? listed.data : [];
-    await loadCheck(siteDir);
-  } finally {
-    loading.value = false;
-  }
 }
 
 async function runAudit(): Promise<void> {
@@ -445,7 +487,6 @@ async function runAudit(): Promise<void> {
       return;
     }
     report.value = result.data.report;
-    await loadCheck(siteDir);
     if (result.data.buildFailed) {
       errorText.value = `构建未通过。\n${result.data.message || '构建没有完成'}`;
       notify('构建未通过。', 'error', 'seo-audit');
@@ -469,6 +510,7 @@ onMounted(() => {
 watch(
   () => session.siteDir,
   () => {
+    openSlug.value = '';
     void load();
   },
 );
@@ -479,145 +521,115 @@ watch(
     <div v-if="!session.siteDir" class="center">
       <UiEmpty
         title="还没打开站点"
-        description="SEO 体检要读构建后的页面。先打开一个站点，再回到这里。"
+        description="SEO 要读文章和站点设置。先打开一个站点，再回到这里。"
         :icon="icons.seo"
       />
     </div>
 
     <div v-else-if="loading" class="center">
       <UiSpinner :size="20" />
-      <p class="dim">正在读取上次的体检报告…</p>
+      <p class="dim">正在读取文章和站点设置…</p>
     </div>
 
     <template v-else>
       <header class="head">
-        <div class="title-row">
-          <h1>SEO 体检</h1>
-          <div class="head-actions">
-            <UiButton v-if="report" size="sm" variant="ghost" @click="openPreview('/')">预览首页</UiButton>
-            <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
-              {{ auditing ? '正在构建并体检…' : '体检' }}
-            </UiButton>
-          </div>
-        </div>
+        <h1>SEO</h1>
         <p class="dim">{{ summaryLine }}</p>
+        <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
+          {{ auditing ? '正在构建并体检…' : '体检' }}
+        </UiButton>
       </header>
 
       <p v-if="errorText" class="error-text">{{ errorText }}</p>
 
-      <UiEmpty
-        v-if="!report && !checkIssues.length"
-        title="还没有体检报告"
-        description="点右上角「体检」。它会构建站点，再按首页和文章列出问题。"
-        :icon="icons.seo"
-      />
-
-      <div v-else class="bands">
-        <section v-for="section in sections" :key="section.level" class="band">
-          <h2>{{ section.label }}</h2>
-          <article v-for="group in section.groups" :key="group.key" class="rule">
-            <div class="rule-head">
-              <div class="rule-copy">
-                <div class="rule-line">
-                  <strong>{{ labelOf(group.rule) }}</strong>
-                  <span class="scope">{{ group.scope }}</span>
-                </div>
-                <p>{{ group.hint }}</p>
-              </div>
-              <div class="rule-actions">
-                <template v-if="group.rows.length === 1 && group.rows[0]">
-                  <label v-if="editable(group.rows[0].issue)" class="edit">
-                    <input
-                      v-model="drafts[draftKey(group.rows[0].issue)]"
-                      :placeholder="group.rows[0].issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
-                      @focus="loadDraft(group.rows[0].issue)"
-                    />
-                    <UiButton size="sm" @click="saveDraft(group.rows[0].issue)">保存</UiButton>
-                  </label>
-                  <UiButton
-                    v-if="group.rows[0].issue.route.startsWith('/posts/')"
-                    size="sm"
-                    variant="ghost"
-                    @click="openPreview(group.rows[0].issue.route)"
-                  >
-                    预览
-                  </UiButton>
-                  <UiButton size="sm" variant="ghost" @click="fixIssue(group.rows[0].issue)">
-                    {{ settingsAction(group.rows[0].issue) ? '去设置' : '打开文章' }}
-                  </UiButton>
-                </template>
-                <UiButton
-                  v-else
-                  size="sm"
-                  variant="ghost"
-                  :icon-left="openKey === group.key ? icons.chevronDown : icons.chevronRight"
-                  @click="toggleGroup(group.key)"
-                >
-                  {{ openKey === group.key ? '收起' : '展开' }}
-                </UiButton>
-              </div>
-            </div>
-            <div v-if="group.rows.length > 1 && openKey === group.key" class="rows">
-              <div v-for="(row, index) in group.rows" :key="`${group.key}-${row.issue.route}-${index}`" class="row">
-                <span class="row-name">{{ row.name }}</span>
-                <span class="row-value">{{ row.value }}</span>
-                <div class="row-actions">
-                  <label v-if="editable(row.issue)" class="edit">
-                    <input
-                      v-model="drafts[draftKey(row.issue)]"
-                      :placeholder="row.issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
-                      @focus="loadDraft(row.issue)"
-                    />
-                    <UiButton size="sm" @click="saveDraft(row.issue)">保存</UiButton>
-                  </label>
-                  <UiButton v-if="row.issue.route.startsWith('/posts/')" size="sm" variant="ghost" @click="openPreview(row.issue.route)">
-                    预览
-                  </UiButton>
-                  <UiButton size="sm" variant="ghost" @click="fixIssue(row.issue)">
-                    {{ settingsAction(row.issue) ? '去设置' : '打开文章' }}
-                  </UiButton>
-                </div>
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <details v-if="infoIssues.length" class="info-fold" :open="infoOpen" @toggle="infoOpen = ($event.target as HTMLDetailsElement).open">
-          <summary>另有 {{ infoIssues.length }} 条提示</summary>
-          <div v-for="issue in infoIssues" :key="`${issue.route}-${issue.rule}-${issue.detail}`" class="info-row">
-            <strong>{{ labelOf(issue.rule) }}</strong>
-            <span>{{ issue.detail }}</span>
-            <span class="scope">{{ rowName(issue) }}</span>
-          </div>
-        </details>
-      </div>
-
-      <UiDialog v-model="previewOpen" :title="previewTitle" :width="560">
-        <div v-if="previewPage" class="dialog-preview">
-          <section>
-            <h3>搜索结果</h3>
-            <article class="serp">
-              <p class="serp-url">{{ previewPage.canonical || previewPage.route }}</p>
-              <p class="serp-title">{{ previewPage.title || '（没有标题）' }}</p>
-              <p class="serp-desc">{{ previewPage.description || '（没有摘要）' }}</p>
-            </article>
-          </section>
-          <section>
-            <h3>分享卡片</h3>
-            <article class="social">
-              <img v-if="previewImage" class="social-photo" :src="previewImage" alt="" />
-              <div v-else class="social-image">
-                <UiIcon :path="icons.image" :size="18" />
-                <span>这页没有 og:image</span>
-              </div>
-              <div class="social-body">
-                <p class="social-title">{{ previewPage.title || '（没有标题）' }}</p>
-                <p class="social-desc">{{ previewPage.description || '（没有摘要）' }}</p>
-              </div>
-            </article>
-          </section>
+      <section class="site">
+        <h2>站点与首页</h2>
+        <div class="site-row">
+          <label for="seo-url">站点地址</label>
+          <input id="seo-url" v-model="siteUrl" placeholder="https://name.github.io" />
+          <span class="status" :class="urlStatus.tone">{{ urlStatus.text }}</span>
         </div>
-        <p v-else class="dim">这份报告里没有这一页的标题和摘要。</p>
+        <div class="site-row">
+          <label for="seo-description">站点简介</label>
+          <input id="seo-description" v-model="siteDescription" placeholder="用 30 到 80 个字介绍这个站" />
+          <span class="status" :class="descriptionStatus.tone">{{ descriptionStatus.text }}</span>
+        </div>
+        <div class="site-row">
+          <label for="seo-og">默认分享图</label>
+          <input id="seo-og" v-model="siteOgImage" placeholder="/og.png" />
+          <span class="status" :class="ogStatus.tone">{{ ogStatus.text }}</span>
+        </div>
+        <div class="site-save">
+          <UiButton size="sm" :loading="savingSite" @click="saveSite">保存站点设置</UiButton>
+        </div>
+      </section>
+
+      <section class="articles">
+        <div class="article-bar">
+          <div class="filters">
+            <button type="button" :class="{ on: filter === 'all' }" @click="filter = 'all'">全部 {{ posts.length }}</button>
+            <button type="button" :class="{ on: filter === 'problem' }" @click="filter = 'problem'">有问题 {{ problemCount }}</button>
+            <button type="button" :class="{ on: filter === 'ok' }" @click="filter = 'ok'">正常 {{ okCount }}</button>
+          </div>
+          <input v-model="query" class="search" placeholder="按标题搜索" />
+        </div>
+        <p class="dim">{{ report ? `生成后的页面问题来自上次体检 ${reportClock}` : '点体检检查生成后的页面' }}</p>
+
+        <div class="table">
+          <template v-for="post in visiblePosts" :key="post.slug">
+            <button type="button" class="article" :class="{ open: openSlug === post.slug }" @click="toggle(post.slug)">
+              <span class="dot" :class="rowLevel(post)" />
+              <span class="name">{{ liveTitle(post) }}</span>
+              <span class="tags">
+                <span v-for="tag in tagsFor(post)" :key="tag.text" class="tag" :class="tag.level">{{ tag.text }}</span>
+              </span>
+            </button>
+            <div v-if="openSlug === post.slug" class="editor">
+              <div class="fields">
+                <label>
+                  <span>标题</span>
+                  <input v-model="editTitle" />
+                  <em :class="editTitleTone">约 {{ editTitleCount }} 字 / 建议 30 字以内</em>
+                </label>
+                <label>
+                  <span>摘要</span>
+                  <textarea v-model="editDescription" rows="3" placeholder="留空时会从正文截取" />
+                  <em :class="editDescTone">
+                    {{ editDescription.trim() ? `约 ${editDescCount} 字` : '没写' }} / 建议 30–80 字
+                  </em>
+                </label>
+              </div>
+              <div class="serp-wrap">
+                <h3>搜索结果</h3>
+                <article class="serp">
+                  <p class="serp-url">{{ serpUrl(post.slug) }}</p>
+                  <p class="serp-title">{{ templatedTitle(editTitle) }}</p>
+                  <p class="serp-desc">{{ editDescription.trim() || excerpts[post.slug] || '（没有摘要）' }}</p>
+                </article>
+              </div>
+              <div class="editor-actions">
+                <UiButton size="sm" :loading="savingPost" @click="savePost">保存</UiButton>
+                <UiButton size="sm" variant="ghost" @click="openCard(post.slug)">分享卡片</UiButton>
+                <UiButton size="sm" variant="ghost" @click="openPost(post.slug, liveTitle(post))">打开文章</UiButton>
+              </div>
+            </div>
+          </template>
+          <p v-if="!visiblePosts.length" class="dim empty">没有符合条件的文章。</p>
+        </div>
+      </section>
+
+      <UiDialog v-model="previewOpen" :title="previewPost ? liveTitle(previewPost) : '分享卡片'" :width="560">
+        <article v-if="previewPost" class="social">
+          <img v-if="previewImage" class="social-photo" :src="previewImage" alt="" />
+          <div v-else class="social-image">
+            <UiIcon :path="icons.image" :size="18" />
+            <span>没有分享图</span>
+          </div>
+          <div class="social-body">
+            <p class="social-title">{{ previewTitle }}</p>
+            <p class="social-desc">{{ previewDescription || '（没有摘要）' }}</p>
+          </div>
+        </article>
       </UiDialog>
     </template>
   </section>
@@ -628,7 +640,9 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--ui-s4);
-  max-width: 880px;
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
 }
 
 .center {
@@ -641,35 +655,28 @@ watch(
 }
 
 .head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s1);
-}
-
-.title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--ui-s3);
+  align-items: baseline;
 }
 
-.title-row h1 {
+.head h1,
+.site h2 {
   margin: 0;
   font-size: var(--ui-fs-5);
   font-weight: 600;
 }
 
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s2);
+.site h2 {
+  font-size: var(--ui-fs-3);
 }
 
-.dim {
+.dim,
+.empty {
   margin: 0;
   color: var(--ui-text-3);
   font-size: var(--ui-fs-2);
-  line-height: var(--ui-lh);
 }
 
 .error-text {
@@ -679,109 +686,30 @@ watch(
   white-space: pre-wrap;
 }
 
-.bands {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s5);
-}
-
-.band {
+.site,
+.articles {
   display: flex;
   flex-direction: column;
   gap: var(--ui-s2);
 }
 
-.band h2 {
-  margin: 0;
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-  font-weight: 500;
-}
-
-.rule {
-  padding-bottom: var(--ui-s3);
-  border-bottom: 1px solid var(--ui-line);
-}
-
-.rule-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+.site-row {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) minmax(8rem, 18rem);
   gap: var(--ui-s3);
+  align-items: center;
 }
 
-.rule-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.rule-line {
-  display: flex;
-  align-items: baseline;
-  gap: var(--ui-s3);
-}
-
-.rule-line strong {
-  font-size: var(--ui-fs-3);
-}
-
-.rule-copy p,
-.info-row span {
-  margin: 0;
+.site-row label {
   color: var(--ui-text-2);
   font-size: var(--ui-fs-2);
-  line-height: var(--ui-lh);
 }
 
-.scope {
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-2);
-  white-space: nowrap;
-}
-
-.rule-actions,
-.row-actions,
-.edit {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--ui-s2);
-}
-
-.rows {
-  display: flex;
-  flex-direction: column;
-  max-height: 16rem;
-  margin-top: var(--ui-s2);
-  overflow: auto;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: minmax(8rem, 14rem) 3rem minmax(0, 1fr);
-  gap: var(--ui-s2);
-  align-items: center;
-  min-height: 2.5rem;
-  padding: 4px 0 4px var(--ui-s3);
-  border-top: 1px solid var(--ui-line);
-}
-
-.row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.row-value {
-  color: var(--ui-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.edit input {
-  width: 180px;
+.site-row input,
+.search,
+.fields input,
+.fields textarea {
+  width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--ui-line);
   border-radius: var(--ui-r-sm);
@@ -791,34 +719,171 @@ watch(
   font-size: var(--ui-fs-2);
 }
 
-.info-fold {
-  color: var(--ui-text-2);
+.status,
+.fields em {
   font-size: var(--ui-fs-2);
+  font-style: normal;
 }
 
-.info-fold summary {
+.status.error,
+.tag.error {
+  color: var(--ui-danger);
+}
+
+.status.warn,
+.fields em.warn,
+.tag.warn {
+  color: var(--ui-warn);
+}
+
+.status.ok,
+.fields em.ok {
+  color: var(--ui-ok);
+}
+
+.site-save {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.article-bar {
+  display: flex;
+  gap: var(--ui-s3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.filters {
+  display: flex;
+  gap: var(--ui-s2);
+}
+
+.filters button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--ui-r-sm);
+  background: transparent;
+  color: var(--ui-text-2);
+  font: inherit;
+  font-size: var(--ui-fs-2);
   cursor: pointer;
 }
 
-.info-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ui-s2);
-  align-items: baseline;
-  padding-top: var(--ui-s2);
+.filters button.on {
+  background: var(--ui-raise);
+  color: var(--ui-text);
 }
 
-.dialog-preview {
+.search {
+  width: 14rem;
+}
+
+.table {
+  max-height: 33rem;
+  overflow: auto;
+  border-top: 1px solid var(--ui-line);
+}
+
+.article {
+  display: grid;
+  grid-template-columns: 12px minmax(8rem, 16rem) minmax(0, 1fr);
+  gap: var(--ui-s3);
+  align-items: center;
+  width: 100%;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.article.open {
+  background: var(--ui-raise);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-text-3);
+}
+
+.dot.warn {
+  background: var(--ui-warn);
+}
+
+.dot.error {
+  background: var(--ui-danger);
+}
+
+.dot.ok {
+  background: var(--ui-ok);
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ui-warn-weak);
+  font-size: var(--ui-fs-1);
+  white-space: nowrap;
+}
+
+.tag.error {
+  background: var(--ui-danger-weak);
+}
+
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: var(--ui-s4);
+  padding: var(--ui-s3) 0 var(--ui-s4);
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.fields {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-s4);
+  gap: var(--ui-s3);
 }
 
-.dialog-preview h3 {
-  margin: 0 0 var(--ui-s2);
+.fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fields span,
+.serp-wrap h3 {
   color: var(--ui-text-3);
   font-size: var(--ui-fs-1);
+}
+
+.serp-wrap h3 {
+  margin: 0 0 var(--ui-s2);
   font-weight: 600;
+}
+
+.editor-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: var(--ui-s2);
 }
 
 .serp,
@@ -837,8 +902,8 @@ watch(
 }
 
 .serp-url,
-.social-desc,
-.serp-desc {
+.serp-desc,
+.social-desc {
   margin: 0;
   color: var(--ui-text-2);
   font-size: var(--ui-fs-2);
@@ -848,13 +913,13 @@ watch(
 .serp-title,
 .social-title {
   margin: 0;
-  color: var(--ui-text);
+  color: var(--ui-accent);
   font-size: var(--ui-fs-3);
   font-weight: 600;
 }
 
-.serp-title {
-  color: var(--ui-accent);
+.social-title {
+  color: var(--ui-text);
 }
 
 .social-body {
@@ -878,5 +943,26 @@ watch(
   height: 88px;
   padding: 0 var(--ui-s3);
   color: var(--ui-text-3);
+}
+
+@media (max-width: 1024px) {
+  .head,
+  .site-row,
+  .editor,
+  .article-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .article-bar,
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .site-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

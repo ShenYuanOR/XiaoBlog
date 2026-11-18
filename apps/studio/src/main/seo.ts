@@ -10,7 +10,7 @@ export interface SeoRow {
 
 /**
  * 显示宽度：汉字和全角算 2，其余算 1。
- * 与 packages/template/src/lib/seo-audit.mjs 的 displayWidth 保持一致，改规则时两处一起改。
+ * 与 packages/template/src/lib/seo-audit.mjs、apps/studio/src/renderer/src/views/Seo.vue 的 displayWidth 保持一致，改规则时三处一起改。
  */
 export function displayWidth(text: string): number {
   let width = 0;
