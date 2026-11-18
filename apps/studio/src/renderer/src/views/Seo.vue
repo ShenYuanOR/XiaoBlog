@@ -126,6 +126,7 @@ const auditing = ref(false);
 const savingSite = ref(false);
 const savingPost = ref(false);
 const errorText = ref('');
+const buildLog = ref('');
 const report = ref<SeoReport | null>(null);
 const posts = ref<PostItem[]>([]);
 const excerpts = ref<Record<string, string>>({});
@@ -227,9 +228,6 @@ function tagsFor(post: PostItem): Tag[] {
       (item) => item.slug !== post.slug && effectiveDescription(item) === mine,
     );
     if (other) tags.push({ level: 'warn', text: `摘要与《${liveTitle(other)}》重复` });
-  }
-  if (!post.cover.trim() && !siteOgImage.value.trim()) {
-    tags.push({ level: 'warn', text: '无分享图' });
   }
   for (const issue of reportIssuesFor(post.slug)) {
     tags.push({
@@ -412,17 +410,16 @@ async function load(): Promise<void> {
 
 async function saveSite(): Promise<void> {
   const siteDir = session.siteDir;
-  const config = rawConfig.value;
-  if (!siteDir || !config || savingSite.value) return;
-  const next = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
-  const site = isRecord(next.site) ? next.site : {};
-  site.url = siteUrl.value.trim();
-  site.description = siteDescription.value;
-  site.ogImage = siteOgImage.value.trim();
-  next.site = site;
+  if (!siteDir || savingSite.value) return;
   savingSite.value = true;
   try {
-    const result = await window.xiao.settings.write(siteDir, next);
+    const result = await window.xiao.settings.patch(siteDir, {
+      set: {
+        'site.url': siteUrl.value.trim(),
+        'site.description': siteDescription.value,
+        'site.ogImage': siteOgImage.value.trim(),
+      },
+    });
     if (!result.ok) {
       notify(result.message, 'error', 'seo-site');
       return;
@@ -431,7 +428,8 @@ async function saveSite(): Promise<void> {
       notify(`没有写入：${result.data.join('、')}`, 'error', 'seo-site');
       return;
     }
-    rawConfig.value = next;
+    const fresh = await window.xiao.settings.read(siteDir);
+    if (fresh.ok && isRecord(fresh.data)) rawConfig.value = fresh.data;
     notify('站点设置已保存。', 'info', 'seo-site');
   } finally {
     savingSite.value = false;
@@ -478,6 +476,7 @@ async function runAudit(): Promise<void> {
   if (!siteDir || auditing.value) return;
   auditing.value = true;
   errorText.value = '';
+  buildLog.value = '';
   try {
     const result = await window.xiao.seo.audit(siteDir);
     if (!result.ok) {
@@ -489,6 +488,7 @@ async function runAudit(): Promise<void> {
     report.value = result.data.report;
     if (result.data.buildFailed) {
       errorText.value = `构建未通过。\n${result.data.message || '构建没有完成'}`;
+      buildLog.value = result.data.log || '';
       notify('构建未通过。', 'error', 'seo-audit');
     } else {
       notify('体检完成。', 'info', 'seo-audit');
@@ -541,6 +541,10 @@ watch(
       </header>
 
       <p v-if="errorText" class="error-text">{{ errorText }}</p>
+      <details v-if="buildLog" class="build-log">
+        <summary>完整日志</summary>
+        <pre>{{ buildLog }}</pre>
+      </details>
 
       <section class="site">
         <h2>站点与首页</h2>
@@ -683,6 +687,17 @@ watch(
   margin: 0;
   color: var(--ui-danger);
   font-size: var(--ui-fs-2);
+  white-space: pre-wrap;
+}
+
+.build-log {
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
+}
+
+.build-log pre {
+  max-height: 12rem;
+  overflow: auto;
   white-space: pre-wrap;
 }
 

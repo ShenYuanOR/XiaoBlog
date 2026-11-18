@@ -595,17 +595,24 @@ async function save(): Promise<void> {
     return;
   }
   const next = buildConfig();
-  if (!next) return;
+  if (!next || !isRecord(next.theme)) return;
   // 写盘期间用户可能继续改；用开始写盘时的快照，避免把后续改动误标成已保存。
   const snapshotAtSave = snapshotOf(draft);
+  const loadedSite = rawConfig.value?.site;
+  const hadAnnouncement = isRecord(loadedSite) && 'announcement' in loadedSite;
   saving.value = true;
   rejected.value = [];
   session.setSaveState('saving');
-  let result: Awaited<ReturnType<typeof window.xiao.settings.write>> | null = null;
+  let result: Awaited<ReturnType<typeof window.xiao.settings.patch>> | null = null;
   try {
-    // rawConfig 存在 ref 里会变成响应式代理，直接送 IPC 会抛 An object could not be cloned。
-    const payload = JSON.parse(JSON.stringify(next)) as Record<string, unknown>;
-    result = await window.xiao.settings.write(session.siteDir, payload);
+    // theme 来自响应式草稿，直接送 IPC 会抛 An object could not be cloned。
+    const payload = JSON.parse(
+      JSON.stringify({
+        set: { theme: next.theme },
+        unset: hadAnnouncement ? ['site.announcement'] : [],
+      }),
+    ) as { set: Record<string, unknown>; unset: string[] };
+    result = await window.xiao.settings.patch(session.siteDir, payload);
   } catch (error) {
     session.setSaveState('dirty');
     const message = error instanceof Error ? error.message : '保存失败';

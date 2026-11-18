@@ -121,8 +121,8 @@ const api = {
   },
   settings: {
     read: (siteDir: string) => ipcRenderer.invoke('settings:read', siteDir),
-    write: (siteDir: string, config: unknown) =>
-      ipcRenderer.invoke('settings:write', siteDir, config),
+    patch: (siteDir: string, patch: { set?: Record<string, unknown>; unset?: string[] }) =>
+      ipcRenderer.invoke('settings:patch', siteDir, patch),
   },
   theme: {
     read: (siteDir: string) => ipcRenderer.invoke('theme:read', siteDir),

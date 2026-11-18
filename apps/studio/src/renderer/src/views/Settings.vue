@@ -20,7 +20,7 @@ import {
 /**
  * 设置页：只放站点信息 / 作者 / 导航 / 统计 / 许可 / 重定向。
  * 主题（预设、色相、字体、宽度…）归「外观」页，这里不再出现 theme 字段。
- * 保存走 window.xiao.settings.write，整份 xiao.config.json 落盘，未识别的字段原样保留。
+ * 保存走 window.xiao.settings.patch，写盘前重读最新配置，只提交本页负责的字段。
  */
 
 interface NavRow {
@@ -256,38 +256,6 @@ function validate(): boolean {
   return Object.keys(next).length === 0;
 }
 
-function buildConfig(): Record<string, unknown> {
-  const base = rawConfig.value ?? {};
-  const rawSite = isRecord(base.site) ? base.site : {};
-  const rawAuthor = isRecord(base.author) ? base.author : {};
-  const rawAnalytics = isRecord(base.analytics) ? base.analytics : {};
-  const rawPosts = isRecord(base.posts) ? base.posts : {};
-  const rawLicense = isRecord(rawPosts.license) ? rawPosts.license : {};
-  return {
-    ...base,
-    site: { ...rawSite, ...form.site },
-    author: { ...rawAuthor, ...form.author },
-    nav: form.nav.map((row) => ({ label: row.label.trim(), href: row.href.trim() })),
-    analytics: {
-      ...rawAnalytics,
-      provider: form.analytics.provider,
-      id: form.analytics.id.trim(),
-    },
-    posts: {
-      ...rawPosts,
-      license: {
-        ...rawLicense,
-        enabled: form.license.enabled,
-        name: form.license.name.trim(),
-        url: form.license.url.trim(),
-      },
-    },
-    redirects: Object.fromEntries(
-      form.redirects.map((row) => [row.from.trim(), row.to.trim()]),
-    ),
-  };
-}
-
 async function save(): Promise<void> {
   if (saving.value || !loaded.value || !session.siteDir) return;
   if (!validate()) {
@@ -295,13 +263,40 @@ async function save(): Promise<void> {
     rejected.value = [];
     return;
   }
-  const next = buildConfig();
   // 写盘期间用户可能继续编辑；用开始写盘时的快照，避免把后续改动误标成已保存。
   const snapshotAtSave = snapshot();
   saving.value = true;
   rejected.value = [];
   session.setSaveState('saving');
-  const result = await window.xiao.settings.write(session.siteDir, next);
+  const result = await window.xiao.settings.patch(
+    session.siteDir,
+    JSON.parse(
+      JSON.stringify({
+        set: {
+          'site.url': form.site.url.trim(),
+          'site.base': form.site.base.trim(),
+          'site.lang': form.site.lang.trim(),
+          'site.title': form.site.title.trim(),
+          'site.subtitle': form.site.subtitle.trim(),
+          'site.description': form.site.description,
+          'site.favicon': form.site.favicon.trim(),
+          'site.ogImage': form.site.ogImage.trim(),
+          'site.since': form.site.since,
+          'author.name': form.author.name.trim(),
+          'author.avatar': form.author.avatar.trim(),
+          'author.bio': form.author.bio,
+          'author.email': form.author.email.trim(),
+          nav: form.nav.map((row) => ({ label: row.label.trim(), href: row.href.trim() })),
+          'analytics.provider': form.analytics.provider,
+          'analytics.id': form.analytics.id.trim(),
+          'posts.license.enabled': form.license.enabled,
+          'posts.license.name': form.license.name.trim(),
+          'posts.license.url': form.license.url.trim(),
+          redirects: Object.fromEntries(form.redirects.map((row) => [row.from.trim(), row.to.trim()])),
+        },
+      }),
+    ),
+  );
   saving.value = false;
   if (!result.ok) {
     session.setSaveState('dirty');
@@ -315,7 +310,8 @@ async function save(): Promise<void> {
     notify(`没有写入：${labels}。检查这些字段后重试。`, 'error', 'settings-save');
     return;
   }
-  rawConfig.value = next;
+  const fresh = await window.xiao.settings.read(session.siteDir);
+  if (fresh.ok && isRecord(fresh.data)) rawConfig.value = fresh.data;
   savedSnapshot.value = snapshotAtSave;
   session.setSaveState(dirty.value ? 'dirty' : 'saved');
   notify('已写入，重新构建后生效', 'info', 'settings-save');

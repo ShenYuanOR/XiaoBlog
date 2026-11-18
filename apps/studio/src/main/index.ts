@@ -73,7 +73,7 @@ import {
   uploadMedia,
   type MediaUploadInput,
 } from './media.ts';
-import { readConfig, readManifest, writeConfig, type SiteConfig } from './settings.ts';
+import { patchConfig, readConfig, readManifest, type SettingsPatch } from './settings.ts';
 import { seoRows } from './seo.ts';
 import {
   duplicateComponent,
@@ -375,10 +375,14 @@ function readableBuildError(log: string): string {
   const lines = plain
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !/^[├└]/.test(line));
-  const focused = lines.filter((line) => /不合法|死链|Error|error|失败|Invalid|未通过|Could not/.test(line));
-  const reason = (focused.length > 0 ? focused : lines).slice(-6).join('\n');
-  return reason || '构建没有完成';
+    .filter((line) => line && !/^[├└]/.test(line) && !/^\s*at\s/.test(line));
+  const cause = lines.filter(
+    (line) =>
+      /文章 |frontmatter|不合法|死链|slug /i.test(line) && !/unhandled error occurred/i.test(line),
+  );
+  if (cause.length > 0) return cause.slice(-8).join('\n');
+  const fallback = lines.filter((line) => !/unhandled error occurred/i.test(line));
+  return fallback.slice(-6).join('\n') || '构建没有完成';
 }
 
 app.whenReady().then(() => {
@@ -581,14 +585,13 @@ app.whenReady().then(() => {
       return fail('SETTINGS_READ', error instanceof Error ? error.message : '读不到配置');
     }
   });
-  ipcMain.handle('settings:write', (_event, siteDir: string, config: SiteConfig) => {
+  ipcMain.handle('settings:patch', (_event, siteDir: string, patch: SettingsPatch) => {
     try {
-      const errors = writeConfig(siteDir, config);
-      return ok(errors);
+      return ok(patchConfig(siteDir, patch ?? {}));
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
       const message = error instanceof Error ? error.message : '写不了配置';
-      console.error(`settings:write ${code || 'ERR'} ${message}`);
+      console.error(`settings:patch ${code || 'ERR'} ${message}`);
       if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
         return fail(
           'SETTINGS_WRITE',
@@ -981,20 +984,21 @@ app.whenReady().then(() => {
         // 没有旧报告可删。删掉是为了别把上次的成功报告当成这次的结果。
       }
       const task = await runtime.start('build', siteDir);
-      let previewError = '';
       if (resumePreview) {
-        const resumed = await runtime.resumeDev(siteDir);
-        if (!resumed.ok) previewError = resumed.message;
+        // 预览拉起要等 dev 就绪，不能挡住体检结果。失败仍走原来的退出通知。
+        void runtime.resumeDev(siteDir);
       }
       const code = task.code ?? 1;
       const buildFailed = code !== 0;
       const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+      const plainLog = (task.log ?? '').replace(/\u001b\[[0-9;]*m/g, '');
       return ok({
         code,
         buildFailed,
         report,
         message: buildFailed ? readableBuildError(task.log ?? '') : '',
-        previewError,
+        log: buildFailed ? plainLog.slice(-8000) : '',
+        previewError: '',
       });
     } catch (error) {
       return fail('SEO_AUDIT', error instanceof Error ? error.message : '体检失败');

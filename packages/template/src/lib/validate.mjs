@@ -5,10 +5,23 @@ import { slugErrors } from './rules.mjs';
 import { auditBuiltSite } from './seo-audit.mjs';
 
 export { checkBuiltSite } from './links.mjs';
+export { htmlPostProblems };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/;
 
-/** 轻量 frontmatter 解析（只给校验用；完整解析在 src/lib/posts.ts，字段改动两处一起改）。 */
+/** 与 posts.ts 的 scalar 一样去掉成对的单引号或双引号，不解释转义。 */
+function unquoteScalar(value) {
+  const text = value.trim();
+  if (
+    text.length >= 2 &&
+    ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"')))
+  ) {
+    return text.slice(1, -1);
+  }
+  return text;
+}
+
+/** 轻量 frontmatter 解析（只给校验用；引号规则与 src/lib/posts.ts 的 scalar 一致）。 */
 function frontmatterFields(text) {
   const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(normalized);
@@ -17,7 +30,7 @@ function frontmatterFields(text) {
   for (const line of (match[1] ?? '').split('\n')) {
     const entry = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
     if (!entry) continue;
-    fields[entry[1]] = (entry[2] ?? '').trim();
+    fields[entry[1]] = unquoteScalar(entry[2] ?? '');
   }
   return fields;
 }

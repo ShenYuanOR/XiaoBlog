@@ -280,6 +280,7 @@ export interface XiaoApi {
           }[];
         } | null;
         message: string;
+        log: string;
         previewError: string;
       }>
     >;
@@ -287,7 +288,10 @@ export interface XiaoApi {
   };
   settings: {
     read: (siteDir: string) => Promise<IpcResult<Record<string, unknown>>>;
-    write: (siteDir: string, config: unknown) => Promise<IpcResult<string[]>>;
+    patch: (
+      siteDir: string,
+      patch: { set?: Record<string, unknown>; unset?: string[] },
+    ) => Promise<IpcResult<string[]>>;
   };
   theme: {
     /** 站点 src/theme.json；旧模板没有这个文件时返回 null。 */

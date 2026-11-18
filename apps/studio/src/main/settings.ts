@@ -253,6 +253,52 @@ function manifestProblem(data: unknown): string | null {
   return null;
 }
 
+export interface SettingsPatch {
+  /** 点路径写入，例如 `site.url`、`theme`。 */
+  set?: Record<string, unknown>;
+  /** 点路径删除，例如 `site.announcement`。 */
+  unset?: string[];
+}
+
+function applyPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split('.').filter(Boolean);
+  if (parts.length === 0) return;
+  let cursor = target;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const key = parts[index] ?? '';
+    const next = cursor[key];
+    if (!isRecord(next)) {
+      const created: Record<string, unknown> = {};
+      cursor[key] = created;
+      cursor = created;
+      continue;
+    }
+    cursor = next;
+  }
+  cursor[parts[parts.length - 1] ?? ''] = value;
+}
+
+function removePath(target: Record<string, unknown>, path: string): void {
+  const parts = path.split('.').filter(Boolean);
+  if (parts.length === 0) return;
+  let cursor = target;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const next = cursor[parts[index] ?? ''];
+    if (!isRecord(next)) return;
+    cursor = next;
+  }
+  delete cursor[parts[parts.length - 1] ?? ''];
+}
+
+/** 写盘前重新读磁盘上的最新配置，只改调用方给出的路径。 */
+export function patchConfig(siteDir: string, patch: SettingsPatch): string[] {
+  const file = path.join(siteDir, 'xiao.config.json');
+  const current = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch.set ?? {})) applyPath(current, key, value);
+  for (const key of patch.unset ?? []) removePath(current, key);
+  return writeConfig(siteDir, current as SiteConfig);
+}
+
 export function writeConfig(siteDir: string, config: SiteConfig): string[] {
   const errors = configErrors(config, readManifest(siteDir));
   if (errors.length > 0) return errors;
