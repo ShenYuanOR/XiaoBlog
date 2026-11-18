@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { checkBuiltSite } from './links.mjs';
 
 /**
  * 显示宽度：汉字和全角算 2，其余算 1。
@@ -101,6 +100,20 @@ function usesSiteOg(ogImage, siteOgImage) {
   return Boolean(left) && left === right;
 }
 
+/** 体检只评首页和文章。标签、分类、归档、关于、搜索、404、跳转和组件演示都不进报告。 */
+function inScope(route) {
+  return route === '/' || /^\/posts\/[^/]+$/.test(route);
+}
+
+function audience(routes) {
+  const home = routes.includes('/');
+  const posts = routes.filter((route) => /^\/posts\/[^/]+$/.test(route)).length;
+  if (home && posts > 0) return `首页和 ${posts} 篇文章`;
+  if (home) return '首页';
+  if (posts > 0) return `${posts} 篇文章`;
+  return '';
+}
+
 /**
  * 读构建产物。返回 issues 和每页抽取出的真实标签。
  * @param {string} dist
@@ -142,6 +155,7 @@ export function auditBuiltSite(dist, config = {}) {
     const lang = htmlOpen.match(/\slang=["']([^"']*)["']/i)?.[1]?.trim() ?? '';
     const noindex = /noindex/i.test(robots);
     const h1 = html.match(/<h1\b/gi)?.length ?? 0;
+    if (!inScope(route)) continue;
     pages.push({ route, title, description, canonical, ogImage });
     if (isRedirectPage(html)) {
       redirectRoutes.add(route);
@@ -302,7 +316,7 @@ export function auditBuiltSite(dist, config = {}) {
         level: 'warn',
         rule: tooLong ? 'description-too-long' : 'description-too-short',
         route: '/',
-        detail: `站点简介${tooLong ? '太长' : '太短'}（${width}），${users.length} 个页面在用它作摘要`,
+        detail: `站点简介${tooLong ? '太长' : '太短'}（${width}），${audience(users.map((page) => page.route))}在用它作摘要`,
         fix: { kind: 'settings', field: 'description' },
       });
     } else if (users.length > 1) {
@@ -310,7 +324,7 @@ export function auditBuiltSite(dist, config = {}) {
         level: 'warn',
         rule: 'description-duplicate',
         route: '/',
-        detail: `站点简介被 ${users.length} 个页面当作摘要，内容重复`,
+        detail: `站点简介被${audience(users.map((page) => page.route))}当作摘要，内容重复`,
         fix: { kind: 'settings', field: 'description' },
       });
     }
@@ -320,7 +334,7 @@ export function auditBuiltSite(dist, config = {}) {
       level: 'warn',
       rule: 'og-image-missing',
       route: '/',
-      detail: `没有设置默认分享图，${missingOgRoutes.length} 个页面分享时没有图`,
+      detail: `没有设置默认分享图，${audience(missingOgRoutes)}分享时没有图`,
       fix: { kind: 'settings', field: 'ogImage' },
     });
   }
@@ -329,33 +343,9 @@ export function auditBuiltSite(dist, config = {}) {
       level: 'error',
       rule: 'og-image-missing-file',
       route: '/',
-      detail: `默认分享图不在构建产物里：${imagePath(siteOgImage)}，${siteOgUsers.length} 个页面在用它`,
+      detail: `默认分享图不在构建产物里：${imagePath(siteOgImage)}，${audience(siteOgUsers)}在用它`,
       fix: { kind: 'settings', field: 'ogImage' },
     });
-  }
-  for (const item of checkBuiltSite(dist)) {
-    const splitAt = item.indexOf(' -> ');
-    const route = splitAt >= 0 ? item.slice(0, splitAt) : '/';
-    const href = splitAt >= 0 ? item.slice(splitAt + 4) : item;
-    if (redirectRoutes.has(route) || noindexRoutes.has(route)) continue;
-    issues.push({
-      level: 'error',
-      rule: 'dead-link',
-      route,
-      detail: `站内链接没有对应页面：${href}`,
-    });
-  }
-  for (const file of walk(dist)) {
-    if (!/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(file)) continue;
-    const size = statSync(file).size;
-    if (size > 2 * 1024 * 1024) {
-      issues.push({
-        level: 'warn',
-        rule: 'image-too-large',
-        route: `/${path.relative(dist, file).replaceAll('\\', '/')}`,
-        detail: `图片 ${path.basename(file)} 超过 2 MB（${Math.round(size / 1024)} KB）`,
-      });
-    }
   }
   return { issues, pages };
 }

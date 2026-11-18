@@ -137,11 +137,15 @@ function postTitle(route: string, fallback: string): string {
   return posts.value.find((post) => post.slug === slug)?.title || fallback || route;
 }
 
+/** 已有构建报告时，构建前检查只留下 slug 问题，避免和报告里的首页、文章重复开一组。 */
+const listedChecks = computed(() =>
+  report.value ? checkIssues.value.filter((issue) => issue.rule.startsWith('slug')) : checkIssues.value,
+);
 const actionable = computed(() =>
-  [...(report.value?.issues ?? []), ...checkIssues.value].filter((issue) => issue.level !== 'info'),
+  [...(report.value?.issues ?? []), ...listedChecks.value].filter((issue) => issue.level !== 'info'),
 );
 const infoIssues = computed(() =>
-  [...(report.value?.issues ?? []), ...checkIssues.value].filter((issue) => issue.level === 'info'),
+  [...(report.value?.issues ?? []), ...listedChecks.value].filter((issue) => issue.level === 'info'),
 );
 
 const counts = computed(() => ({
@@ -329,7 +333,7 @@ async function loadCheck(siteDir: string): Promise<void> {
     level: row.level,
     rule: row.rule,
     detail: row.detail,
-    route: '构建前',
+    route: row.rule.startsWith('slug') ? `/posts/${row.detail}` : '构建前',
     fix:
       row.rule.startsWith('site-url')
         ? { kind: 'settings', field: 'url' }
