@@ -1,33 +1,29 @@
 ---
-import { publishedPosts } from '../../lib/posts';
-import SideTree from './SideTree.astro';
 import SiteNav from '../xiao/SiteNav.astro';
 import SiteSearchButton from '../xiao/SiteSearchButton.astro';
 import SiteThemeToggle from '../xiao/SiteThemeToggle.astro';
 import SiteTitle from '../xiao/SiteTitle.astro';
-
-const posts = await publishedPosts();
-const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
-const current = posts.find((post) => path.endsWith(`/posts/${post.id}`))?.id;
 ---
 
 <header class="topbar">
-  <details class="nav-drawer">
-    <summary class="icon-btn" aria-label="打开菜单">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 7h16M4 12h16M4 17h16"></path>
-      </svg>
-    </summary>
-    <div class="drawer-mask"></div>
-    <div class="drawer-panel">
-      <SiteNav variant="drawer" />
-      <SideTree posts={posts} current={current} />
-    </div>
-  </details>
   <SiteTitle />
   <SiteNav />
   <SiteSearchButton />
   <SiteThemeToggle />
+  <details class="nav-drawer">
+    <summary class="icon-btn" aria-label="打开导航">
+      <svg class="drawer-open-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+      <svg class="drawer-close-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 6l12 12M18 6 6 18"></path>
+      </svg>
+    </summary>
+    <div class="drawer-mask"></div>
+    <div class="drawer-panel">
+      <SiteNav variant="drawer" class="drawer-nav" />
+    </div>
+  </details>
   <script is:inline>
     document.querySelectorAll('.topbar .theme-toggle').forEach((button) => {
       button.addEventListener('click', () => {
@@ -38,14 +34,19 @@ const current = posts.find((post) => path.endsWith(`/posts/${post.id}`))?.id;
       });
     });
     document.querySelectorAll('.nav-drawer').forEach((drawer) => {
+      const summary = drawer.querySelector('summary');
+      drawer.addEventListener('toggle', () => {
+        summary?.setAttribute('aria-label', drawer.open ? '收起导航' : '打开导航');
+      });
       drawer.querySelector('.drawer-mask')?.addEventListener('click', () => {
         drawer.open = false;
       });
     });
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
-      document.querySelectorAll('.nav-drawer').forEach((drawer) => {
+      document.querySelectorAll('.nav-drawer[open]').forEach((drawer) => {
         drawer.open = false;
+        drawer.querySelector('summary')?.focus();
       });
     });
   </script>

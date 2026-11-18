@@ -1,7 +1,7 @@
 ---
+import PostCard from '../../components/site/PostCard.astro';
 import PageLayout from '../../layouts/PageLayout.astro';
 import { publishedPosts } from '../../lib/posts';
-import { withBase } from '../../lib/base';
 
 export async function getStaticPaths() {
   const posts = await publishedPosts();
@@ -14,11 +14,7 @@ const posts = (await publishedPosts()).filter((post) => post.data.tags.includes(
 ---
 
 <PageLayout title={tag} page="tags">
-  <ul>
-    {posts.map((post) => (
-      <li>
-        <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
-      </li>
-    ))}
-  </ul>
+  <ol class="post-card-list">
+    {posts.map((post) => <PostCard post={post} />)}
+  </ol>
 </PageLayout>

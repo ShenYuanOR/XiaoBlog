@@ -1,34 +1,71 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["version", "site", "theme", "seo"],
+  "required": [
+    "version",
+    "site",
+    "theme",
+    "seo"
+  ],
   "properties": {
-    "version": { "type": "number" },
+    "version": {
+      "type": "number"
+    },
     "site": {
       "type": "object",
-      "required": ["url", "base", "lang", "title", "description"],
+      "required": [
+        "url",
+        "base",
+        "lang",
+        "title",
+        "description"
+      ],
       "properties": {
-        "url": { "type": "string", "minLength": 1 },
-        "base": { "type": "string", "minLength": 1 },
-        "lang": { "type": "string" },
-        "title": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" }
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lang": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "theme": {
       "type": "object",
-      "required": ["hue"],
+      "required": [
+        "hue"
+      ],
       "properties": {
-        "preset": {
+        "id": {
           "type": "string",
-          "enum": ["midnight", "paper", "magazine", "terminal", "warm", "minimal"],
-          "default": "midnight",
-          "description": "预设主题，作为其它字段的默认来源。省略时按 1.x 的 hue 派生色板（旧站点颜色不变）。"
+          "default": "default",
+          "description": "主题：站点使用的版式，对应 src/theme.json 的 id。"
         },
-        "colorScheme": {
+        "palette": {
           "type": "string",
-          "enum": ["auto", "light", "dark"],
-          "default": "auto"
+          "default": "midnight",
+          "description": "主题配色：src/theme.json 里 palettes.items 的某个 id。省略时按 hue 派生色板。"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "default": "auto",
+          "description": "亮暗模式。"
         },
         "hue": {
           "type": "number",
@@ -41,53 +78,151 @@
           "type": "object",
           "description": "在预设基础上覆盖，缺省项取预设（无 preset 时仍由 hue 派生）。",
           "properties": {
-            "light": { "$ref": "#/$defs/palette" },
-            "dark": { "$ref": "#/$defs/palette" }
+            "light": {
+              "$ref": "#/$defs/palette"
+            },
+            "dark": {
+              "$ref": "#/$defs/palette"
+            }
           }
         },
-        "font": {
-          "type": "string",
-          "enum": ["sans", "serif", "mono", "custom", "mono-heading"],
-          "default": "sans"
+        "options": {
+          "type": "object",
+          "description": "主题自定义项，可用的键、类型与默认值见 src/theme.json 的 options。",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "boolean",
+              "array"
+            ]
+          }
         },
-        "fontStack": {
-          "type": "string",
-          "default": "",
-          "description": "font=custom 时使用；填了就覆盖预设字体栈。"
-        },
-        "scale": {
-          "type": "string",
-          "enum": ["compact", "normal", "spacious"],
-          "default": "normal"
-        },
-        "lineHeight": {
-          "type": "string",
-          "enum": ["tight", "normal", "loose"],
-          "default": "normal"
-        },
-        "density": { "type": "string", "enum": ["compact", "normal"], "default": "normal" },
-        "radius": {
-          "type": "string",
-          "enum": ["none", "sm", "md", "lg", "pill"],
-          "default": "md"
-        },
-        "contentWidth": {
-          "type": "string",
-          "enum": ["narrow", "prose", "wide", "full"],
-          "default": "prose"
-        },
-        "shadow": {
-          "type": "string",
-          "enum": ["none", "soft", "strong"],
-          "default": "soft"
-        },
-        "motion": { "type": "boolean", "default": true },
         "breakpoints": {
           "type": "array",
           "description": "响应式断点；省略时用内置默认（md=1023 平板、sm=767 手机），老内容不变。",
           "minItems": 1,
           "maxItems": 6,
-          "items": { "$ref": "#/$defs/breakpoint" }
+          "items": {
+            "$ref": "#/$defs/breakpoint"
+          }
+        },
+        "preset": {
+          "type": "string",
+          "enum": [
+            "midnight",
+            "paper",
+            "magazine",
+            "terminal",
+            "warm",
+            "minimal"
+          ],
+          "default": "midnight",
+          "description": "旧键，只读兼容；Studio 保存时迁移到 palette。",
+          "deprecated": true
+        },
+        "colorScheme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "default": "auto",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 mode。"
+        },
+        "font": {
+          "type": "string",
+          "enum": [
+            "sans",
+            "serif",
+            "mono",
+            "custom",
+            "mono-heading"
+          ],
+          "default": "sans",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.font。"
+        },
+        "fontStack": {
+          "type": "string",
+          "default": "",
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.fontStack。",
+          "deprecated": true
+        },
+        "scale": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "normal",
+            "spacious"
+          ],
+          "default": "normal",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.scale。"
+        },
+        "lineHeight": {
+          "type": "string",
+          "enum": [
+            "tight",
+            "normal",
+            "loose"
+          ],
+          "default": "normal",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.lineHeight。"
+        },
+        "density": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "normal"
+          ],
+          "default": "normal",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.density。"
+        },
+        "radius": {
+          "type": "string",
+          "enum": [
+            "none",
+            "sm",
+            "md",
+            "lg",
+            "pill"
+          ],
+          "default": "md",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.radius。"
+        },
+        "contentWidth": {
+          "type": "string",
+          "enum": [
+            "narrow",
+            "prose",
+            "wide",
+            "full"
+          ],
+          "default": "prose",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.contentWidth。"
+        },
+        "shadow": {
+          "type": "string",
+          "enum": [
+            "none",
+            "soft",
+            "strong"
+          ],
+          "default": "soft",
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.shadow。"
+        },
+        "motion": {
+          "type": "boolean",
+          "default": true,
+          "deprecated": true,
+          "description": "旧键，只读兼容；Studio 保存时迁移到 options.motion。"
         }
       }
     }
@@ -95,14 +230,20 @@
   "$defs": {
     "breakpoint": {
       "type": "object",
-      "required": ["id", "maxWidth"],
+      "required": [
+        "id",
+        "maxWidth"
+      ],
       "properties": {
         "id": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{1,16}$",
           "description": "类名前缀（x-<id>-* / x-hide-<id>）；建成后不允许改名。"
         },
-        "label": { "type": "string", "description": "面板显示名，可改。" },
+        "label": {
+          "type": "string",
+          "description": "面板显示名，可改。"
+        },
         "maxWidth": {
           "type": "integer",
           "minimum": 320,
@@ -115,17 +256,39 @@
       "type": "object",
       "description": "色板覆盖项，均可不填。",
       "properties": {
-        "accent": { "type": "string" },
-        "accentInk": { "type": "string" },
-        "accentSoft": { "type": "string" },
-        "onAccent": { "type": "string" },
-        "bg": { "type": "string" },
-        "surface": { "type": "string" },
-        "text": { "type": "string" },
-        "text2": { "type": "string" },
-        "text3": { "type": "string" },
-        "line": { "type": "string" },
-        "scrim": { "type": "string" }
+        "accent": {
+          "type": "string"
+        },
+        "accentInk": {
+          "type": "string"
+        },
+        "accentSoft": {
+          "type": "string"
+        },
+        "onAccent": {
+          "type": "string"
+        },
+        "bg": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "text2": {
+          "type": "string"
+        },
+        "text3": {
+          "type": "string"
+        },
+        "line": {
+          "type": "string"
+        },
+        "scrim": {
+          "type": "string"
+        }
       }
     }
   }

@@ -1,10 +1,14 @@
 ---
 import Base from './BaseLayout.astro';
+import Hero from '../components/site/Hero.astro';
+import NarrowBrief from '../components/site/NarrowBrief.astro';
+import NarrowIndex from '../components/site/NarrowIndex.astro';
 import PageDescription from '../components/xiao/PageDescription.astro';
 import PageShell from '../components/xiao/PageShell.astro';
 import PageTitle from '../components/xiao/PageTitle.astro';
-import SideTree from '../components/site/SideTree.astro';
-import { publishedPosts } from '../lib/posts';
+import Sidebar from '../components/site/Sidebar.astro';
+import { withBase } from '../lib/base';
+import { loadConfig } from '../lib/config';
 import type { HeadEntry } from '../lib/seo';
 
 interface Props {
@@ -18,6 +22,9 @@ interface Props {
   sidebar?: 'left' | 'right' | 'none';
   /** 页面标识：透传给 BaseLayout 的 <body data-page> 与按页样式表查找。 */
   page?: string;
+  /** 顶部横幅尺寸；留空时套用默认 slot（小尺寸 + 页面标题）。 */
+  heroSize?: 'large' | 'medium' | 'small';
+  heroImage?: string;
   /** 版式根节点的附加 class。 */
   class?: string;
 }
@@ -27,18 +34,27 @@ const {
   heads = [],
   showHeading = true,
   showDescription = false,
-  sidebar = 'left',
+  sidebar = 'right',
   page,
+  heroSize = 'small',
+  heroImage,
   class: extraClass,
 } = Astro.props;
-const posts = await publishedPosts();
+const config = loadConfig();
+const heroSrc = (heroImage ?? config.site.heroImage)?.trim();
 ---
 
 <Base title={title} description={description} heads={heads} page={page}>
+  <slot name="hero">
+    <Hero src={heroSrc && withBase(heroSrc)} size={heroSize}>
+      <PageTitle title={title} show={showHeading} />
+      <PageDescription description={description} show={showDescription} />
+    </Hero>
+  </slot>
+  {sidebar !== 'none' && <NarrowBrief />}
   <PageShell sidebar={sidebar} mainClass="page-body" class={extraClass}>
-    <SideTree slot="side" posts={posts} />
-    <PageTitle title={title} show={showHeading} />
-    <PageDescription description={description} show={showDescription} />
+    {sidebar !== 'none' && <Sidebar slot="side" />}
     <slot />
   </PageShell>
+  {sidebar !== 'none' && <NarrowIndex />}
 </Base>

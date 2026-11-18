@@ -51,10 +51,9 @@ const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
 <!doctype html>
 <html
   lang={config.site.lang}
-  data-theme={theme.colorScheme}
-  data-width={theme.contentWidth}
-  data-font={theme.font}
-  data-preset={theme.preset ?? undefined}
+  data-theme={theme.mode}
+  data-site-theme={theme.id}
+  data-palette={theme.palette ?? undefined}
 >
   <head>
     <meta charset="utf-8" />

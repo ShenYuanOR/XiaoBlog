@@ -1,0 +1,43 @@
+---
+import { withBase } from '../../../lib/base';
+import { loadConfig } from '../../../lib/config';
+import { publishedPosts, categoriesOf, tagsOf } from '../../../lib/posts';
+
+const config = loadConfig();
+const posts = await publishedPosts();
+const avatar = config.author.avatar?.trim() ?? '';
+const name = config.author.name?.trim() || config.site.title;
+const bio = config.author.bio?.trim() ?? '';
+const social = (config.social ?? []).filter((item) => item?.url?.trim());
+const categoryCount = categoriesOf(posts).length;
+const tagCount = tagsOf(posts).length;
+---
+
+<div class="widget widget-author">
+  {avatar && <img class="widget-author-avatar" src={withBase(avatar)} alt="" />}
+  <p class="widget-author-name">{name}</p>
+  {bio && <p class="widget-author-bio">{bio}</p>}
+  <ul class="widget-author-stats">
+    <li>
+      <strong>{posts.length}</strong>
+      <span>文章</span>
+    </li>
+    <li>
+      <strong>{categoryCount}</strong>
+      <span>分类</span>
+    </li>
+    <li>
+      <strong>{tagCount}</strong>
+      <span>标签</span>
+    </li>
+  </ul>
+  {social.length > 0 && (
+    <p class="widget-author-social">
+      {social.map((item) => (
+        <a href={item.url} target="_blank" rel="noreferrer noopener">
+          {item.name}
+        </a>
+      ))}
+    </p>
+  )}
+</div>

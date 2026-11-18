@@ -1,0 +1,25 @@
+---
+/** 站点信息：文章/分类/标签数已在作者卡里，这里只放作者卡没有的可计算数据，不编造访问量。 */
+import { loadConfig } from '../../../lib/config';
+import { publishedPosts, siteFacts } from '../../../lib/posts';
+
+const config = loadConfig();
+const facts = siteFacts(await publishedPosts(), config.site.since);
+const rows = [
+  { label: '累计字数', value: facts.words.toLocaleString('zh-CN') },
+  { label: '运行天数', value: facts.days.toLocaleString('zh-CN') },
+  ...(facts.latest ? [{ label: '最近更新', value: facts.latest }] : []),
+];
+---
+
+<div class="widget widget-stats">
+  <p class="widget-title">站点信息</p>
+  <dl>
+    {rows.map((row) => (
+      <div>
+        <dt>{row.label}</dt>
+        <dd>{row.value}</dd>
+      </div>
+    ))}
+  </dl>
+</div>

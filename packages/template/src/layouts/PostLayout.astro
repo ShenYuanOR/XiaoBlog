@@ -1,13 +1,19 @@
 ---
 import Base from './BaseLayout.astro';
+import Hero from '../components/site/Hero.astro';
+import NarrowBrief from '../components/site/NarrowBrief.astro';
+import NarrowIndex from '../components/site/NarrowIndex.astro';
+import RecentPostsWidget from '../components/site/widgets/RecentPostsWidget.astro';
 import PageShell from '../components/xiao/PageShell.astro';
 import PostLicense from '../components/xiao/PostLicense.astro';
 import PostMeta from '../components/xiao/PostMeta.astro';
 import PostTags from '../components/xiao/PostTags.astro';
 import PostTitle from '../components/xiao/PostTitle.astro';
-import SideTree from '../components/site/SideTree.astro';
+import Sidebar from '../components/site/Sidebar.astro';
 import Toc from '../components/site/Toc.astro';
-import { publishedPosts, type PostEntry } from '../lib/posts';
+import { withBase } from '../lib/base';
+import { loadConfig } from '../lib/config';
+import type { PostEntry } from '../lib/posts';
 import { articleHeads } from '../lib/seo';
 
 interface Props {
@@ -21,7 +27,7 @@ interface Props {
   class?: string;
 }
 const { post, headings, page, class: extraClass } = Astro.props;
-const posts = await publishedPosts();
+const config = loadConfig();
 const heads = articleHeads({
   slug: post.id,
   title: post.data.title,
@@ -31,19 +37,30 @@ const heads = articleHeads({
   tags: post.data.tags,
   noindex: post.data.noindex,
 });
+const cover = post.format === 'md' ? post.data.cover : undefined;
+const coverSrc =
+  cover && typeof cover === 'object' && 'src' in cover ? (cover as { src: string }).src : undefined;
+const siteHero = config.site.heroImage?.trim();
+const heroSrc = coverSrc ?? (siteHero ? withBase(siteHero) : undefined);
 ---
 
 <Base title={post.data.title} description={post.data.description} heads={heads} page={page}>
-  <PageShell sidebar="left" class={extraClass}>
-    <SideTree slot="side" posts={posts} current={post.id} />
+  <Hero src={heroSrc} size="medium">
+    <PostTitle post={post} />
+    <PostMeta post={post} separator="" />
+  </Hero>
+  <NarrowBrief />
+  <PageShell sidebar="right" class={extraClass}>
+    <Sidebar slot="side" headings={headings} exclude={post.id} />
     <article class="prose">
-      <PostTitle post={post} />
-      <PostMeta post={post} separator="" />
       <Toc headings={headings} mobile />
       <slot />
       <PostTags post={post} />
       <PostLicense />
     </article>
-    <Toc slot="toc" headings={headings} />
+    <div class="narrow-more">
+      <RecentPostsWidget exclude={post.id} limit={3} title="继续阅读" />
+    </div>
   </PageShell>
+  <NarrowIndex />
 </Base>

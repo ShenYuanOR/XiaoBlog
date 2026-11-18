@@ -1,0 +1,26 @@
+---
+import { withBase } from '../../../lib/base';
+import { publishedPosts } from '../../../lib/posts';
+
+const posts = await publishedPosts();
+const groups = new Map<string, number>();
+for (const post of posts) {
+  const year = post.data.date.slice(0, 4);
+  groups.set(year, (groups.get(year) ?? 0) + 1);
+}
+const years = [...groups.entries()];
+---
+
+{years.length > 0 && (
+  <div class="widget widget-archive">
+    <p class="widget-title">归档</p>
+    <ul>
+      {years.map(([year, count]) => (
+        <li>
+          <a href={withBase(`archives/#${year}`)}>{year}</a>
+          <span>{count}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}

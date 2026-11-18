@@ -27,18 +27,11 @@
     { "label": "关于", "href": "/about" }
   ],
   "theme": {
-    "preset": "midnight",
-    "colorScheme": "auto",
+    "id": "default",
+    "palette": "midnight",
+    "mode": "auto",
     "hue": 250,
-    "font": "sans",
-    "fontStack": "",
-    "scale": "normal",
-    "lineHeight": "normal",
-    "density": "normal",
-    "radius": "md",
-    "contentWidth": "prose",
-    "shadow": "soft",
-    "motion": true
+    "options": {}
   },
   "seo": {
     "titleTemplate": "%s | 晓",

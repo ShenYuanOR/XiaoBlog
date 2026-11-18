@@ -1,0 +1,12 @@
+---
+import { resolveOptions } from '../../../lib/config';
+
+const text = resolveOptions().announcement.trim();
+---
+
+{text && (
+  <div class="widget widget-announcement">
+    <p class="widget-title">公告</p>
+    <p class="widget-announcement-text">{text}</p>
+  </div>
+)}

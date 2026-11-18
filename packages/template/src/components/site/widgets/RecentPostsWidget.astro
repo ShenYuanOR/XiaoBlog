@@ -1,0 +1,28 @@
+---
+import { withBase } from '../../../lib/base';
+import { publishedPosts, type PostEntry } from '../../../lib/posts';
+
+interface Props {
+  exclude?: string;
+  limit?: number;
+  title?: string;
+}
+const { exclude, limit = 5, title = '最新文章' } = Astro.props;
+const posts: PostEntry[] = (await publishedPosts())
+  .filter((post) => post.id !== exclude)
+  .slice(0, limit);
+---
+
+{posts.length > 0 && (
+  <div class="widget widget-recent">
+    <p class="widget-title">{title}</p>
+    <ul>
+      {posts.map((post) => (
+        <li>
+          <a href={withBase(`posts/${post.id}/`)}>{post.data.title}</a>
+          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}

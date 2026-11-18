@@ -1,13 +1,13 @@
 /**
- * 站点主题预设与设计令牌的取值表。
+ * 默认主题的设计令牌尺寸表与主题声明文件（src/theme.json）的类型。
  *
- * 约定（见 .agents/specs/theme-system.md）：
- * - 这里只放「数据 + 尺度表」，不碰 DOM；最终令牌由 lib/config.ts 的 resolveTheme() 合并。
- * - 6 套预设都提供完整的亮/暗两套色板，任何显式 theme 字段优先于预设。
- * - 旧配置（没有 theme.preset）继续走 --hue 派生逻辑，色板不在这里定义，避免颜色突变。
+ * 约定（D-99）：
+ * - 主题配色只是颜色，色板数据在 src/theme.json 的 palettes 里，模板和 Studio 都读那份文件。
+ * - 字体、字号、行高、密度、圆角、宽度、阴影、动效是主题自定义项，取值表在这里，
+ *   默认值和可选项同样声明在 src/theme.json 的 options 里。
+ * - 最终令牌由 lib/config.ts 的 resolveTheme() 合并。
  */
 
-export type PresetId = 'midnight' | 'paper' | 'magazine' | 'terminal' | 'warm' | 'minimal';
 export type ColorSchemeId = 'auto' | 'light' | 'dark';
 export type FontId = 'sans' | 'serif' | 'mono' | 'custom';
 /** 1.x 遗留值：主题字体允许 mono-heading，作为 mono 的兼容写法保留。 */
@@ -18,16 +18,6 @@ export type DensityId = 'compact' | 'normal';
 export type RadiusId = 'none' | 'sm' | 'md' | 'lg' | 'pill';
 export type ContentWidthId = 'narrow' | 'prose' | 'wide' | 'full';
 export type ShadowId = 'none' | 'soft' | 'strong';
-/** 套件可以开关的高级项。主色调和字体不在这里，所有套件都开放。 */
-export type AdvancedField =
-  | 'scale'
-  | 'lineHeight'
-  | 'density'
-  | 'radius'
-  | 'contentWidth'
-  | 'shadow'
-  | 'motion'
-  | 'breakpoints';
 
 /** 一套色板。键名与 xiao.config.json 的 theme.colors.light / .dark 一致。 */
 export interface Palette {
@@ -45,32 +35,40 @@ export interface Palette {
   scrim: string;
 }
 
-export interface ThemePreset {
-  id: PresetId;
+/** 主题声明文件里的一套配色。 */
+export interface PaletteDef {
+  id: string;
   name: string;
-  summary: string;
-  colors: { light: Palette; dark: Palette };
-  font: LegacyFontId;
-  headingWeight: number;
-  scale: ScaleId;
-  lineHeight: LineHeightId;
-  density: DensityId;
-  radius: RadiusId;
-  contentWidth: ContentWidthId;
-  shadow: ShadowId;
-  motion: boolean;
-  /** 这个套件允许用户改的高级项。没列出的项在切换时回到本套件默认值。 */
-  advancedFields: AdvancedField[];
+  summary?: string;
+  light: Palette;
+  dark: Palette;
 }
 
-export const PRESET_IDS: PresetId[] = [
-  'midnight',
-  'paper',
-  'magazine',
-  'terminal',
-  'warm',
-  'minimal',
-];
+export type OptionValue = string | boolean | string[];
+
+/** 主题声明的一个自定义项；Studio 外观页按 type 生成控件。 */
+export interface ThemeOptionDef {
+  key: string;
+  group?: string;
+  label: string;
+  hint?: string;
+  placeholder?: string;
+  type: 'select' | 'segmented' | 'switch' | 'text' | 'textarea' | 'checks';
+  default: OptionValue;
+  choices?: { value: string; label: string }[];
+  /** 只有另一个项等于某值时才显示，比如字体选「自定义」才显示字体栈。 */
+  when?: { key: string; value: string };
+}
+
+export interface ThemeManifest {
+  id: string;
+  name: string;
+  version: string;
+  author?: string;
+  summary?: string;
+  palettes: { default: string; items: PaletteDef[] };
+  options: ThemeOptionDef[];
+}
 
 /** 字体栈。sans 与 serif 的第 1、2 项与 1.x 完全一致，避免旧站点字形漂移。 */
 export const FONT_STACKS: Record<FontId, string> = {
@@ -147,269 +145,6 @@ export const CONTENT_WIDTHS: Record<ContentWidthId, string> = {
 
 /** 动效时长。motion=false 时全部归零，prefers-reduced-motion 仍然在 CSS 里兜底。 */
 export const DURATIONS = { normal: '150ms', slow: '200ms' };
-
-/**
- * 6 套预设。midnight 是默认：冷墨底配破晓金，不是蓝强调。
- */
-export const PRESETS: Record<PresetId, ThemePreset> = {
-  midnight: {
-    id: 'midnight',
-    name: '深夜',
-    summary: '默认。冷墨底配破晓金。',
-    colors: {
-      light: {
-        accent: '#d9a441',
-        accentInk: '#8d651c',
-        accentSoft: '#f2e9d9',
-        onAccent: '#11151c',
-        bg: '#f7f8fa',
-        surface: '#eef0f3',
-        text: '#1c2026',
-        text2: '#5a6270',
-        text3: '#8b92a0',
-        line: '#dfe3e8',
-        scrim: 'rgb(17 21 28 / 45%)',
-      },
-      dark: {
-        accent: '#d9a441',
-        accentInk: '#d9a441',
-        accentSoft: '#3d3424',
-        onAccent: '#11151c',
-        bg: '#11151c',
-        surface: '#161b24',
-        text: '#e8eaef',
-        text2: '#a7adb8',
-        text3: '#6b7280',
-        line: '#262c38',
-        scrim: 'rgb(17 21 28 / 62%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 600,
-    scale: 'normal',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'md',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: true,
-    advancedFields: [
-      'scale',
-      'lineHeight',
-      'density',
-      'radius',
-      'contentWidth',
-      'shadow',
-      'motion',
-      'breakpoints',
-    ],
-  },
-  paper: {
-    id: 'paper',
-    name: '纸感',
-    summary: '米白底配衬线，适合读长文。',
-    colors: {
-      light: {
-        accent: '#8a5a2b',
-        accentSoft: '#efe4d2',
-        onAccent: '#ffffff',
-        bg: '#f8f4ea',
-        surface: '#f1ebdd',
-        text: '#2a2620',
-        text2: '#5c564a',
-        text3: '#857e6f',
-        line: '#ded5c4',
-        scrim: 'rgb(42 38 32 / 40%)',
-      },
-      dark: {
-        accent: '#d6b07a',
-        accentSoft: '#2f2820',
-        onAccent: '#1b1915',
-        bg: '#1b1915',
-        surface: '#24201a',
-        text: '#e9e3d6',
-        text2: '#b3ab99',
-        text3: '#8b8473',
-        line: '#3a352b',
-        scrim: 'rgb(0 0 0 / 55%)',
-      },
-    },
-    font: 'serif',
-    headingWeight: 600,
-    scale: 'normal',
-    lineHeight: 'loose',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'narrow',
-    shadow: 'none',
-    motion: true,
-    advancedFields: ['scale', 'lineHeight', 'contentWidth'],
-  },
-  magazine: {
-    id: 'magazine',
-    name: '杂志',
-    summary: '宽留白、粗标题、大图优先。',
-    colors: {
-      light: {
-        accent: '#e11d48',
-        accentSoft: '#fde8ed',
-        onAccent: '#ffffff',
-        bg: '#ffffff',
-        surface: '#f4f4f5',
-        text: '#111114',
-        text2: '#52525b',
-        text3: '#86868f',
-        line: '#e4e4e7',
-        scrim: 'rgb(0 0 0 / 40%)',
-      },
-      dark: {
-        accent: '#fb7185',
-        accentSoft: '#2c1219',
-        onAccent: '#0a0a0b',
-        bg: '#0a0a0b',
-        surface: '#17171a',
-        text: '#f4f4f5',
-        text2: '#a1a1aa',
-        text3: '#71717a',
-        line: '#27272a',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 800,
-    scale: 'spacious',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'wide',
-    shadow: 'soft',
-    motion: true,
-    advancedFields: ['scale', 'contentWidth', 'shadow', 'motion'],
-  },
-  terminal: {
-    id: 'terminal',
-    name: '终端',
-    summary: '近黑底、等宽字体、绿色强调。',
-    colors: {
-      light: {
-        accent: '#0f7b3f',
-        accentSoft: '#dcf2e4',
-        onAccent: '#ffffff',
-        bg: '#f6f8f6',
-        surface: '#edf2ee',
-        text: '#10251a',
-        text2: '#3d5c4a',
-        text3: '#6b8574',
-        line: '#d3ded6',
-        scrim: 'rgb(16 37 26 / 40%)',
-      },
-      dark: {
-        accent: '#4ade80',
-        accentSoft: '#10251a',
-        onAccent: '#050706',
-        bg: '#050706',
-        surface: '#0c110e',
-        text: '#d6e7da',
-        text2: '#8fb39b',
-        text3: '#60806b',
-        line: '#1c2b21',
-        scrim: 'rgb(0 0 0 / 65%)',
-      },
-    },
-    font: 'mono',
-    headingWeight: 700,
-    scale: 'compact',
-    lineHeight: 'tight',
-    density: 'compact',
-    radius: 'none',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: false,
-    advancedFields: [],
-  },
-  warm: {
-    id: 'warm',
-    name: '暖阳',
-    summary: '暖灰底配琥珀强调，柔和大圆角。',
-    colors: {
-      light: {
-        accent: '#b45309',
-        accentSoft: '#fbe8d3',
-        onAccent: '#ffffff',
-        bg: '#fbf7f2',
-        surface: '#f4ede3',
-        text: '#2b2520',
-        text2: '#6b5f52',
-        text3: '#948779',
-        line: '#e6dccd',
-        scrim: 'rgb(43 37 32 / 40%)',
-      },
-      dark: {
-        accent: '#f59e0b',
-        accentSoft: '#2e2113',
-        onAccent: '#171310',
-        bg: '#171310',
-        surface: '#201a15',
-        text: '#f0e7dc',
-        text2: '#b6a795',
-        text3: '#8a7c6b',
-        line: '#332a21',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 700,
-    scale: 'normal',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'lg',
-    contentWidth: 'prose',
-    shadow: 'soft',
-    motion: true,
-    advancedFields: ['radius', 'shadow', 'motion'],
-  },
-  minimal: {
-    id: 'minimal',
-    name: '极简',
-    summary: '纯黑白灰、细线、无阴影。',
-    colors: {
-      light: {
-        accent: '#111111',
-        accentSoft: '#f0f0f0',
-        onAccent: '#ffffff',
-        bg: '#ffffff',
-        surface: '#fafafa',
-        text: '#111111',
-        text2: '#555555',
-        text3: '#8a8a8a',
-        line: '#e8e8e8',
-        scrim: 'rgb(0 0 0 / 35%)',
-      },
-      dark: {
-        accent: '#ededed',
-        accentSoft: '#1f1f1f',
-        onAccent: '#0a0a0a',
-        bg: '#0a0a0a',
-        surface: '#141414',
-        text: '#ededed',
-        text2: '#a3a3a3',
-        text3: '#737373',
-        line: '#262626',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 600,
-    scale: 'compact',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: false,
-    advancedFields: ['radius', 'contentWidth'],
-  },
-};
 
 export const COLOR_KEYS = [
   'accent',

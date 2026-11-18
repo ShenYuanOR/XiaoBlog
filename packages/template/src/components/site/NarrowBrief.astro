@@ -1,0 +1,40 @@
+---
+/** 窄屏下替代侧栏作者卡与公告：贴在地平线下方的一行作者信息 + 可点开的单行公告。 */
+import { withBase } from '../../lib/base';
+import { loadConfig, resolveOptions } from '../../lib/config';
+import { categoriesOf, publishedPosts, tagsOf } from '../../lib/posts';
+
+const config = loadConfig();
+const posts = await publishedPosts();
+const avatar = config.author.avatar?.trim() ?? '';
+const name = config.author.name?.trim() || config.site.title;
+const notice = resolveOptions(config).announcement.trim();
+const stats = [
+  { label: '文章', value: posts.length, href: 'archives/' },
+  { label: '分类', value: categoriesOf(posts).length, href: 'categories/' },
+  { label: '标签', value: tagsOf(posts).length, href: 'tags/' },
+];
+---
+
+<section class="narrow-brief" aria-label="作者">
+  <div class="brief-author">
+    {avatar && <img class="brief-avatar" src={withBase(avatar)} alt="" />}
+    <p class="brief-name">{name}</p>
+    <p class="brief-stats">
+      {stats.map((item) => (
+        <a href={withBase(item.href)}>
+          <strong>{item.value}</strong>
+          {item.label}
+        </a>
+      ))}
+    </p>
+  </div>
+  {notice && (
+    <details class="brief-notice">
+      <summary>
+        <span class="brief-notice-label">公告</span>
+        <span class="brief-notice-text">{notice}</span>
+      </summary>
+    </details>
+  )}
+</section>

@@ -9,8 +9,8 @@
 .prose h2,
 .prose h3,
 .prose h4 {
-  font-family: var(--font-heading);
-  line-height: 1.25;
+  font-family: var(--font-display);
+  line-height: 1.35;
 }
 
 .prose h1 {
@@ -43,15 +43,14 @@
   margin: 2.4em 0 0.55em;
   padding-top: 0.85em;
   border-top: 1px solid var(--color-line);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-size: 1.4rem;
+  font-weight: 700;
 }
 
 .prose h3 {
   margin: 1.8em 0 0.4em;
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
 }
 
 .prose h4 {
@@ -76,6 +75,21 @@
 .prose ol {
   margin: 0 0 1.15em;
   padding-left: 1.4em;
+}
+
+.prose .tag-pills {
+  margin: var(--space-6) 0 var(--space-3);
+  padding-left: 0;
+}
+
+.prose .tag-pills a {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink, var(--color-accent));
+  text-decoration: none;
+}
+
+.prose .tag-pills a::before {
+  content: '#';
 }
 
 .prose li::marker {

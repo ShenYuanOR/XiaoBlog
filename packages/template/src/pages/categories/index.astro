@@ -4,16 +4,19 @@ import { categoriesOf, publishedPosts } from '../../lib/posts';
 import { withBase } from '../../lib/base';
 
 const categories = categoriesOf(await publishedPosts());
+const max = Math.max(1, ...categories.map((item) => item.count));
+function weight(count: number): number {
+  return 1 + Math.min(1.4, count / max);
+}
 ---
 
 <PageLayout title="分类" page="categories">
-  <ul class="pills">
+  <div class="tag-cloud-page">
     {categories.map((item) => (
-      <li>
-        <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)}>
-          {item.name} {item.count}
-        </a>
-      </li>
+      <a href={withBase(`categories/${encodeURIComponent(item.name)}/`)} style={`--w:${weight(item.count)}`}>
+        {item.name}
+        <span>{item.count}</span>
+      </a>
     ))}
-  </ul>
+  </div>
 </PageLayout>

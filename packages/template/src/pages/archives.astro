@@ -15,9 +15,12 @@ for (const post of posts) {
 
 <PageLayout title="归档" page="archives">
   {[...years.entries()].map(([year, items]) => (
-    <section>
-      <h2 class="year">{year}</h2>
-      <ul class="archive">
+    <section class="archive-year" id={year}>
+      <h2 class="archive-year-label">
+        {year}
+        <span>{items.length} 篇</span>
+      </h2>
+      <ul class="archive-list">
         {items.map((post) => (
           <li>
             <time datetime={post.data.date}>{post.data.date.slice(5, 10)}</time>

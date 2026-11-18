@@ -236,6 +236,22 @@ export function categoriesOf(posts: PostEntry[]): { name: string; count: number 
   return [...counts.entries()].map(([name, count]) => ({ name, count }));
 }
 
+/** 侧栏「站点信息」与窄屏页脚共用的可计算数据；不含访问量这类没有数据源的数字。 */
+export function siteFacts(
+  posts: PostEntry[],
+  since: number,
+): { words: number; days: number; latest?: string } {
+  const start = Number(since) || new Date().getFullYear();
+  return {
+    words: posts.reduce((sum, post) => sum + post.body.replace(/\s+/g, '').length, 0),
+    days: Math.max(0, Math.floor((Date.now() - new Date(start, 0, 1).getTime()) / 86400000)),
+    latest: posts
+      .map((post) => (post.data.updated ?? post.data.date).slice(0, 10))
+      .sort()
+      .at(-1),
+  };
+}
+
 export function readingMinutes(text: string): number {
   const count = text.replace(/\s+/g, '').length;
   return Math.max(1, Math.round(count / 400));
