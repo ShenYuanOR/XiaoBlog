@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import type { ThemeManifest, ThemeOptionDef, ThemeOptionValue } from '../env';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
@@ -16,90 +17,37 @@ import {
   UiSlider,
   UiSpinner,
   UiSwitch,
+  UiTextarea,
 } from '../ui/index.ts';
 
 /**
- * 外观页：预设主题 + 令牌面板 + 本地实时预览。
+ * 外观页（D-99）：主题 / 主题配色 / 主题自定义项 三层。
  *
- * 说明：预设与令牌的取值表是 packages/template/src/lib/themes.ts 的镜像（Studio 渲染层不能直接
- * 引模板源码，也不能为此加 IPC），两边必须同步：改动模板预设时同步本文件的 PRESETS、advancedFields 与尺度表。
+ * 三层的数据都来自站点自己的 src/theme.json（主题声明）：主题信息、它提供的几套配色、
+ * 它开放的自定义项和默认值。这里不再镜像任何预设或尺寸表，换一个主题，页面自动跟着变。
  */
 
-type PresetId = 'midnight' | 'paper' | 'magazine' | 'terminal' | 'warm' | 'minimal';
-type AdvancedField =
-  | 'scale'
-  | 'lineHeight'
-  | 'density'
-  | 'radius'
-  | 'contentWidth'
-  | 'shadow'
-  | 'motion'
-  | 'breakpoints';
-type Scheme = 'auto' | 'light' | 'dark';
+type Mode = 'auto' | 'light' | 'dark';
 type SchemeName = 'light' | 'dark';
-type LegacyFontId = 'sans' | 'serif' | 'mono' | 'mono-heading' | 'custom';
-type ScaleId = 'compact' | 'normal' | 'spacious';
-type LineHeightId = 'tight' | 'normal' | 'loose';
-type DensityId = 'compact' | 'normal';
-type RadiusId = 'none' | 'sm' | 'md' | 'lg' | 'pill';
-type ContentWidthId = 'narrow' | 'prose' | 'wide' | 'full';
-type ShadowId = 'none' | 'soft' | 'strong';
+type Palette = Record<string, string>;
+type PaletteDef = ThemeManifest['palettes']['items'][number];
 
-interface Palette {
-  accent: string;
-  accentInk?: string;
-  accentSoft: string;
-  onAccent: string;
-  bg: string;
-  surface: string;
-  text: string;
-  text2: string;
-  text3: string;
-  line: string;
-  scrim: string;
-}
-
-interface PresetDef {
-  id: PresetId;
-  name: string;
-  summary: string;
-  colors: { light: Palette; dark: Palette };
-  font: LegacyFontId;
-  headingWeight: number;
-  scale: ScaleId;
-  lineHeight: LineHeightId;
-  density: DensityId;
-  radius: RadiusId;
-  contentWidth: ContentWidthId;
-  shadow: ShadowId;
-  motion: boolean;
-  advancedFields: AdvancedField[];
-}
-
-interface ThemeDraft {
-  preset: PresetId | null;
-  colorScheme: Scheme;
-  hue: number;
-  colors: { light: Partial<Palette>; dark: Partial<Palette> };
-  font: LegacyFontId;
-  fontStack: string;
-  scale: ScaleId;
-  lineHeight: LineHeightId;
-  density: DensityId;
-  radius: RadiusId;
-  contentWidth: ContentWidthId;
-  shadow: ShadowId;
-  motion: boolean;
-  breakpoints: BreakpointDraft[];
-}
-
-/** 断点：桌面（base）下按最大宽度生效，id 会进类名（x-<id>-pad-lg），建立后不建议改名。 */
 interface BreakpointDraft {
   id: string;
   label: string;
   maxWidth: number;
 }
 
+interface Draft {
+  palette: string | null;
+  mode: Mode;
+  hue: number;
+  colors: { light: Palette; dark: Palette };
+  options: Record<string, ThemeOptionValue>;
+  breakpoints: BreakpointDraft[];
+}
+
+/** 断点：桌面（base）下按最大宽度生效，id 会进类名（x-<id>-pad-lg），建立后不建议改名。 */
 const DEFAULT_BREAKPOINTS: BreakpointDraft[] = [
   { id: 'md', label: '平板', maxWidth: 1023 },
   { id: 'sm', label: '手机', maxWidth: 767 },
@@ -107,431 +55,83 @@ const DEFAULT_BREAKPOINTS: BreakpointDraft[] = [
 const BP_ID = /^[a-z][a-z0-9-]{1,16}$/;
 const MAX_BREAKPOINTS = 6;
 
-const FONT_STACKS: Record<Exclude<LegacyFontId, 'mono-heading'>, string> = {
-  sans: "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-  serif: "'Palatino Linotype', 'Songti SC', 'Noto Serif SC', Georgia, serif",
-  mono: "ui-monospace, 'Cascadia Code', 'SF Mono', 'JetBrains Mono', Consolas, monospace",
-  custom: '',
-};
-
-const SCALE_FACTOR: Record<ScaleId, number> = { compact: 0.9, normal: 1, spacious: 1.12 };
-const DENSITY_FACTOR: Record<DensityId, number> = { compact: 0.85, normal: 1 };
-
-const BASE_FONT_SIZES = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 16,
-  lg: 18,
-  xl: 20,
-  '2xl': 22,
-  '3xl': 30,
-  '3xlMobile': 26,
-  bodySm: 15,
-} as const;
-
-const BASE_SPACES = [4, 8, 12, 16, 24, 32, 48, 64] as const;
-
-const LINE_HEIGHTS: Record<LineHeightId, { body: number; heading: number }> = {
-  tight: { body: 1.6, heading: 1.25 },
-  normal: { body: 1.8, heading: 1.35 },
-  loose: { body: 2, heading: 1.5 },
-};
-
-const RADII: Record<
-  RadiusId,
-  { base: string; xs: string; sm: string; md: string; lg: string; pill: string }
-> = {
-  none: { base: '0px', xs: '0px', sm: '0px', md: '0px', lg: '0px', pill: '999px' },
-  sm: { base: '6px', xs: '3px', sm: '4px', md: '5px', lg: '6px', pill: '999px' },
-  md: { base: '12px', xs: '4px', sm: '6px', md: '8px', lg: '12px', pill: '999px' },
-  lg: { base: '20px', xs: '6px', sm: '10px', md: '14px', lg: '20px', pill: '999px' },
-  pill: { base: '999px', xs: '8px', sm: '12px', md: '16px', lg: '999px', pill: '999px' },
-};
-
-const SHADOWS: Record<ShadowId, { one: string; two: string }> = {
-  none: { one: 'none', two: 'none' },
-  soft: { one: '0 1px 2px rgb(0 0 0 / 6%)', two: '0 8px 24px rgb(0 0 0 / 8%)' },
-  strong: { one: '0 2px 4px rgb(0 0 0 / 14%)', two: '0 16px 40px rgb(0 0 0 / 20%)' },
-};
-
-const CONTENT_WIDTHS: Record<ContentWidthId, string> = {
-  narrow: '560px',
-  prose: '720px',
-  wide: '1200px',
-  full: '1fr',
-};
-
-const PRESETS: PresetDef[] = [
-  {
-    id: 'midnight',
-    name: '深夜',
-    summary: '默认。冷墨底配破晓金。',
-    colors: {
-      light: {
-        accent: '#d9a441',
-        accentInk: '#8d651c',
-        accentSoft: '#f2e9d9',
-        onAccent: '#11151c',
-        bg: '#f7f8fa',
-        surface: '#eef0f3',
-        text: '#1c2026',
-        text2: '#5a6270',
-        text3: '#8b92a0',
-        line: '#dfe3e8',
-        scrim: 'rgb(17 21 28 / 45%)',
-      },
-      dark: {
-        accent: '#d9a441',
-        accentInk: '#d9a441',
-        accentSoft: '#3d3424',
-        onAccent: '#11151c',
-        bg: '#11151c',
-        surface: '#161b24',
-        text: '#e8eaef',
-        text2: '#a7adb8',
-        text3: '#6b7280',
-        line: '#262c38',
-        scrim: 'rgb(17 21 28 / 62%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 600,
-    scale: 'normal',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'md',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: true,
-    advancedFields: ['scale', 'lineHeight', 'density', 'radius', 'contentWidth', 'shadow', 'motion', 'breakpoints'],
-  },
-  {
-    id: 'paper',
-    name: '纸感',
-    summary: '米白底配衬线，适合读长文。',
-    colors: {
-      light: {
-        accent: '#8a5a2b',
-        accentSoft: '#efe4d2',
-        onAccent: '#ffffff',
-        bg: '#f8f4ea',
-        surface: '#f1ebdd',
-        text: '#2a2620',
-        text2: '#5c564a',
-        text3: '#857e6f',
-        line: '#ded5c4',
-        scrim: 'rgb(42 38 32 / 40%)',
-      },
-      dark: {
-        accent: '#d6b07a',
-        accentSoft: '#2f2820',
-        onAccent: '#1b1915',
-        bg: '#1b1915',
-        surface: '#24201a',
-        text: '#e9e3d6',
-        text2: '#b3ab99',
-        text3: '#8b8473',
-        line: '#3a352b',
-        scrim: 'rgb(0 0 0 / 55%)',
-      },
-    },
-    font: 'serif',
-    headingWeight: 600,
-    scale: 'normal',
-    lineHeight: 'loose',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'narrow',
-    shadow: 'none',
-    motion: true,
-    advancedFields: ['scale', 'lineHeight', 'contentWidth'],
-  },
-  {
-    id: 'magazine',
-    name: '杂志',
-    summary: '宽留白、粗标题、大图优先。',
-    colors: {
-      light: {
-        accent: '#e11d48',
-        accentSoft: '#fde8ed',
-        onAccent: '#ffffff',
-        bg: '#ffffff',
-        surface: '#f4f4f5',
-        text: '#111114',
-        text2: '#52525b',
-        text3: '#86868f',
-        line: '#e4e4e7',
-        scrim: 'rgb(0 0 0 / 40%)',
-      },
-      dark: {
-        accent: '#fb7185',
-        accentSoft: '#2c1219',
-        onAccent: '#0a0a0b',
-        bg: '#0a0a0b',
-        surface: '#17171a',
-        text: '#f4f4f5',
-        text2: '#a1a1aa',
-        text3: '#71717a',
-        line: '#27272a',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 800,
-    scale: 'spacious',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'wide',
-    shadow: 'soft',
-    motion: true,
-    advancedFields: ['scale', 'contentWidth', 'shadow', 'motion'],
-  },
-  {
-    id: 'terminal',
-    name: '终端',
-    summary: '近黑底、等宽字体、绿色强调。',
-    colors: {
-      light: {
-        accent: '#0f7b3f',
-        accentSoft: '#dcf2e4',
-        onAccent: '#ffffff',
-        bg: '#f6f8f6',
-        surface: '#edf2ee',
-        text: '#10251a',
-        text2: '#3d5c4a',
-        text3: '#6b8574',
-        line: '#d3ded6',
-        scrim: 'rgb(16 37 26 / 40%)',
-      },
-      dark: {
-        accent: '#4ade80',
-        accentSoft: '#10251a',
-        onAccent: '#050706',
-        bg: '#050706',
-        surface: '#0c110e',
-        text: '#d6e7da',
-        text2: '#8fb39b',
-        text3: '#60806b',
-        line: '#1c2b21',
-        scrim: 'rgb(0 0 0 / 65%)',
-      },
-    },
-    font: 'mono',
-    headingWeight: 700,
-    scale: 'compact',
-    lineHeight: 'tight',
-    density: 'compact',
-    radius: 'none',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: false,
-    advancedFields: [],
-  },
-  {
-    id: 'warm',
-    name: '暖阳',
-    summary: '暖灰底配琥珀强调，柔和大圆角。',
-    colors: {
-      light: {
-        accent: '#b45309',
-        accentSoft: '#fbe8d3',
-        onAccent: '#ffffff',
-        bg: '#fbf7f2',
-        surface: '#f4ede3',
-        text: '#2b2520',
-        text2: '#6b5f52',
-        text3: '#948779',
-        line: '#e6dccd',
-        scrim: 'rgb(43 37 32 / 40%)',
-      },
-      dark: {
-        accent: '#f59e0b',
-        accentSoft: '#2e2113',
-        onAccent: '#171310',
-        bg: '#171310',
-        surface: '#201a15',
-        text: '#f0e7dc',
-        text2: '#b6a795',
-        text3: '#8a7c6b',
-        line: '#332a21',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 700,
-    scale: 'normal',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'lg',
-    contentWidth: 'prose',
-    shadow: 'soft',
-    motion: true,
-    advancedFields: ['radius', 'shadow', 'motion'],
-  },
-  {
-    id: 'minimal',
-    name: '极简',
-    summary: '纯黑白灰、细线、无阴影。',
-    colors: {
-      light: {
-        accent: '#111111',
-        accentSoft: '#f0f0f0',
-        onAccent: '#ffffff',
-        bg: '#ffffff',
-        surface: '#fafafa',
-        text: '#111111',
-        text2: '#555555',
-        text3: '#8a8a8a',
-        line: '#e8e8e8',
-        scrim: 'rgb(0 0 0 / 35%)',
-      },
-      dark: {
-        accent: '#ededed',
-        accentSoft: '#1f1f1f',
-        onAccent: '#0a0a0a',
-        bg: '#0a0a0a',
-        surface: '#141414',
-        text: '#ededed',
-        text2: '#a3a3a3',
-        text3: '#737373',
-        line: '#262626',
-        scrim: 'rgb(0 0 0 / 60%)',
-      },
-    },
-    font: 'sans',
-    headingWeight: 600,
-    scale: 'compact',
-    lineHeight: 'normal',
-    density: 'normal',
-    radius: 'sm',
-    contentWidth: 'prose',
-    shadow: 'none',
-    motion: false,
-    advancedFields: ['radius', 'contentWidth'],
-  },
+/** 旧版写在 theme 顶层的键：读的时候兼容，保存时迁移到 palette / mode / options 后删掉。 */
+const LEGACY_THEME_KEYS = [
+  'preset',
+  'colorScheme',
+  'font',
+  'fontStack',
+  'scale',
+  'lineHeight',
+  'density',
+  'radius',
+  'contentWidth',
+  'shadow',
+  'motion',
+  'headingWeight',
 ];
 
-const COLOR_VARS: Record<keyof Palette, string> = {
-  accent: '--pv-accent',
-  accentInk: '--pv-accent-ink',
-  accentSoft: '--pv-accent-soft',
-  onAccent: '--pv-on-accent',
-  bg: '--pv-bg',
-  surface: '--pv-surface',
-  text: '--pv-text',
-  text2: '--pv-text-2',
-  text3: '--pv-text-3',
-  line: '--pv-line',
-  scrim: '--pv-scrim',
-};
-
-const COLOR_KEYS = Object.keys(COLOR_VARS) as (keyof Palette)[];
-
-const SCALE_OPTIONS: { key: ScaleId; label: string }[] = [
-  { key: 'compact', label: '紧凑' },
-  { key: 'normal', label: '标准' },
-  { key: 'spacious', label: '宽松' },
-];
-
-const LINE_HEIGHT_OPTIONS: { key: LineHeightId; label: string }[] = [
-  { key: 'tight', label: '紧' },
-  { key: 'normal', label: '标准' },
-  { key: 'loose', label: '松' },
-];
-
-const DENSITY_OPTIONS: { key: DensityId; label: string }[] = [
-  { key: 'compact', label: '紧凑' },
-  { key: 'normal', label: '标准' },
-];
-
-const FONT_OPTIONS = [
-  { value: 'sans', label: '无衬线（系统）' },
-  { value: 'serif', label: '衬线' },
-  { value: 'mono', label: '等宽' },
-  { value: 'custom', label: '自定义字体栈' },
-];
-
-const SCHEME_OPTIONS = [
+const MODE_OPTIONS = [
   { value: 'auto', label: '跟随系统' },
   { value: 'light', label: '始终浅色' },
   { value: 'dark', label: '始终深色' },
 ];
 
-const RADIUS_OPTIONS = [
-  { value: 'none', label: '无圆角' },
-  { value: 'sm', label: '小（6px）' },
-  { value: 'md', label: '中（12px）' },
-  { value: 'lg', label: '大（20px）' },
-  { value: 'pill', label: '胶囊' },
+const COLOR_KEYS = [
+  'accent',
+  'accentInk',
+  'accentSoft',
+  'onAccent',
+  'bg',
+  'surface',
+  'text',
+  'text2',
+  'text3',
+  'line',
+  'scrim',
 ];
 
-const WIDTH_OPTIONS = [
-  { value: 'narrow', label: '窄（560px）' },
-  { value: 'prose', label: '正文（720px）' },
-  { value: 'wide', label: '宽（1200px）' },
-  { value: 'full', label: '通栏' },
-];
-
-const SHADOW_OPTIONS = [
-  { value: 'none', label: '无阴影' },
-  { value: 'soft', label: '柔和' },
-  { value: 'strong', label: '强烈' },
-];
-
-const session = useSession();
-
-const state = ref<'loading' | 'ready' | 'error'>('loading');
-const errorText = ref('');
-const saving = ref(false);
-const rejected = ref<string[]>([]);
-const rawConfig = ref<Record<string, unknown> | null>(null);
-const savedSnapshot = ref('');
-const loaded = ref(false);
-const previewScheme = ref<SchemeName>('light');
-
-const draft = reactive<ThemeDraft>({
-  preset: null,
-  colorScheme: 'auto',
-  hue: 250,
-  colors: { light: {}, dark: {} },
-  font: 'sans',
-  fontStack: '',
-  scale: 'normal',
-  lineHeight: 'normal',
-  density: 'normal',
-  radius: 'md',
-  contentWidth: 'prose',
-  shadow: 'none',
-  motion: true,
-  breakpoints: DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp })),
-});
-
-const REJECT_LABELS: Record<string, string> = {
+const FIXED_LABELS: Record<string, string> = {
   version: '配置版本号',
   'site.url': '站点地址',
   'site.base': '站点 base 路径',
   'site.lang': '站点语言',
   'site.title': '站点标题',
   'site.description': '站点简介',
+  'theme.id': '主题',
+  'theme.palette': '主题配色',
+  'theme.mode': '亮暗模式',
   'theme.hue': '色相',
-  'theme.preset': '预设主题',
-  'theme.scale': '字号刻度',
-  'theme.radius': '圆角',
-  'theme.contentWidth': '内容宽度',
+  'theme.colors': '颜色覆盖',
+  'theme.options': '主题自定义项',
   'theme.breakpoints': '响应式断点',
   'posts.pageSize': '每页篇数',
 };
 
+const session = useSession();
+
+const state = ref<'loading' | 'ready' | 'legacy' | 'error'>('loading');
+const errorText = ref('');
+const saving = ref(false);
+const rejected = ref<string[]>([]);
+const rawConfig = ref<Record<string, unknown> | null>(null);
+const manifest = ref<ThemeManifest | null>(null);
+const configThemeId = ref('');
+const savedSnapshot = ref('');
+const loaded = ref(false);
+const previewScheme = ref<SchemeName>('light');
+
+const draft = reactive<Draft>({
+  palette: null,
+  mode: 'auto',
+  hue: 250,
+  colors: { light: {}, dark: {} },
+  options: {},
+  breakpoints: DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp })),
+});
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
-    ? (value as T)
-    : fallback;
 }
 
 function pickNumber(value: unknown, fallback: number, min: number, max: number): number {
@@ -540,13 +140,15 @@ function pickNumber(value: unknown, fallback: number, min: number, max: number):
     : fallback;
 }
 
-function presetOf(id: unknown): PresetDef | null {
-  if (typeof id !== 'string') return null;
-  return PRESETS.find((preset) => preset.id === id) ?? null;
+function rejectLabel(field: string): string {
+  if (FIXED_LABELS[field]) return FIXED_LABELS[field];
+  const key = field.startsWith('theme.options.') ? field.slice('theme.options.'.length) : '';
+  const def = manifest.value?.options.find((item) => item.key === key);
+  return def ? `主题自定义项「${def.label}」` : field;
 }
 
-function normalizeColors(value: unknown): { light: Partial<Palette>; dark: Partial<Palette> } {
-  const out: { light: Partial<Palette>; dark: Partial<Palette> } = { light: {}, dark: {} };
+function normalizeColors(value: unknown): { light: Palette; dark: Palette } {
+  const out: { light: Palette; dark: Palette } = { light: {}, dark: {} };
   if (!isRecord(value)) return out;
   for (const scheme of ['light', 'dark'] as const) {
     const source = value[scheme];
@@ -559,46 +161,38 @@ function normalizeColors(value: unknown): { light: Partial<Palette>; dark: Parti
   return out;
 }
 
-/** 与 packages/template 的 resolveTheme 保持一致：显式字段优先，缺省取预设，再无则走 1.x 默认。 */
-function normalizeTheme(value: unknown): ThemeDraft {
-  const theme = isRecord(value) ? value : {};
-  const preset = presetOf(theme.preset);
-  return {
-    preset: preset ? preset.id : null,
-    colorScheme: pickEnum(theme.colorScheme, ['auto', 'light', 'dark'] as const, 'auto'),
-    hue: pickNumber(theme.hue, 250, 0, 360),
-    colors: normalizeColors(theme.colors),
-    font: pickEnum(
-      theme.font,
-      ['sans', 'serif', 'mono', 'mono-heading', 'custom'] as const,
-      preset?.font ?? 'sans',
-    ),
-    fontStack: typeof theme.fontStack === 'string' ? theme.fontStack : '',
-    scale: pickEnum(
-      theme.scale,
-      ['compact', 'normal', 'spacious'] as const,
-      preset?.scale ?? 'normal',
-    ),
-    lineHeight: pickEnum(
-      theme.lineHeight,
-      ['tight', 'normal', 'loose'] as const,
-      preset?.lineHeight ?? 'normal',
-    ),
-    density: pickEnum(theme.density, ['compact', 'normal'] as const, preset?.density ?? 'normal'),
-    radius: pickEnum(
-      theme.radius,
-      ['none', 'sm', 'md', 'lg', 'pill'] as const,
-      preset?.radius ?? 'md',
-    ),
-    contentWidth: pickEnum(
-      theme.contentWidth,
-      ['narrow', 'prose', 'wide', 'full'] as const,
-      preset?.contentWidth ?? 'prose',
-    ),
-    shadow: pickEnum(theme.shadow, ['none', 'soft', 'strong'] as const, preset?.shadow ?? 'none'),
-    motion: typeof theme.motion === 'boolean' ? theme.motion : (preset?.motion ?? true),
-    breakpoints: normalizeBreakpoints(theme.breakpoints),
-  };
+/** 按主题声明校验一个值，不合法回默认值（与模板 resolveOptions 同一规则）。 */
+function optionValue(def: ThemeOptionDef, value: unknown): ThemeOptionValue {
+  const allowed = def.choices?.map((choice) => choice.value);
+  switch (def.type) {
+    case 'switch':
+      return typeof value === 'boolean' ? value : def.default;
+    case 'checks':
+      return Array.isArray(value)
+        ? value.filter(
+            (item): item is string =>
+              typeof item === 'string' && (!allowed || allowed.includes(item)),
+          )
+        : def.default;
+    case 'select':
+    case 'segmented':
+      return typeof value === 'string' && (!allowed || allowed.includes(value))
+        ? value
+        : def.default;
+    default:
+      return typeof value === 'string' ? value : def.default;
+  }
+}
+
+function cloneValue(value: ThemeOptionValue): ThemeOptionValue {
+  return Array.isArray(value) ? [...value] : value;
+}
+
+function sameValue(a: ThemeOptionValue | undefined, b: ThemeOptionValue): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+  }
+  return a === b;
 }
 
 /** 断点表：非法/重复/超量时回退默认；按 maxWidth 升序返回。 */
@@ -620,52 +214,220 @@ function normalizeBreakpoints(value: unknown): BreakpointDraft[] {
     rows.push({ id, label: label || id, maxWidth });
   }
   rows.sort((a, b) => a.maxWidth - b.maxWidth);
-  return rows.length > 0 ? rows.slice(0, MAX_BREAKPOINTS) : DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp }));
+  return rows.length > 0
+    ? rows.slice(0, MAX_BREAKPOINTS)
+    : DEFAULT_BREAKPOINTS.map((bp) => ({ ...bp }));
 }
 
-function copyTheme(target: ThemeDraft, source: ThemeDraft): void {
-  target.preset = source.preset;
-  target.colorScheme = source.colorScheme;
-  target.hue = source.hue;
-  target.colors = {
-    light: { ...source.colors.light },
-    dark: { ...source.colors.dark },
+/** 新旧两种 theme 结构都读成同一份草稿：新键优先，其次旧顶层键，最后是主题声明的默认值。 */
+function normalize(config: Record<string, unknown>, theme: ThemeManifest): Draft {
+  const raw = isRecord(config.theme) ? config.theme : {};
+  const site = isRecord(config.site) ? config.site : {};
+  const options = isRecord(raw.options) ? raw.options : {};
+  const paletteId =
+    typeof raw.palette === 'string' ? raw.palette : typeof raw.preset === 'string' ? raw.preset : '';
+  const mode = raw.mode ?? raw.colorScheme;
+  const resolved: Record<string, ThemeOptionValue> = {};
+  for (const def of theme.options) {
+    const legacy = def.key === 'announcement' ? site.announcement : raw[def.key];
+    resolved[def.key] = cloneValue(optionValue(def, options[def.key] ?? legacy));
+  }
+  return {
+    palette: theme.palettes.items.some((item) => item.id === paletteId) ? paletteId : null,
+    mode: mode === 'light' || mode === 'dark' ? mode : 'auto',
+    hue: pickNumber(raw.hue, 250, 0, 360),
+    colors: normalizeColors(raw.colors),
+    options: resolved,
+    breakpoints: normalizeBreakpoints(raw.breakpoints),
   };
-  target.font = source.font;
-  target.fontStack = source.fontStack;
-  target.scale = source.scale;
-  target.lineHeight = source.lineHeight;
-  target.density = source.density;
-  target.radius = source.radius;
-  target.contentWidth = source.contentWidth;
-  target.shadow = source.shadow;
-  target.motion = source.motion;
+}
+
+function copyDraft(target: Draft, source: Draft): void {
+  target.palette = source.palette;
+  target.mode = source.mode;
+  target.hue = source.hue;
+  target.colors = { light: { ...source.colors.light }, dark: { ...source.colors.dark } };
+  target.options = Object.fromEntries(
+    Object.entries(source.options).map(([key, value]) => [key, cloneValue(value)]),
+  );
   target.breakpoints = source.breakpoints.map((bp) => ({ ...bp }));
 }
 
-function snapshotOf(value: ThemeDraft): string {
+function snapshotOf(value: Draft): string {
+  const options = Object.keys(value.options)
+    .sort()
+    .map((key) => [key, value.options[key]]);
   return JSON.stringify({
-    preset: value.preset,
-    colorScheme: value.colorScheme,
+    palette: value.palette,
+    mode: value.mode,
     hue: value.hue,
-    colors: {
-      light: { ...value.colors.light },
-      dark: { ...value.colors.dark },
-    },
-    font: value.font,
-    fontStack: value.fontStack,
-    scale: value.scale,
-    lineHeight: value.lineHeight,
-    density: value.density,
-    radius: value.radius,
-    contentWidth: value.contentWidth,
-    shadow: value.shadow,
-    motion: value.motion,
+    colors: value.colors,
+    options,
     breakpoints: value.breakpoints.map((bp) => `${bp.id}:${bp.label}:${bp.maxWidth}`),
   });
 }
 
 const dirty = computed(() => loaded.value && snapshotOf(draft) !== savedSnapshot.value);
+
+/* ---------- 主题 ---------- */
+
+const themeMismatch = computed(
+  () => Boolean(configThemeId.value) && configThemeId.value !== manifest.value?.id,
+);
+
+/* ---------- 主题配色 ---------- */
+
+const palettes = computed<PaletteDef[]>(() => manifest.value?.palettes.items ?? []);
+const activePalette = computed<PaletteDef | null>(
+  () => palettes.value.find((item) => item.id === draft.palette) ?? null,
+);
+
+/** 没选配色时的 1.x 做法：整套颜色由色相派生（镜像 base.css 的 oklch 兜底公式）。 */
+function huePalette(hue: number, scheme: SchemeName): Palette {
+  if (scheme === 'dark') {
+    return {
+      accent: `oklch(0.75 0.13 ${hue})`,
+      accentSoft: `oklch(0.28 0.05 ${hue})`,
+      onAccent: '#0d1017',
+      bg: `oklch(0.17 0.01 ${hue})`,
+      surface: `oklch(0.21 0.012 ${hue})`,
+      text: `oklch(0.9 0.01 ${hue})`,
+      text2: `oklch(0.7 0.015 ${hue})`,
+      text3: `oklch(0.78 0.012 ${hue})`,
+      line: `oklch(0.3 0.012 ${hue})`,
+    };
+  }
+  return {
+    accent: `oklch(0.55 0.15 ${hue})`,
+    accentSoft: `oklch(0.95 0.03 ${hue})`,
+    onAccent: '#ffffff',
+    bg: `oklch(0.99 0.003 ${hue})`,
+    surface: `oklch(0.97 0.006 ${hue})`,
+    text: `oklch(0.28 0.02 ${hue})`,
+    text2: `oklch(0.5 0.02 ${hue})`,
+    text3: `oklch(0.48 0.015 ${hue})`,
+    line: `oklch(0.91 0.01 ${hue})`,
+  };
+}
+
+function swatches(palette: { light: Palette; dark: Palette }): { light: string[]; dark: string[] } {
+  const pick = (p: Palette): string[] => [p.bg ?? '', p.surface ?? '', p.accent ?? ''];
+  return { light: pick(palette.light), dark: pick(palette.dark) };
+}
+
+const hueSwatches = computed(() =>
+  swatches({ light: huePalette(draft.hue, 'light'), dark: huePalette(draft.hue, 'dark') }),
+);
+
+function choosePalette(id: string | null): void {
+  draft.palette = id;
+}
+
+const hue = computed({
+  get: () => draft.hue,
+  set: (value: number) => {
+    draft.hue = value;
+  },
+});
+
+const mode = computed({
+  get: () => draft.mode,
+  set: (value: string | number) => {
+    draft.mode = value === 'light' || value === 'dark' ? value : 'auto';
+  },
+});
+
+const previewSchemeModel = computed({
+  get: () => previewScheme.value,
+  set: (value: string) => {
+    previewScheme.value = value === 'dark' ? 'dark' : 'light';
+  },
+});
+
+/** 右侧小样只演示配色：颜色是主题无关的，字体和尺寸由主题自己实现，保存后看站点预览。 */
+const previewVars = computed<Record<string, string>>(() => {
+  const scheme = previewScheme.value;
+  const base = activePalette.value ? activePalette.value[scheme] : huePalette(draft.hue, scheme);
+  const palette: Palette = { ...base, ...draft.colors[scheme] };
+  return {
+    '--pv-bg': palette.bg ?? '',
+    '--pv-surface': palette.surface ?? '',
+    '--pv-text': palette.text ?? '',
+    '--pv-text-2': palette.text2 ?? '',
+    '--pv-text-3': palette.text3 ?? '',
+    '--pv-line': palette.line ?? '',
+    '--pv-accent': palette.accent ?? '',
+    '--pv-accent-ink': palette.accentInk ?? palette.accent ?? '',
+    '--pv-accent-soft': palette.accentSoft ?? '',
+    '--pv-on-accent': palette.onAccent ?? '',
+  };
+});
+
+/* ---------- 主题自定义项 ---------- */
+
+const optionGroups = computed(() => {
+  const groups: { name: string; items: ThemeOptionDef[] }[] = [];
+  for (const def of manifest.value?.options ?? []) {
+    const name = def.group ?? '其他';
+    const group = groups.find((item) => item.name === name);
+    if (group) group.items.push(def);
+    else groups.push({ name, items: [def] });
+  }
+  return groups;
+});
+
+function visible(def: ThemeOptionDef): boolean {
+  return !def.when || draft.options[def.when.key] === def.when.value;
+}
+
+function textOf(key: string): string {
+  const value = draft.options[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function boolOf(key: string): boolean {
+  return draft.options[key] === true;
+}
+
+function setOption(key: string, value: ThemeOptionValue): void {
+  draft.options[key] = value;
+}
+
+function selectItems(def: ThemeOptionDef): { value: string; label: string }[] {
+  return def.choices ?? [];
+}
+
+function segmentItems(def: ThemeOptionDef): { key: string; label: string }[] {
+  return (def.choices ?? []).map((choice) => ({ key: choice.value, label: choice.label }));
+}
+
+function checked(key: string, value: string): boolean {
+  const current = draft.options[key];
+  return Array.isArray(current) && current.includes(value);
+}
+
+/** 多选按声明顺序存，避免同样的选择因为点击顺序不同被当成改动。 */
+function toggleCheck(def: ThemeOptionDef, value: string): void {
+  const current = draft.options[def.key];
+  const set = new Set(Array.isArray(current) ? current : []);
+  if (set.has(value)) set.delete(value);
+  else set.add(value);
+  draft.options[def.key] = (def.choices ?? [])
+    .map((choice) => choice.value)
+    .filter((item) => set.has(item));
+}
+
+const customizedCount = computed(
+  () =>
+    (manifest.value?.options ?? []).filter((def) => !sameValue(draft.options[def.key], def.default))
+      .length,
+);
+
+function resetOptions(): void {
+  for (const def of manifest.value?.options ?? []) draft.options[def.key] = cloneValue(def.default);
+}
+
+/* ---------- 断点 ---------- */
 
 /** 已保存过的断点 id 不允许改（类名已经写进内容）；新加的、还没保存的可以改。 */
 const lockedBpIds = ref<string[]>([]);
@@ -727,305 +489,40 @@ function sortBreakpoints(): void {
   draft.breakpoints.sort((a, b) => a.maxWidth - b.maxWidth);
 }
 
-const activePreset = computed<PresetDef | null>(() =>
-  draft.preset ? (presetOf(draft.preset) ?? null) : null,
-);
-
-const ALL_ADVANCED: AdvancedField[] = [
-  'scale',
-  'lineHeight',
-  'density',
-  'radius',
-  'contentWidth',
-  'shadow',
-  'motion',
-  'breakpoints',
-];
-
-function allows(field: AdvancedField): boolean {
-  if (!activePreset.value) return true;
-  return activePreset.value.advancedFields.includes(field);
-}
-
-const advancedTokenOpen = computed(() =>
-  ALL_ADVANCED.some((field) => field !== 'breakpoints' && allows(field)),
-);
-
-const fontOptions = computed(() =>
-  draft.font === 'mono-heading'
-    ? [...FONT_OPTIONS, { value: 'mono-heading', label: '等宽标题（旧配置）' }]
-    : FONT_OPTIONS,
-);
-
-const hueNote = computed(() =>
-  activePreset.value
-    ? '拖动色相会把色板切到「按色相派生」的自定义模式，不再使用预设色板。'
-    : '当前是自定义色板：整套颜色由色相派生（与 1.x 的 hue 行为一致）。',
-);
-
-const paletteBadges = computed(() => {
-  const preset = activePreset.value;
-  const scheme = previewScheme.value;
-  const palette = preset ? preset.colors[scheme] : huePalette(draft.hue, scheme);
-  return [
-    { label: '背景', value: palette.bg },
-    { label: '表面', value: palette.surface },
-    { label: '强调', value: palette.accent },
-    { label: '正文', value: palette.text },
-  ];
-});
-
-const tokenRows = computed(() => {
-  const vars = previewVars.value;
-  return [
-    { name: '--color-accent', value: vars['--pv-accent'] ?? '' },
-    { name: '--radius', value: vars['--pv-radius-lg'] ?? '' },
-    { name: '--space-4', value: vars['--pv-space-4'] ?? '' },
-    { name: '--font-size-body', value: vars['--pv-fs-md'] ?? '' },
-    { name: '--shadow-1', value: vars['--pv-shadow-1'] ?? '' },
-  ];
-});
-
-/** 1.x 的无预设模式：整套色板由 --hue 派生（镜像 base.css 的 oklch 公式）。 */
-function huePalette(hue: number, scheme: SchemeName): Palette {
-  if (scheme === 'dark') {
-    return {
-      accent: `oklch(0.75 0.13 ${hue})`,
-      accentSoft: `oklch(0.28 0.05 ${hue})`,
-      onAccent: '#0d1017',
-      bg: `oklch(0.17 0.01 ${hue})`,
-      surface: `oklch(0.21 0.012 ${hue})`,
-      text: `oklch(0.9 0.01 ${hue})`,
-      text2: `oklch(0.7 0.015 ${hue})`,
-      text3: `oklch(0.78 0.012 ${hue})`,
-      line: `oklch(0.3 0.012 ${hue})`,
-      scrim: 'rgb(0 0 0 / 60%)',
-    };
-  }
-  return {
-    accent: `oklch(0.55 0.15 ${hue})`,
-    accentSoft: `oklch(0.95 0.03 ${hue})`,
-    onAccent: '#ffffff',
-    bg: `oklch(0.99 0.003 ${hue})`,
-    surface: `oklch(0.97 0.006 ${hue})`,
-    text: `oklch(0.28 0.02 ${hue})`,
-    text2: `oklch(0.5 0.02 ${hue})`,
-    text3: `oklch(0.48 0.015 ${hue})`,
-    line: `oklch(0.91 0.01 ${hue})`,
-    scrim: 'rgb(0 0 0 / 40%)',
-  };
-}
-
-function px(value: number): string {
-  return `${Math.round(value * 10) / 10}px`;
-}
-
-/** 本地计算预览用的 CSS 变量，不写盘、不起 dev server。 */
-const previewVars = computed<Record<string, string>>(() => {
-  const scheme = previewScheme.value;
-  const preset = activePreset.value;
-  const base = preset ? preset.colors[scheme] : huePalette(draft.hue, scheme);
-  const palette: Palette = { ...base, ...draft.colors[scheme] };
-  const scaleFactor = SCALE_FACTOR[draft.scale];
-  const spaceFactor = scaleFactor * DENSITY_FACTOR[draft.density];
-  const radius = RADII[draft.radius];
-  const shadow = SHADOWS[draft.shadow];
-  const lineHeight = LINE_HEIGHTS[draft.lineHeight];
-  const customStack = draft.fontStack.trim();
-  const fontBody =
-    customStack ||
-    FONT_STACKS[draft.font === 'mono-heading' ? 'sans' : draft.font] ||
-    FONT_STACKS.sans;
-  const fontHeading =
-    draft.font === 'mono' || draft.font === 'mono-heading' ? FONT_STACKS.mono : fontBody;
-
-  const vars: Record<string, string> = {};
-  for (const key of COLOR_KEYS) {
-    const value = palette[key];
-    if (value) vars[COLOR_VARS[key]] = value;
-  }
-  vars['--pv-font-body'] = fontBody;
-  vars['--pv-font-heading'] = fontHeading;
-  vars['--pv-font-mono'] = FONT_STACKS.mono;
-  vars['--pv-weight-heading'] = String(preset?.headingWeight ?? 600);
-  vars['--pv-fs-xs'] = px(BASE_FONT_SIZES.xs * scaleFactor);
-  vars['--pv-fs-sm'] = px(BASE_FONT_SIZES.sm * scaleFactor);
-  vars['--pv-fs-base'] = px(BASE_FONT_SIZES.base * scaleFactor);
-  vars['--pv-fs-md'] = px(BASE_FONT_SIZES.md * scaleFactor);
-  vars['--pv-fs-lg'] = px(BASE_FONT_SIZES.lg * scaleFactor);
-  vars['--pv-fs-xl'] = px(BASE_FONT_SIZES.xl * scaleFactor);
-  vars['--pv-fs-2xl'] = px(BASE_FONT_SIZES['2xl'] * scaleFactor);
-  vars['--pv-fs-3xl'] = px(BASE_FONT_SIZES['3xl'] * scaleFactor);
-  vars['--pv-fs-body'] = px(BASE_FONT_SIZES.md * scaleFactor);
-  BASE_SPACES.forEach((value, index) => {
-    vars[`--pv-space-${index + 1}`] = px(value * spaceFactor);
-  });
-  vars['--pv-radius-lg'] = radius.lg;
-  vars['--pv-radius-md'] = radius.md;
-  vars['--pv-radius-sm'] = radius.sm;
-  vars['--pv-radius-pill'] = radius.pill;
-  vars['--pv-shadow-1'] = shadow.one;
-  vars['--pv-shadow-2'] = shadow.two;
-  vars['--pv-lh-body'] = String(lineHeight.body);
-  vars['--pv-lh-heading'] = String(lineHeight.heading);
-  vars['--pv-w-content'] =
-    draft.contentWidth === 'full' ? '100%' : CONTENT_WIDTHS[draft.contentWidth];
-  vars['--pv-dur'] = draft.motion ? '150ms' : '0ms';
-  return vars;
-});
-
-const hue = computed({
-  get: () => draft.hue,
-  set: (value: number) => {
-    draft.hue = value;
-    // 预设色板不受色相影响，拖动色相即切到「按色相派生」的自定义模式。
-    draft.preset = null;
-  },
-});
-
-const colorScheme = computed({
-  get: () => draft.colorScheme,
-  set: (value: string | number) => {
-    draft.colorScheme = pickEnum(value, ['auto', 'light', 'dark'] as const, 'auto');
-  },
-});
-
-const font = computed({
-  get: () => draft.font,
-  set: (value: string | number) => {
-    draft.font = pickEnum(
-      value,
-      ['sans', 'serif', 'mono', 'mono-heading', 'custom'] as const,
-      'sans',
-    );
-  },
-});
-
-const scale = computed({
-  get: () => draft.scale,
-  set: (value: string) => {
-    draft.scale = pickEnum(value, ['compact', 'normal', 'spacious'] as const, 'normal');
-  },
-});
-
-const lineHeight = computed({
-  get: () => draft.lineHeight,
-  set: (value: string) => {
-    draft.lineHeight = pickEnum(value, ['tight', 'normal', 'loose'] as const, 'normal');
-  },
-});
-
-const density = computed({
-  get: () => draft.density,
-  set: (value: string) => {
-    draft.density = pickEnum(value, ['compact', 'normal'] as const, 'normal');
-  },
-});
-
-const radius = computed({
-  get: () => draft.radius,
-  set: (value: string | number) => {
-    draft.radius = pickEnum(value, ['none', 'sm', 'md', 'lg', 'pill'] as const, 'md');
-  },
-});
-
-const contentWidth = computed({
-  get: () => draft.contentWidth,
-  set: (value: string | number) => {
-    draft.contentWidth = pickEnum(
-      value,
-      ['narrow', 'prose', 'wide', 'full'] as const,
-      'prose',
-    );
-  },
-});
-
-const shadow = computed({
-  get: () => draft.shadow,
-  set: (value: string | number) => {
-    draft.shadow = pickEnum(value, ['none', 'soft', 'strong'] as const, 'none');
-  },
-});
-
-const motion = computed({
-  get: () => draft.motion,
-  set: (value: boolean) => {
-    draft.motion = value;
-  },
-});
-
-const previewSchemeModel = computed({
-  get: () => previewScheme.value,
-  set: (value: string) => {
-    previewScheme.value = value === 'dark' ? 'dark' : 'light';
-  },
-});
-
-const fontStackVisible = computed(() => draft.font === 'custom' || Boolean(draft.fontStack.trim()));
-
-function applyPreset(preset: PresetDef): void {
-  draft.preset = preset.id;
-  draft.font = preset.font;
-  draft.fontStack = '';
-  draft.colors = { light: {}, dark: {} };
-  draft.scale = preset.scale;
-  draft.lineHeight = preset.lineHeight;
-  draft.density = preset.density;
-  draft.radius = preset.radius;
-  draft.contentWidth = preset.contentWidth;
-  draft.shadow = preset.shadow;
-  draft.motion = preset.motion;
-  if (!preset.advancedFields.includes('breakpoints')) resetBreakpoints();
-  void save();
-}
-
-function applyDefaultPreset(): void {
-  const preset = presetOf('midnight');
-  if (preset) applyPreset(preset);
-}
-
-function presetSwatches(preset: PresetDef): { light: string[]; dark: string[] } {
-  return {
-    light: [preset.colors.light.bg, preset.colors.light.surface, preset.colors.light.accent],
-    dark: [preset.colors.dark.bg, preset.colors.dark.surface, preset.colors.dark.accent],
-  };
-}
+/* ---------- 读写 ---------- */
 
 function resetDraft(): void {
-  if (!savedSnapshot.value) return;
-  const snapshot = JSON.parse(savedSnapshot.value) as ThemeDraft;
-  copyTheme(draft, snapshot);
+  if (!savedSnapshot.value || !manifest.value || !rawConfig.value) return;
+  copyDraft(draft, normalize(rawConfig.value, manifest.value));
   rejected.value = [];
   session.setSaveState('saved');
 }
 
-/** 组新的完整配置：只覆盖 theme 里本页负责的字段，其余原样保留（未知字段、seo、posts…）。 */
+/**
+ * 组新的完整配置：只改 theme 段（以及迁走 site.announcement），其余字段原样保留。
+ * 自定义项只写与主题默认值不同的那些，主题以后调整默认值时站点能跟着变。
+ */
 function buildConfig(): Record<string, unknown> | null {
-  if (!rawConfig.value) return null;
+  if (!rawConfig.value || !manifest.value) return null;
   const next: Record<string, unknown> = { ...rawConfig.value };
   const theme: Record<string, unknown> = isRecord(next.theme) ? { ...next.theme } : {};
-  if (draft.preset) theme.preset = draft.preset;
-  else delete theme.preset;
-  theme.colorScheme = draft.colorScheme;
+  for (const key of LEGACY_THEME_KEYS) delete theme[key];
+  theme.id = manifest.value.id;
+  if (draft.palette) theme.palette = draft.palette;
+  else delete theme.palette;
+  theme.mode = draft.mode;
   theme.hue = draft.hue;
   if (Object.keys(draft.colors.light).length || Object.keys(draft.colors.dark).length) {
-    theme.colors = {
-      light: { ...draft.colors.light },
-      dark: { ...draft.colors.dark },
-    };
+    theme.colors = { light: { ...draft.colors.light }, dark: { ...draft.colors.dark } };
   } else {
     delete theme.colors;
   }
-  theme.font = draft.font;
-  if (draft.fontStack.trim()) theme.fontStack = draft.fontStack.trim();
-  else delete theme.fontStack;
-  theme.scale = draft.scale;
-  theme.lineHeight = draft.lineHeight;
-  theme.density = draft.density;
-  theme.radius = draft.radius;
-  theme.contentWidth = draft.contentWidth;
-  theme.shadow = draft.shadow;
-  theme.motion = draft.motion;
+  const options: Record<string, ThemeOptionValue> = {};
+  for (const def of manifest.value.options) {
+    const value = draft.options[def.key];
+    if (value !== undefined && !sameValue(value, def.default)) options[def.key] = cloneValue(value);
+  }
+  theme.options = options;
   const breakpoints = draft.breakpoints.map((bp) => ({
     id: bp.id,
     label: bp.label.trim() || bp.id,
@@ -1040,6 +537,11 @@ function buildConfig(): Record<string, unknown> | null {
   if (sameAsDefault) delete theme.breakpoints;
   else theme.breakpoints = breakpoints;
   next.theme = theme;
+  if (isRecord(next.site) && 'announcement' in next.site) {
+    const site = { ...next.site };
+    delete site.announcement;
+    next.site = site;
+  }
   return next;
 }
 
@@ -1051,26 +553,38 @@ async function load(): Promise<void> {
   state.value = 'loading';
   errorText.value = '';
   rejected.value = [];
-  const result = await window.xiao.settings.read(session.siteDir);
-  if (!result.ok) {
+  loaded.value = false;
+  const [configResult, themeResult] = await Promise.all([
+    window.xiao.settings.read(session.siteDir),
+    window.xiao.theme.read(session.siteDir),
+  ]);
+  session.setSaveState('saved');
+  if (!configResult.ok) {
     state.value = 'error';
-    errorText.value = result.message;
-    loaded.value = false;
-    session.setSaveState('saved');
+    errorText.value = configResult.message;
     return;
   }
-  const config = isRecord(result.data) ? result.data : {};
+  if (!themeResult.ok) {
+    state.value = 'error';
+    errorText.value = themeResult.message;
+    return;
+  }
+  if (!themeResult.data) {
+    state.value = 'legacy';
+    return;
+  }
+  const config = isRecord(configResult.data) ? configResult.data : {};
+  const theme = themeResult.data;
   rawConfig.value = config;
-  const normalized = normalizeTheme(config.theme);
-  copyTheme(draft, normalized);
-  lockedBpIds.value = normalized.breakpoints.filter((bp) =>
-    DEFAULT_BREAKPOINTS.some((item) => item.id === bp.id),
-  ).map((bp) => bp.id);
+  manifest.value = theme;
+  configThemeId.value =
+    isRecord(config.theme) && typeof config.theme.id === 'string' ? config.theme.id : '';
+  const normalized = normalize(config, theme);
+  copyDraft(draft, normalized);
   lockedBpIds.value = normalized.breakpoints.map((bp) => bp.id);
   savedSnapshot.value = snapshotOf(normalized);
-  previewScheme.value = normalized.colorScheme === 'dark' ? 'dark' : 'light';
+  previewScheme.value = normalized.mode === 'dark' ? 'dark' : 'light';
   loaded.value = true;
-  session.setSaveState('saved');
   state.value = 'ready';
 }
 
@@ -1082,7 +596,7 @@ async function save(): Promise<void> {
   }
   const next = buildConfig();
   if (!next) return;
-  // 写盘期间用户可能继续改令牌；用开始写盘时的快照，避免把后续改动误标成已保存。
+  // 写盘期间用户可能继续改；用开始写盘时的快照，避免把后续改动误标成已保存。
   const snapshotAtSave = snapshotOf(draft);
   saving.value = true;
   rejected.value = [];
@@ -1108,11 +622,12 @@ async function save(): Promise<void> {
   if (result.data.length > 0) {
     rejected.value = result.data;
     session.setSaveState('dirty');
-    const labels = result.data.map((item) => REJECT_LABELS[item] ?? item).join('、');
+    const labels = result.data.map(rejectLabel).join('、');
     notify(`没有写入：${labels}。检查这些字段后重试。`, 'error', 'appearance-save');
     return;
   }
   rawConfig.value = next;
+  configThemeId.value = manifest.value?.id ?? '';
   savedSnapshot.value = snapshotAtSave;
   session.setSaveState(dirty.value ? 'dirty' : 'saved');
   notify('已写入。预览会重新载入当前页。', 'info', 'appearance-save');
@@ -1149,7 +664,7 @@ watch(dirty, (value) => {
 });
 
 watch(
-  () => draft.colorScheme,
+  () => draft.mode,
   (value) => {
     if (value === 'dark' || value === 'light') previewScheme.value = value;
   },
@@ -1175,21 +690,32 @@ onBeforeUnmount(() => {
     <UiEmpty
       v-if="!session.siteDir"
       title="先打开一个站点"
-      description="外观属于某个站点的 xiao.config.json；打开站点后就能在这里换预设、调令牌。"
+      description="外观属于某个站点；打开站点后就能在这里选主题配色、调主题自定义项。"
       :icon="icons.appearance"
     />
 
     <div v-else-if="state === 'loading'" class="state" role="status">
       <UiSpinner :size="18" label="读取配置" />
-      <span>正在读取站点配置…</span>
+      <span>正在读取站点配置和主题声明…</span>
     </div>
 
     <UiEmpty
+      v-else-if="state === 'legacy'"
+      title="这个站点的模板没有主题声明"
+      description="站点里找不到 src/theme.json，说明它是用旧版模板建的，外观页没法知道它提供哪些配色和自定义项。新建的站点自带这个文件；旧站点可以从新模板复制 src/theme.json 和 src/lib/config.ts 过来。"
+      :icon="icons.alert"
+    >
+      <template #action>
+        <UiButton size="sm" @click="load">重新读取</UiButton>
+      </template>
+    </UiEmpty>
+
+    <UiEmpty
       v-else-if="state === 'error'"
-      title="读不到站点配置"
+      title="读不到站点外观"
       :description="
         errorText
-          ? `发生了什么：${errorText}。怎么办：确认站点文件夹里有 xiao.config.json，或从欢迎页重新打开站点。`
+          ? `发生了什么：${errorText}。怎么办：检查站点里的 xiao.config.json 和 src/theme.json，或从欢迎页重新打开站点。`
           : '发生了什么：站点目录为空。怎么办：从欢迎页重新打开站点。'
       "
       :icon="icons.alert"
@@ -1199,12 +725,14 @@ onBeforeUnmount(() => {
       </template>
     </UiEmpty>
 
-    <div v-else class="appearance-body">
+    <div v-else-if="manifest" class="appearance-body">
       <div class="appearance-main">
         <header class="page-head">
           <div class="page-titles">
             <h2>外观</h2>
-            <p>预设决定整体气质，令牌决定字号、间距与圆角。保存后点「刷新预览」，正在看的页面会按新配置重载。</p>
+            <p>
+              主题决定站点的版式，主题配色只管颜色，主题自定义项是当前主题开放给你调的部分。保存后正在看的预览会按新配置重载。
+            </p>
           </div>
           <div class="page-actions">
             <UiBadge :tone="dirty ? 'warn' : 'ok'" dot>{{ dirty ? '有未保存改动' : '已保存' }}</UiBadge>
@@ -1226,48 +754,91 @@ onBeforeUnmount(() => {
           <div>
             <strong>没有写入，这些字段被拒绝：</strong>
             <ul>
-              <li v-for="field in rejected" :key="field">{{ REJECT_LABELS[field] ?? field }}</li>
+              <li v-for="field in rejected" :key="field">{{ rejectLabel(field) }}</li>
             </ul>
             <span>改好后再点保存；配置本身没有被改动。</span>
           </div>
         </div>
 
-        <UiPanel title="预设主题">
-          <template #actions>
-            <UiBadge v-if="!draft.preset" tone="accent">自定义</UiBadge>
-            <UiBadge v-else tone="neutral">{{ activePreset?.name }}</UiBadge>
-          </template>
-          <p class="section-lead">
-            点一张卡片就切换到该预设，并把字体、刻度、圆角等对应字段一起写回配置。
+        <UiPanel title="主题">
+          <div class="theme-card">
+            <div class="theme-head">
+              <strong class="theme-name">{{ manifest.name }}</strong>
+              <UiBadge tone="accent">正在使用</UiBadge>
+            </div>
+            <p v-if="manifest.summary" class="theme-summary">{{ manifest.summary }}</p>
+            <dl class="theme-meta">
+              <dt>标识</dt>
+              <dd>{{ manifest.id }}</dd>
+              <dt>版本</dt>
+              <dd>{{ manifest.version }}</dd>
+              <template v-if="manifest.author">
+                <dt>作者</dt>
+                <dd>{{ manifest.author }}</dd>
+              </template>
+              <dt>提供</dt>
+              <dd>{{ palettes.length }} 套配色 · {{ manifest.options.length }} 个自定义项</dd>
+            </dl>
+          </div>
+          <p v-if="themeMismatch" class="section-lead warn-line">
+            配置里记的主题是「{{ configThemeId }}」，但站点里装的是「{{ manifest.id }}」。保存后会改成当前装的主题。
           </p>
-          <div class="preset-grid">
+          <p class="section-lead">目前站点里只装了这一套主题。安装和切换其他主题之后会放在这里。</p>
+        </UiPanel>
+
+        <UiPanel title="主题配色">
+          <template #actions>
+            <UiBadge tone="neutral">{{ activePalette ? activePalette.name : '按色相生成' }}</UiBadge>
+          </template>
+          <p class="section-lead">配色只决定颜色，不会改动字体、字号或版式。下面这几套由「{{ manifest.name }}」主题提供。</p>
+          <div class="token-grid mode-row">
+            <UiField label="亮暗模式" hint="跟随系统时，访客仍可在站点右上角临时切换。">
+              <UiSelect v-model="mode" :options="MODE_OPTIONS" />
+            </UiField>
+          </div>
+          <div class="palette-grid">
             <button
-              v-for="preset in PRESETS"
-              :key="preset.id"
+              v-for="palette in palettes"
+              :key="palette.id"
               type="button"
-              class="preset-card"
-              :class="{ 'is-active': draft.preset === preset.id }"
-              :aria-pressed="draft.preset === preset.id"
-              @click="applyPreset(preset)"
+              class="palette-card"
+              :class="{ 'is-active': draft.palette === palette.id }"
+              :aria-pressed="draft.palette === palette.id"
+              @click="choosePalette(palette.id)"
             >
-              <span class="preset-head">
-                <span class="preset-name">{{ preset.name }}</span>
-                <UiIcon v-if="draft.preset === preset.id" :path="icons.check" :size="14" class="preset-check" />
+              <span class="palette-head">
+                <span class="palette-name">{{ palette.name }}</span>
+                <UiIcon v-if="draft.palette === palette.id" :path="icons.check" :size="14" class="palette-check" />
               </span>
-              <span class="preset-desc">{{ preset.summary }}</span>
-              <span class="preset-swatches" aria-hidden="true">
-                <span class="swatch-row">
+              <span v-if="palette.summary" class="palette-desc">{{ palette.summary }}</span>
+              <span class="palette-swatches" aria-hidden="true">
+                <span v-for="scheme in (['light', 'dark'] as const)" :key="scheme" class="swatch-row">
                   <span
-                    v-for="(color, index) in presetSwatches(preset).light"
-                    :key="`light-${index}`"
+                    v-for="(color, index) in swatches(palette)[scheme]"
+                    :key="index"
                     class="swatch"
                     :style="{ background: color }"
                   />
                 </span>
-                <span class="swatch-row">
+              </span>
+            </button>
+            <button
+              type="button"
+              class="palette-card"
+              :class="{ 'is-active': !draft.palette }"
+              :aria-pressed="!draft.palette"
+              @click="choosePalette(null)"
+            >
+              <span class="palette-head">
+                <span class="palette-name">按色相生成</span>
+                <UiIcon v-if="!draft.palette" :path="icons.check" :size="14" class="palette-check" />
+              </span>
+              <span class="palette-desc">拖动色相，整套颜色跟着算出来。</span>
+              <span class="palette-swatches" aria-hidden="true">
+                <span v-for="scheme in (['light', 'dark'] as const)" :key="scheme" class="swatch-row">
                   <span
-                    v-for="(color, index) in presetSwatches(preset).dark"
-                    :key="`dark-${index}`"
+                    v-for="(color, index) in hueSwatches[scheme]"
+                    :key="index"
                     class="swatch"
                     :style="{ background: color }"
                   />
@@ -1275,84 +846,85 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </div>
-          <div v-if="!draft.preset" class="custom-note">
-            <div>
-              <strong>当前是自定义色板</strong>
-              <span>没有使用预设，整套颜色由色相派生（1.x 的做法）。</span>
-            </div>
-            <UiButton size="sm" @click="applyDefaultPreset">用回「深夜」</UiButton>
-          </div>
-        </UiPanel>
-
-        <UiPanel title="基础">
-          <p class="section-lead">主色调和字体每个套件都能改。</p>
-          <div class="token-grid">
-            <UiField label="亮暗模式" hint="auto 跟随系统；站点右上角仍可临时切换。">
-              <UiSelect v-model="colorScheme" :options="SCHEME_OPTIONS" />
-            </UiField>
-            <UiField label="色相" :hint="hueNote">
+          <div v-if="!draft.palette" class="token-grid hue-row">
+            <UiField label="色相">
               <UiSlider v-model="hue" :min="0" :max="360" unit="°" />
             </UiField>
-            <UiField label="字体">
-              <UiSelect v-model="font" :options="fontOptions" />
-            </UiField>
-            <UiField
-              v-if="fontStackVisible"
-              label="自定义字体栈"
-              hint="按 CSS font-family 写法填，例如 'Source Han Serif SC', serif。"
-            >
-              <UiInput v-model="draft.fontStack" placeholder="'Noto Serif SC', serif" />
-            </UiField>
           </div>
-          <div class="palette-strip">
-            <UiBadge tone="neutral">色板小样（{{ previewScheme === 'light' ? '浅色' : '深色' }}）</UiBadge>
-            <div class="palette-badges">
-              <span v-for="item in paletteBadges" :key="item.label" class="palette-badge">
-                <span class="palette-chip" :style="{ background: item.value }" aria-hidden="true" />
-                <span>{{ item.label }}</span>
-              </span>
+        </UiPanel>
+
+        <UiPanel :title="`主题自定义项 · ${manifest.name}`">
+          <template #actions>
+            <UiBadge v-if="customizedCount" tone="accent">已改 {{ customizedCount }} 项</UiBadge>
+            <UiButton size="sm" variant="ghost" :disabled="!customizedCount" @click="resetOptions">
+              全部恢复默认
+            </UiButton>
+          </template>
+          <p class="section-lead">这些项由当前主题声明，换一个主题就会是另一组。</p>
+          <section v-for="group in optionGroups" :key="group.name" class="option-group">
+            <h3 class="option-group-title">{{ group.name }}</h3>
+            <div class="token-grid">
+              <template v-for="def in group.items" :key="def.key">
+                <UiField
+                  v-if="visible(def)"
+                  :label="def.label"
+                  :hint="def.hint"
+                  :class="{ 'field-wide': def.type === 'textarea' || def.type === 'checks' }"
+                >
+                  <UiSelect
+                    v-if="def.type === 'select'"
+                    :model-value="textOf(def.key)"
+                    :options="selectItems(def)"
+                    @update:model-value="setOption(def.key, String($event))"
+                  />
+                  <UiSegmented
+                    v-else-if="def.type === 'segmented'"
+                    :model-value="textOf(def.key)"
+                    :items="segmentItems(def)"
+                    @update:model-value="setOption(def.key, $event)"
+                  />
+                  <div v-else-if="def.type === 'switch'" class="switch-row">
+                    <UiSwitch :model-value="boolOf(def.key)" @update:model-value="setOption(def.key, $event)" />
+                    <span>{{ boolOf(def.key) ? '开启' : '关闭' }}</span>
+                  </div>
+                  <UiTextarea
+                    v-else-if="def.type === 'textarea'"
+                    :model-value="textOf(def.key)"
+                    :placeholder="def.placeholder"
+                    :rows="3"
+                    @update:model-value="setOption(def.key, $event)"
+                  />
+                  <div v-else-if="def.type === 'checks'" class="check-row" role="group" :aria-label="def.label">
+                    <button
+                      v-for="choice in def.choices ?? []"
+                      :key="choice.value"
+                      type="button"
+                      class="check-chip"
+                      :class="{ 'is-on': checked(def.key, choice.value) }"
+                      :aria-pressed="checked(def.key, choice.value)"
+                      @click="toggleCheck(def, choice.value)"
+                    >
+                      <UiIcon v-if="checked(def.key, choice.value)" :path="icons.check" :size="12" />
+                      {{ choice.label }}
+                    </button>
+                  </div>
+                  <UiInput
+                    v-else
+                    :model-value="textOf(def.key)"
+                    :placeholder="def.placeholder"
+                    @update:model-value="setOption(def.key, String($event))"
+                  />
+                </UiField>
+              </template>
             </div>
-          </div>
-          <p v-if="activePreset && !advancedTokenOpen && !allows('breakpoints')" class="section-lead">
-            这个套件只开放主色调和字体。
-          </p>
+          </section>
         </UiPanel>
 
-        <UiPanel v-if="advancedTokenOpen" title="高级">
-          <p class="section-lead">只显示当前套件开放的项。切换套件时，没开放的项会回到该套件的默认值。</p>
-          <div class="token-grid">
-            <UiField v-if="allows('scale')" label="字号刻度" hint="同时缩放字号与组件间距，保证按钮、卡片、正文一起变。">
-              <UiSegmented v-model="scale" :items="SCALE_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('lineHeight')" label="行高">
-              <UiSegmented v-model="lineHeight" :items="LINE_HEIGHT_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('density')" label="密度" hint="只压缩间距，不缩字号。">
-              <UiSegmented v-model="density" :items="DENSITY_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('radius')" label="圆角">
-              <UiSelect v-model="radius" :options="RADIUS_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('contentWidth')" label="内容宽度">
-              <UiSelect v-model="contentWidth" :options="WIDTH_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('shadow')" label="阴影">
-              <UiSelect v-model="shadow" :options="SHADOW_OPTIONS" />
-            </UiField>
-            <UiField v-if="allows('motion')" label="动效" hint="关闭后过渡时长归零，尊重系统的“减少动态效果”。">
-              <div class="switch-row">
-                <UiSwitch v-model="motion" />
-                <span>{{ motion ? '开启' : '关闭' }}</span>
-              </div>
-            </UiField>
-          </div>
-        </UiPanel>
-
-        <UiPanel v-if="allows('breakpoints')" title="断点">
+        <UiPanel title="高级" collapsible :default-open="false">
+          <h3 class="option-group-title">响应式断点</h3>
           <p class="section-lead">
-            断点决定「平板 / 手机」这类样式在哪些宽度生效。默认：平板 ≤1023、手机 ≤767。改成自己的数值后
-            <strong>保存后点「刷新预览」</strong>才生效。标识会写进样式类名（如 <code>x-md-pad-lg</code>），
-            已保存的标识不要改；删掉断点后，内容里它的旧类名会失效（不会自动清理）。
+            断点决定 HTML 文章里「平板 / 手机」这类样式在哪些宽度生效，不属于主题也不属于配色。默认：平板 ≤1023、手机 ≤767。
+            标识会写进样式类名（如 <code>x-md-pad-lg</code>），已保存的标识不要改；删掉断点后，内容里它的旧类名会失效。
           </p>
           <div class="bp-list">
             <div v-for="bp in draft.breakpoints" :key="bp.id" class="bp-row">
@@ -1395,28 +967,26 @@ onBeforeUnmount(() => {
             <span class="bp-count">{{ draft.breakpoints.length }} / {{ MAX_BREAKPOINTS }}</span>
           </div>
           <p v-if="bpErrors.length" class="bp-errors">{{ bpErrors.join('；') }}</p>
-        </UiPanel>
 
-        <UiPanel title="高级 CSS" collapsible :default-open="false">
+          <h3 class="option-group-title css-title">自定义 CSS</h3>
           <template v-if="session.mode === 'develop'">
             <p class="section-lead">
-              站点自带 <code>src/styles/custom.css</code>，它在所有主题令牌之后加载，可以覆盖任意
+              站点自带 <code>src/styles/custom.css</code>，它在主题样式之后加载，可以覆盖任意
               <code>--color-*</code> / <code>--space-*</code> 变量，也可以写自己的选择器。
             </p>
             <UiButton size="sm" :icon-left="icons.code" @click="openCustomCss">在开发者抽屉打开 custom.css</UiButton>
           </template>
           <p v-else class="section-lead">
-            创作模式下不显示源码编辑。切到开发者模式（Ctrl+Shift+D）后，这里会出现“打开
-            custom.css”的按钮；自定义样式会保存在站点目录里，不写入配置。
+            切到开发者模式（Ctrl+Shift+D）后，这里会出现「打开 custom.css」的按钮；自定义样式保存在站点目录里，不写入配置。
           </p>
         </UiPanel>
       </div>
 
-      <aside class="preview" aria-label="实时预览">
+      <aside class="preview" aria-label="配色小样">
         <header class="preview-head">
           <div class="preview-title">
             <UiIcon :path="icons.preview" :size="15" />
-            <strong>实时预览</strong>
+            <strong>配色小样</strong>
           </div>
           <UiSegmented
             v-model="previewSchemeModel"
@@ -1426,45 +996,31 @@ onBeforeUnmount(() => {
             ]"
           />
         </header>
-        <p class="preview-note">只在本地模拟令牌效果，不改站点文件。</p>
+        <p class="preview-note">只演示配色。字体、尺寸和版式由主题决定，保存后看站点预览。</p>
 
         <div class="preview-canvas" :style="previewVars">
           <div class="pv-topbar">
             <span class="pv-brand">晓</span>
             <span class="pv-nav">归档</span>
             <span class="pv-nav">标签</span>
-            <span class="pv-nav">关于</span>
           </div>
           <div class="pv-content">
-            <p class="pv-eyebrow">演示 · 令牌预览</p>
-            <h3 class="pv-title">标题示例：把主题做成一套令牌</h3>
-            <p class="pv-text">
-              这是一段正文示例。字号、行高、间距、颜色都会跟随左侧令牌即时变化；卡片和按钮也一样，
-              不需要启动 dev server。
+            <h3 class="pv-title">一篇文章的标题</h3>
+            <p class="pv-text">正文颜色、次要文字和分隔线都来自当前配色。</p>
+            <p class="pv-meta">
+              <span class="pv-category">分类</span>
+              <span>3 分钟读完</span>
             </p>
             <div class="pv-actions">
-              <span class="pv-button pv-button--primary">开始阅读</span>
-              <span class="pv-button pv-button--ghost">了解更多</span>
+              <span class="pv-button pv-button--primary">强调按钮</span>
+              <span class="pv-button pv-button--ghost">次要按钮</span>
             </div>
             <article class="pv-card">
-              <span class="pv-tag">随笔</span>
-              <h4 class="pv-card-title">卡片标题</h4>
-              <p class="pv-card-text">卡片、分隔线与标签都使用同一套令牌，改一处到处生效。</p>
+              <span class="pv-tag">#标签</span>
+              <p class="pv-card-text">卡片底色、标签底色同样取自这套配色。</p>
             </article>
-            <div class="pv-pills">
-              <span class="pv-pill">随笔</span>
-              <span class="pv-pill">长文</span>
-              <span class="pv-pill">主题</span>
-            </div>
           </div>
         </div>
-
-        <dl class="token-readout">
-          <template v-for="row in tokenRows" :key="row.name">
-            <dt>{{ row.name }}</dt>
-            <dd>{{ row.value }}</dd>
-          </template>
-        </dl>
       </aside>
     </div>
   </section>
@@ -1489,7 +1045,7 @@ onBeforeUnmount(() => {
 
 .appearance-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
   align-items: start;
   gap: var(--ui-s5);
   padding-bottom: var(--ui-s8);
@@ -1517,7 +1073,7 @@ onBeforeUnmount(() => {
 }
 
 .page-titles p {
-  max-width: 56ch;
+  max-width: 60ch;
   color: var(--ui-text-2);
   font-size: var(--ui-fs-2);
   line-height: var(--ui-lh);
@@ -1559,12 +1115,224 @@ onBeforeUnmount(() => {
   line-height: var(--ui-lh);
 }
 
+.section-lead:last-child {
+  margin-bottom: 0;
+}
+
 .section-lead code {
   padding: 1px 4px;
   border-radius: var(--ui-r-sm);
   background: var(--ui-raise);
   font-family: var(--ui-mono);
   font-size: var(--ui-fs-1);
+}
+
+.warn-line {
+  color: var(--ui-warn, var(--ui-text));
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+  margin-bottom: var(--ui-s3);
+  padding: var(--ui-s3) var(--ui-s4);
+  border: 1px solid var(--ui-accent);
+  border-radius: var(--ui-r);
+  background: var(--ui-accent-weak);
+}
+
+.theme-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s2);
+}
+
+.theme-name {
+  font-size: var(--ui-fs-4);
+  font-weight: 600;
+}
+
+.theme-summary {
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
+  line-height: var(--ui-lh);
+}
+
+.theme-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--ui-s3);
+  margin: 0;
+  font-size: var(--ui-fs-1);
+}
+
+.theme-meta dt {
+  color: var(--ui-text-3);
+}
+
+.theme-meta dd {
+  margin: 0;
+  color: var(--ui-text-2);
+}
+
+.mode-row {
+  margin-bottom: var(--ui-s3);
+}
+
+.hue-row {
+  margin-top: var(--ui-s3);
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--ui-s2);
+}
+
+.palette-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s1);
+  padding: var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r);
+  background: var(--ui-raise);
+  color: var(--ui-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--ui-dur) var(--ui-ease),
+    background var(--ui-dur) var(--ui-ease);
+}
+
+.palette-card:hover {
+  border-color: var(--ui-line-2);
+  background: var(--ui-hover);
+}
+
+.palette-card.is-active {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-weak);
+}
+
+.palette-card:focus-visible,
+.check-chip:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s2);
+}
+
+.palette-name {
+  font-size: var(--ui-fs-3);
+  font-weight: 600;
+}
+
+.palette-check {
+  color: var(--ui-accent);
+}
+
+.palette-desc {
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
+}
+
+.palette-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: var(--ui-s1);
+}
+
+.swatch-row {
+  display: flex;
+  gap: 3px;
+}
+
+.swatch {
+  flex: 1;
+  height: var(--ui-s4);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+}
+
+.option-group + .option-group {
+  margin-top: var(--ui-s4);
+  padding-top: var(--ui-s4);
+  border-top: 1px solid var(--ui-line);
+}
+
+.option-group-title {
+  margin: 0 0 var(--ui-s3);
+  color: var(--ui-text);
+  font-size: var(--ui-fs-2);
+  font-weight: 600;
+}
+
+.css-title {
+  margin-top: var(--ui-s5);
+  padding-top: var(--ui-s4);
+  border-top: 1px solid var(--ui-line);
+}
+
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--ui-s3) var(--ui-s4);
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s2);
+  min-height: var(--ui-h-md);
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
+}
+
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-s2);
+}
+
+.check-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ui-h-sm, 28px);
+  padding: 0 var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: 999px;
+  background: var(--ui-raise);
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
+  cursor: pointer;
+  transition:
+    border-color var(--ui-dur) var(--ui-ease),
+    background var(--ui-dur) var(--ui-ease),
+    color var(--ui-dur) var(--ui-ease);
+}
+
+.check-chip:hover {
+  border-color: var(--ui-line-2);
+}
+
+.check-chip.is-on {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-weak);
+  color: var(--ui-text);
 }
 
 .bp-list {
@@ -1606,149 +1374,6 @@ onBeforeUnmount(() => {
   line-height: var(--ui-lh);
 }
 
-.preset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-  gap: var(--ui-s2);
-}
-
-.preset-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-s1);
-  padding: var(--ui-s3);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r);
-  background: var(--ui-raise);
-  color: var(--ui-text);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--ui-dur) var(--ui-ease),
-    background var(--ui-dur) var(--ui-ease);
-}
-
-.preset-card:hover {
-  border-color: var(--ui-line-2);
-  background: var(--ui-hover);
-}
-
-.preset-card.is-active {
-  border-color: var(--ui-accent);
-  background: var(--ui-accent-weak);
-}
-
-.preset-card:focus-visible {
-  outline: 2px solid var(--ui-accent);
-  outline-offset: 2px;
-}
-
-.preset-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-s2);
-}
-
-.preset-name {
-  font-size: var(--ui-fs-3);
-  font-weight: 600;
-}
-
-.preset-check {
-  color: var(--ui-accent);
-}
-
-.preset-desc {
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-  line-height: var(--ui-lh);
-}
-
-.preset-swatches {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: var(--ui-s1);
-}
-
-.swatch-row {
-  display: flex;
-  gap: 3px;
-}
-
-.swatch {
-  flex: 1;
-  height: var(--ui-s4);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-sm);
-}
-
-.custom-note {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-s3);
-  margin-top: var(--ui-s3);
-  padding: var(--ui-s2) var(--ui-s3);
-  border: 1px dashed var(--ui-line-2);
-  border-radius: var(--ui-r);
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-2);
-}
-
-.custom-note strong {
-  display: block;
-  color: var(--ui-text);
-  font-size: var(--ui-fs-2);
-}
-
-.token-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--ui-s3) var(--ui-s4);
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s2);
-  min-height: var(--ui-h-md);
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-2);
-}
-
-.palette-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-s3);
-  margin-top: var(--ui-s4);
-  padding-top: var(--ui-s3);
-  border-top: 1px solid var(--ui-line);
-  flex-wrap: wrap;
-}
-
-.palette-badges {
-  display: flex;
-  gap: var(--ui-s2);
-  flex-wrap: wrap;
-}
-
-.palette-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ui-s1);
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-1);
-}
-
-.palette-chip {
-  width: var(--ui-s4);
-  height: var(--ui-s4);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r-sm);
-}
-
 .preview {
   position: sticky;
   top: 0;
@@ -1780,6 +1405,7 @@ onBeforeUnmount(() => {
 .preview-note {
   color: var(--ui-text-3);
   font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
 }
 
 .preview-canvas {
@@ -1788,77 +1414,74 @@ onBeforeUnmount(() => {
   border-radius: var(--ui-r-sm);
   background: var(--pv-bg);
   color: var(--pv-text);
-  font-family: var(--pv-font-body);
-  font-size: var(--pv-fs-base);
-  line-height: var(--pv-lh-body);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .pv-topbar {
   display: flex;
   align-items: center;
-  gap: var(--pv-space-4);
-  padding: 0 var(--pv-space-4);
-  min-height: calc(var(--pv-space-6) + var(--pv-space-2));
+  gap: 14px;
+  padding: 0 14px;
+  min-height: 38px;
   border-bottom: 1px solid var(--pv-line);
-  background: var(--pv-surface);
   color: var(--pv-text-2);
-  font-size: var(--pv-fs-sm);
+  font-size: 12px;
 }
 
 .pv-brand {
   margin-right: auto;
   color: var(--pv-text);
-  font-family: var(--pv-font-heading);
-  font-size: var(--pv-fs-lg);
-  font-weight: var(--pv-weight-heading);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .pv-content {
   display: flex;
   flex-direction: column;
-  gap: var(--pv-space-3);
-  max-width: var(--pv-w-content);
-  margin: 0 auto;
-  padding: var(--pv-space-5) var(--pv-space-4);
-}
-
-.pv-eyebrow {
-  color: var(--pv-text-3);
-  font-size: var(--pv-fs-xs);
-  letter-spacing: 0.08em;
+  gap: 10px;
+  padding: 16px 14px 18px;
 }
 
 .pv-title {
   margin: 0;
   color: var(--pv-text);
-  font-family: var(--pv-font-heading);
-  font-size: var(--pv-fs-2xl);
-  font-weight: var(--pv-weight-heading);
-  line-height: var(--pv-lh-heading);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .pv-text {
+  margin: 0;
   color: var(--pv-text-2);
-  font-size: var(--pv-fs-body);
-  line-height: var(--pv-lh-body);
+}
+
+.pv-meta {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  color: var(--pv-text-3);
+  font-size: 12px;
+}
+
+.pv-category {
+  color: var(--pv-accent-ink);
+  font-weight: 600;
 }
 
 .pv-actions {
   display: flex;
-  gap: var(--pv-space-2);
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .pv-button {
   display: inline-flex;
   align-items: center;
-  min-height: calc(var(--pv-space-6) + var(--pv-space-1));
-  padding: 0 var(--pv-space-4);
-  border-radius: var(--pv-radius-pill);
-  font-size: var(--pv-fs-base);
-  transition:
-    background var(--pv-dur),
-    color var(--pv-dur);
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
 .pv-button--primary {
@@ -1875,80 +1498,25 @@ onBeforeUnmount(() => {
 .pv-card {
   display: flex;
   flex-direction: column;
-  gap: var(--pv-space-1);
-  padding: var(--pv-space-4);
-  border: 1px solid var(--pv-line);
-  border-radius: var(--pv-radius-lg);
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
   background: var(--pv-surface);
-  box-shadow: var(--pv-shadow-1);
 }
 
 .pv-tag {
   align-self: flex-start;
-  padding: 1px var(--pv-space-2);
-  border-radius: var(--pv-radius-pill);
+  padding: 1px 8px;
+  border-radius: 999px;
   background: var(--pv-accent-soft);
-  color: var(--pv-accent);
-  font-size: var(--pv-fs-xs);
-}
-
-.pv-card-title {
-  margin: 0;
-  color: var(--pv-text);
-  font-family: var(--pv-font-heading);
-  font-size: var(--pv-fs-lg);
-  font-weight: var(--pv-weight-heading);
-  line-height: var(--pv-lh-heading);
+  color: var(--pv-accent-ink);
+  font-size: 11px;
 }
 
 .pv-card-text {
-  color: var(--pv-text-2);
-  font-size: var(--pv-fs-sm);
-  line-height: var(--pv-lh-body);
-}
-
-.pv-pills {
-  display: flex;
-  gap: var(--pv-space-2);
-  flex-wrap: wrap;
-}
-
-.pv-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: calc(var(--pv-space-5) + var(--pv-space-1));
-  padding: 0 var(--pv-space-3);
-  border-radius: var(--pv-radius-pill);
-  background: var(--pv-surface);
-  color: var(--pv-text-2);
-  font-size: var(--pv-fs-xs);
-}
-
-.token-readout {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 2px var(--ui-s2);
   margin: 0;
-  padding-top: var(--ui-s2);
-  border-top: 1px solid var(--ui-line);
-  font-size: var(--ui-fs-1);
-}
-
-.token-readout dt {
-  color: var(--ui-text-3);
-  font-family: var(--ui-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.token-readout dd {
-  margin: 0;
-  overflow: hidden;
-  color: var(--ui-text-2);
-  font-family: var(--ui-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--pv-text-2);
+  font-size: 12px;
 }
 
 @media (max-width: 860px) {

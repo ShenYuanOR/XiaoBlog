@@ -76,6 +76,40 @@ export interface SavedSection {
   refs: number;
 }
 
+export type ThemeOptionValue = string | boolean | string[];
+
+/** 站点 src/theme.json：主题信息、它提供的配色、它开放的自定义项（D-99）。 */
+export interface ThemeManifest {
+  id: string;
+  name: string;
+  version: string;
+  author?: string;
+  summary?: string;
+  palettes: {
+    default: string;
+    items: {
+      id: string;
+      name: string;
+      summary?: string;
+      light: Record<string, string>;
+      dark: Record<string, string>;
+    }[];
+  };
+  options: ThemeOptionDef[];
+}
+
+export interface ThemeOptionDef {
+  key: string;
+  group?: string;
+  label: string;
+  hint?: string;
+  placeholder?: string;
+  type: 'select' | 'segmented' | 'switch' | 'text' | 'textarea' | 'checks';
+  default: ThemeOptionValue;
+  choices?: { value: string; label: string }[];
+  when?: { key: string; value: string };
+}
+
 export interface XiaoApi {
   section: {
     list: (siteDir: string) => Promise<IpcResult<SavedSection[]>>;
@@ -232,6 +266,10 @@ export interface XiaoApi {
   settings: {
     read: (siteDir: string) => Promise<IpcResult<Record<string, unknown>>>;
     write: (siteDir: string, config: unknown) => Promise<IpcResult<string[]>>;
+  };
+  theme: {
+    /** 站点 src/theme.json；旧模板没有这个文件时返回 null。 */
+    read: (siteDir: string) => Promise<IpcResult<ThemeManifest | null>>;
   };
   content: {
     list: (siteDir: string) => Promise<IpcResult<ContentPost[]>>;

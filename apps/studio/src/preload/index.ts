@@ -122,6 +122,9 @@ const api = {
     write: (siteDir: string, config: unknown) =>
       ipcRenderer.invoke('settings:write', siteDir, config),
   },
+  theme: {
+    read: (siteDir: string) => ipcRenderer.invoke('theme:read', siteDir),
+  },
   content: {
     list: (
       siteDir: string,

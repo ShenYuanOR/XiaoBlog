@@ -73,7 +73,7 @@ import {
   uploadMedia,
   type MediaUploadInput,
 } from './media.ts';
-import { readConfig, writeConfig, type SiteConfig } from './settings.ts';
+import { readConfig, readManifest, writeConfig, type SiteConfig } from './settings.ts';
 import { seoRows } from './seo.ts';
 import {
   duplicateComponent,
@@ -585,6 +585,13 @@ app.whenReady().then(() => {
         );
       }
       return fail('SETTINGS_WRITE', message);
+    }
+  });
+  ipcMain.handle('theme:read', (_event, siteDir: string) => {
+    try {
+      return ok(readManifest(siteDir));
+    } catch (error) {
+      return fail('THEME_READ', error instanceof Error ? error.message : '读不到主题声明');
     }
   });
   ipcMain.handle('canvas:components', () => ok(manifest.map((item) => item.name)));

@@ -5,13 +5,13 @@
  * 把 `:root` / `html` / `body` 换成 Shadow 里的表面元素，再按 xiao.config.json 的
  * theme 段补一份令牌。
  *
- * 已知边界：预设（theme.preset）的色板来自模板的 themes.ts，这里不复制那份数据；
- * 没有显式 theme.colors 的预设站点会落到 base.css 的 --hue 兜底色。非预设站点
- * （1.x 配置和默认配置）的观感与站点一致。
+ * 主题配色和自定义项的默认值来自站点 src/theme.json（D-99），新旧两种 theme 结构
+ * 先展开成同一组字段再算令牌。没有 theme.json 的旧站点落到 base.css 的 --hue 兜底色。
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { readManifest, type ThemeManifest } from './settings.ts';
 
 export interface ArticleCss {
   css: string;
@@ -84,7 +84,6 @@ const COLOR_VARS: Record<string, string> = {
 };
 
 interface ThemeConfig {
-  preset?: string;
   colorScheme?: string;
   hue?: number;
   colors?: { light?: Record<string, string>; dark?: Record<string, string> };
@@ -98,6 +97,45 @@ interface ThemeConfig {
   shadow?: string;
   motion?: boolean;
   breakpoints?: { id?: string; label?: string; maxWidth?: number }[];
+}
+
+const OPTION_KEYS = [
+  'font',
+  'fontStack',
+  'scale',
+  'lineHeight',
+  'density',
+  'radius',
+  'contentWidth',
+  'shadow',
+  'motion',
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 把 theme 段（新：palette/mode/options；旧：preset/colorScheme/顶层排版键）展开成一组字段。 */
+function flattenTheme(raw: Record<string, unknown>, manifest: ThemeManifest | null): ThemeConfig {
+  const options = isRecord(raw.options) ? raw.options : {};
+  const out: Record<string, unknown> = {
+    hue: raw.hue,
+    colorScheme: raw.mode ?? raw.colorScheme,
+    breakpoints: raw.breakpoints,
+  };
+  for (const key of OPTION_KEYS) {
+    const declared = manifest?.options.find((item) => item.key === key)?.default;
+    out[key] = options[key] ?? raw[key] ?? declared;
+  }
+  const paletteId = raw.palette ?? raw.preset;
+  const palette = manifest?.palettes.items.find((item) => item.id === paletteId);
+  const overrides = isRecord(raw.colors) ? raw.colors : {};
+  const light = isRecord(overrides.light) ? overrides.light : {};
+  const dark = isRecord(overrides.dark) ? overrides.dark : {};
+  out.colors = palette
+    ? { light: { ...palette.light, ...light }, dark: { ...palette.dark, ...dark } }
+    : { light, dark };
+  return out as ThemeConfig;
 }
 
 function pixel(value: number): string {
@@ -370,7 +408,13 @@ export function readArticleCss(siteDir: string): ArticleCss {
     .filter((file) => existsSync(file))
     .map((file) => scopeCss(readFileSync(file, 'utf8')));
   const config = readJson(path.join(root, 'xiao.config.json'));
-  const theme = (config?.theme ?? {}) as ThemeConfig;
+  let manifest: ThemeManifest | null = null;
+  try {
+    manifest = readManifest(root);
+  } catch {
+    manifest = null;
+  }
+  const theme = flattenTheme(isRecord(config?.theme) ? config.theme : {}, manifest);
   const { tokens, colorScheme } = themeTokens(theme);
   parts.push(tokens);
   const custom = path.join(root, 'src', 'styles', 'custom.css');
