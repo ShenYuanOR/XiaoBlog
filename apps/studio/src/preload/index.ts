@@ -116,6 +116,8 @@ const api = {
   },
   seo: {
     check: (siteDir: string) => ipcRenderer.invoke('seo:check', siteDir),
+    audit: (siteDir: string) => ipcRenderer.invoke('seo:audit', siteDir),
+    report: (siteDir: string) => ipcRenderer.invoke('seo:report', siteDir),
   },
   settings: {
     read: (siteDir: string) => ipcRenderer.invoke('settings:read', siteDir),

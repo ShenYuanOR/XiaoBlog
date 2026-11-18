@@ -57,8 +57,15 @@ export class RuntimeService {
       this.logs.delete(taskId);
       return { ...start, code, log };
     }
-    const port = kind === 'dev' ? await freePort() : undefined;
-    this.spawnAstro(task, siteDir, port);
+    if (kind === 'build') {
+      const code = await this.runAstro(task, siteDir);
+      const log = this.logs.get(taskId) ?? '';
+      this.logs.delete(taskId);
+      this.finish(task, code, code === 0 ? undefined : '构建没有完成');
+      return { ...start, code, log };
+    }
+    const port = await freePort();
+    void this.runAstro(task, siteDir, port).then((code) => this.finish(task, code));
     return start;
   }
 
@@ -149,7 +156,7 @@ export class RuntimeService {
     );
   }
 
-  private spawnAstro(task: LiveTask, siteDir: string, port?: number): void {
+  private runAstro(task: LiveTask, siteDir: string, port?: number): Promise<number> {
     const entry = path.join(siteDir, 'node_modules', 'astro', 'bin', 'astro.mjs');
     const shim = this.shimDir();
     const args = [...astroCommand(task.kind, port)];
@@ -161,13 +168,13 @@ export class RuntimeService {
         : path.resolve(import.meta.dirname, '../../resources/preview.config.mjs');
       args.push('--config', path.relative(siteDir, configAbs));
     }
-    void this.spawn(task, process.execPath, [entry, ...args], siteDir, dev, {
+    return this.spawn(task, process.execPath, [entry, ...args], siteDir, dev, {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       ASTRO_TELEMETRY_DISABLED: '1',
       PATH: `${shim}${path.delimiter}${process.env.PATH ?? ''}`,
       ...(dev ? { XIAO_SITE_DIR: siteDir } : {}),
-    }).then((code) => this.finish(task, code));
+    });
   }
 
   private spawn(

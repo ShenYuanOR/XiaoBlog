@@ -958,6 +958,34 @@ app.whenReady().then(() => {
       return fail('SEO_CHECK', error instanceof Error ? error.message : '体检失败');
     }
   });
+  ipcMain.handle('seo:audit', async (_event, siteDir: string) => {
+    if (!siteDir) return fail('SEO_AUDIT', '还没有选择站点');
+    try {
+      const task = await runtime.start('build', siteDir);
+      const reportPath = join(siteDir, '.xiao', 'seo-report.json');
+      if (existsSync(reportPath)) {
+        return ok({
+          code: task.code ?? 0,
+          report: JSON.parse(readFileSync(reportPath, 'utf8')),
+        });
+      }
+      const log = (task.log ?? '').trim();
+      const tail = log.length > 4000 ? log.slice(-4000) : log;
+      return fail('SEO_AUDIT', tail || '构建失败，没有生成体检报告');
+    } catch (error) {
+      return fail('SEO_AUDIT', error instanceof Error ? error.message : '体检失败');
+    }
+  });
+  ipcMain.handle('seo:report', (_event, siteDir: string) => {
+    if (!siteDir) return fail('SEO_REPORT', '还没有选择站点');
+    try {
+      const reportPath = join(siteDir, '.xiao', 'seo-report.json');
+      if (!existsSync(reportPath)) return ok(null);
+      return ok(JSON.parse(readFileSync(reportPath, 'utf8')));
+    } catch (error) {
+      return fail('SEO_REPORT', error instanceof Error ? error.message : '读不到体检报告');
+    }
+  });
   ipcMain.handle('content:list', (_event, siteDir: string) => ok(listPosts(siteDir)));
   ipcMain.handle(
     'content:create',

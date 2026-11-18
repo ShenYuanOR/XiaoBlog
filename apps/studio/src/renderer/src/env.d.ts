@@ -262,6 +262,25 @@ export interface XiaoApi {
     check: (
       siteDir: string,
     ) => Promise<IpcResult<{ level: string; rule: string; detail: string }[]>>;
+    audit: (siteDir: string) => Promise<
+      IpcResult<{
+        code: number;
+        report: {
+          generatedAt: string;
+          siteUrl: string;
+          pageCount: number;
+          issues: { level: string; rule: string; route: string; detail: string }[];
+          pages: {
+            route: string;
+            title: string;
+            description: string;
+            canonical: string;
+            ogImage: string;
+          }[];
+        };
+      }>
+    >;
+    report: (siteDir: string) => Promise<IpcResult<Record<string, unknown> | null>>;
   };
   settings: {
     read: (siteDir: string) => Promise<IpcResult<Record<string, unknown>>>;
