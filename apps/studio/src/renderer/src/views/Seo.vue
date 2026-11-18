@@ -3,16 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
-import {
-  UiBadge,
-  UiButton,
-  UiEmpty,
-  UiField,
-  UiIcon,
-  UiPanel,
-  UiSelect,
-  UiSpinner,
-} from '../ui/index.ts';
+import { UiButton, UiDialog, UiEmpty, UiIcon, UiSpinner } from '../ui/index.ts';
 
 interface FixTarget {
   kind: 'post' | 'settings';
@@ -52,7 +43,20 @@ interface PostItem {
   format?: 'markdown' | 'html';
 }
 
-type BadgeTone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
+interface IssueRow {
+  issue: Issue;
+  name: string;
+  value: string;
+}
+
+interface RuleGroup {
+  key: string;
+  level: string;
+  rule: string;
+  hint: string;
+  scope: string;
+  rows: IssueRow[];
+}
 
 const RULE_LABELS: Record<string, string> = {
   'site-url-missing': '站点地址还没填',
@@ -84,16 +88,18 @@ const RULE_LABELS: Record<string, string> = {
 
 const RULE_HINTS: Record<string, string> = {
   'site-url-missing': '到「设置」填写部署后的完整地址，例如 https://name.github.io。',
-  'site-url-placeholder': 'example.com 不能拿去发布。到「设置」改成真实站点地址。',
+  'site-url-placeholder': '这个地址不能拿去发布，改成部署后的真实地址。',
   'slug-invalid': '地址标识只能用小写字母、数字和连字符。',
   'slug-duplicate': '两个目录用了同一个地址标识，改掉其中一个。',
   'title-too-long': '搜索结果大约显示 30 个汉字。把标题缩短后再体检。',
   'description-missing': '摘要会出现在搜索结果和分享卡片里。',
-  'description-too-short': '摘要大约要 30 到 80 个汉字，太短会被搜索引擎自己截正文。',
+  'description-too-short': '摘要会显示在搜索结果里，太短时搜索引擎会自己截正文；建议 30–80 个汉字。',
   'description-too-long': '摘要大约要 30 到 80 个汉字，太长会被截断。',
-  'og-image-missing': '文章可以写封面，站点也可以在「设置」里填默认分享图。',
+  'og-image-missing': '没有分享图时，转发到社交平台只有文字卡片。',
+  'og-image-missing-file': '分享图地址指向的文件不在构建产物里，换一张存在的图。',
   'img-alt-missing': '给图片补上 alt，读屏和搜索才能知道图里是什么。',
   'dead-link': '这个站内链接没有对应页面。',
+  noindex: '这篇文章标记了不收录，搜索引擎不会索引它。',
 };
 
 const session = useSession();
@@ -103,14 +109,11 @@ const errorText = ref('');
 const report = ref<SeoReport | null>(null);
 const checkIssues = ref<Issue[]>([]);
 const posts = ref<PostItem[]>([]);
-const selectedRoute = ref('');
+const drafts = ref<Record<string, string>>({});
+const openKey = ref('');
 const infoOpen = ref(false);
-
-const levels: Record<string, { label: string; tone: BadgeTone }> = {
-  error: { label: '错误', tone: 'danger' },
-  warn: { label: '警告', tone: 'warn' },
-  info: { label: '提示', tone: 'neutral' },
-};
+const previewOpen = ref(false);
+const previewRoute = ref('/');
 
 function asReport(value: unknown): SeoReport | null {
   if (!value || typeof value !== 'object') return null;
@@ -137,6 +140,10 @@ function postTitle(route: string, fallback: string): string {
   return posts.value.find((post) => post.slug === slug)?.title || fallback || route;
 }
 
+function pageOf(route: string): ReportPage | undefined {
+  return report.value?.pages.find((page) => page.route === route);
+}
+
 /** 已有构建报告时，构建前检查只留下 slug 问题，避免和报告里的首页、文章重复开一组。 */
 const listedChecks = computed(() =>
   report.value ? checkIssues.value.filter((issue) => issue.rule.startsWith('slug')) : checkIssues.value,
@@ -153,45 +160,101 @@ const counts = computed(() => ({
   warns: actionable.value.filter((issue) => issue.level === 'warn').length,
 }));
 
-const groups = computed(() => {
+function issueSlug(issue: Issue): string {
+  return issue.fix?.slug || postSlug(issue.route);
+}
+
+function rowRank(issue: Issue): number {
+  if (issue.fix?.kind === 'settings') return 0;
+  if (issue.route === '/') return 1;
+  return 2;
+}
+
+function rowName(issue: Issue): string {
+  if (issue.fix?.kind === 'settings' && issue.fix.field === 'description') return '站点简介（首页）';
+  if (issue.route === '/' && issue.fix?.kind !== 'post') return '首页';
+  const slug = issueSlug(issue);
+  if (slug) return postTitle(`/posts/${slug}`, slug);
+  return issue.route || '站点';
+}
+
+function rowValue(issue: Issue): string {
+  return issue.detail.match(/宽度 (\d+)/)?.[1] || issue.detail.match(/（(\d+)）/)?.[1] || '';
+}
+
+function scopeText(issues: Issue[]): string {
+  if (issues.length === 1) {
+    const issue = issues[0];
+    if (!issue) return '站点';
+    if (issue.rule.startsWith('site-url')) return '站点';
+    const many = issue.detail.match(/首页和 (\d+) 篇文章/);
+    if (many) return `首页 + ${many[1]} 篇文章`;
+    if (issue.detail.includes('首页在用')) return '首页';
+    const slug = issueSlug(issue);
+    if (slug) return postTitle(`/posts/${slug}`, slug);
+    if (issue.route === '/') return '首页';
+    return '站点';
+  }
+  const home = issues.some(
+    (issue) => issue.route === '/' || (issue.fix?.kind === 'settings' && issue.fix.field === 'description'),
+  );
+  const slugs = new Set(issues.map((issue) => issueSlug(issue)).filter(Boolean));
+  if (home && slugs.size > 0) return `首页 + ${slugs.size} 篇文章`;
+  if (home) return '首页';
+  if (slugs.size > 0) return `${slugs.size} 篇文章`;
+  return `${issues.length} 处`;
+}
+
+const ruleGroups = computed((): RuleGroup[] => {
   const map = new Map<string, Issue[]>();
   for (const issue of actionable.value) {
-    const key = issue.route || '构建前';
+    const key = issue.rule;
     map.set(key, [...(map.get(key) ?? []), issue]);
   }
-  return [...map.entries()].map(([route, issues]) => {
-    const page = report.value?.pages.find((item) => item.route === route);
-    return {
-      route,
-      title: route === '构建前' ? '构建前检查' : postTitle(route, page?.title || route),
-      issues,
-    };
-  });
+  return [...map.entries()].map(([rule, issues]) => ({
+    key: rule,
+    level: issues[0]?.level === 'error' ? 'error' : 'warn',
+    rule,
+    hint: hintOf(rule),
+    scope: scopeText(issues),
+    rows: issues
+      .map((issue) => ({ issue, name: rowName(issue), value: rowValue(issue) }))
+      .sort((a, b) => rowRank(a.issue) - rowRank(b.issue)),
+  }));
 });
 
-const pageOptions = computed(() =>
-  (report.value?.pages ?? []).map((page) => ({
-    value: page.route,
-    label: postTitle(page.route, page.title || page.route),
-  })),
+const sections = computed(() =>
+  (['error', 'warn'] as const)
+    .map((level) => ({
+      level,
+      label: level === 'error' ? '错误' : '警告',
+      groups: ruleGroups.value.filter((group) => group.level === level),
+    }))
+    .filter((section) => section.groups.length > 0),
 );
 
-const selectedPage = computed(
-  () =>
-    report.value?.pages.find((page) => page.route === selectedRoute.value) ??
-    report.value?.pages[0],
-);
-
-const generatedLabel = computed(() => {
-  const raw = report.value?.generatedAt;
-  if (!raw) return '';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('zh-CN', { hour12: false });
+const summaryLine = computed(() => {
+  if (auditing.value) return '正在构建并体检。预览如果开着，结束后会重新打开。';
+  if (!report.value) return '还没有体检。点「体检」后，这里只列出首页和文章的问题。';
+  const date = new Date(report.value.generatedAt);
+  const time = Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (counts.value.errors === 0 && counts.value.warns === 0) {
+    const articles = report.value.pages.filter((page) => page.route.startsWith('/posts/')).length;
+    return `首页和 ${articles} 篇文章都没有问题${time ? ` · ${time} 体检` : ''}`;
+  }
+  return `${counts.value.errors} 个错误 · ${counts.value.warns} 个警告${time ? ` · ${time} 体检` : ''}`;
 });
 
-const cardImage = computed(() => {
-  const ogImage = selectedPage.value?.ogImage ?? '';
+const previewPage = computed(() => pageOf(previewRoute.value));
+const previewTitle = computed(() => {
+  const page = previewPage.value;
+  if (!page) return '预览';
+  return page.route === '/' ? '首页预览' : postTitle(page.route, page.title || page.route);
+});
+const previewImage = computed(() => {
+  const ogImage = previewPage.value?.ogImage ?? '';
   if (!ogImage || !session.previewUrl) return ogImage;
   try {
     const image = new URL(ogImage);
@@ -202,15 +265,14 @@ const cardImage = computed(() => {
   }
 });
 
-function levelLabel(level: string): string {
-  return levels[level]?.label ?? '提示';
+function toggleGroup(key: string): void {
+  openKey.value = openKey.value === key ? '' : key;
 }
 
-function levelTone(level: string): BadgeTone {
-  return levels[level]?.tone ?? 'neutral';
+function openPreview(route: string): void {
+  previewRoute.value = route || '/';
+  previewOpen.value = true;
 }
-
-const drafts = ref<Record<string, string>>({});
 
 function draftKey(issue: Issue): string {
   return `${issue.fix?.slug ?? ''}:${issue.fix?.field ?? ''}`;
@@ -293,6 +355,7 @@ function settingsFieldLabel(field?: string): string {
 }
 
 function openSettings(field?: string): void {
+  previewOpen.value = false;
   session.setNav('settings');
   if (field === 'twitter') {
     notify('已切到「设置」。Twitter 账号还没有单独的输入框。', 'info', 'seo-fix');
@@ -307,20 +370,20 @@ function fixIssue(issue: Issue): void {
     openSettings(issue.fix.field);
     return;
   }
-  const slug = issue.fix?.slug || postSlug(issue.route);
+  const slug = issueSlug(issue);
   if (slug) {
     openPost(slug, postTitle(issue.route, slug));
     return;
   }
-  if (
-    issue.rule.startsWith('site-url') ||
-    issue.rule === 'og-image-missing' ||
-    issue.rule === 'html-lang-missing'
-  ) {
+  if (issue.rule.startsWith('site-url') || issue.rule === 'og-image-missing' || issue.rule === 'html-lang-missing') {
     openSettings(issue.rule.startsWith('site-url') ? 'url' : 'ogImage');
     return;
   }
   notify('这条要到对应页面里改。', 'info', 'seo-fix');
+}
+
+function settingsAction(issue: Issue): boolean {
+  return issue.fix?.kind === 'settings' || issue.rule.startsWith('site-url');
 }
 
 async function loadCheck(siteDir: string): Promise<void> {
@@ -363,12 +426,6 @@ async function load(): Promise<void> {
     report.value = saved.ok ? asReport(saved.data) : null;
     posts.value = listed.ok ? listed.data : [];
     await loadCheck(siteDir);
-    if (!report.value?.pages.some((page) => page.route === selectedRoute.value)) {
-      selectedRoute.value =
-        report.value?.pages.find((page) => page.route === '/')?.route ??
-        report.value?.pages[0]?.route ??
-        '';
-    }
   } finally {
     loading.value = false;
   }
@@ -388,12 +445,6 @@ async function runAudit(): Promise<void> {
       return;
     }
     report.value = result.data.report;
-    if (result.data.report) {
-      selectedRoute.value =
-        result.data.report.pages.find((page) => page.route === '/')?.route ??
-        result.data.report.pages[0]?.route ??
-        '';
-    }
     await loadCheck(siteDir);
     if (result.data.buildFailed) {
       errorText.value = `构建未通过。\n${result.data.message || '构建没有完成'}`;
@@ -440,133 +491,134 @@ watch(
 
     <template v-else>
       <header class="head">
-        <div class="head-text">
+        <div class="title-row">
           <h1>SEO 体检</h1>
-          <p class="dim">
-            体检会构建站点，再读 dist 里的真实 HTML。预览如果开着，结束后会重新打开。
-            <template v-if="generatedLabel">上次生成于 {{ generatedLabel }}。</template>
-          </p>
+          <div class="head-actions">
+            <UiButton v-if="report" size="sm" variant="ghost" @click="openPreview('/')">预览首页</UiButton>
+            <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
+              {{ auditing ? '正在构建并体检…' : '体检' }}
+            </UiButton>
+          </div>
         </div>
-        <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
-          {{ auditing ? '正在构建并体检…' : '体检' }}
-        </UiButton>
+        <p class="dim">{{ summaryLine }}</p>
       </header>
 
-      <p v-if="auditing" class="dim">构建进行中。完成后会更新下面的列表和预览。</p>
       <p v-if="errorText" class="error-text">{{ errorText }}</p>
 
-      <div v-if="report" class="stats">
-        <article class="stat is-danger">
-          <span class="stat-num">{{ counts.errors }}</span>
-          <span class="stat-label">错误</span>
-          <span class="stat-hint">{{ report.pageCount }} 个页面</span>
-        </article>
-        <article class="stat is-warn">
-          <span class="stat-num">{{ counts.warns }}</span>
-          <span class="stat-label">警告</span>
-          <span class="stat-hint">提示 {{ infoIssues.length }} 条，单独折叠</span>
-        </article>
+      <UiEmpty
+        v-if="!report && !checkIssues.length"
+        title="还没有体检报告"
+        description="点右上角「体检」。它会构建站点，再按首页和文章列出问题。"
+        :icon="icons.seo"
+      />
+
+      <div v-else class="bands">
+        <section v-for="section in sections" :key="section.level" class="band">
+          <h2>{{ section.label }}</h2>
+          <article v-for="group in section.groups" :key="group.key" class="rule">
+            <div class="rule-head">
+              <div class="rule-copy">
+                <div class="rule-line">
+                  <strong>{{ labelOf(group.rule) }}</strong>
+                  <span class="scope">{{ group.scope }}</span>
+                </div>
+                <p>{{ group.hint }}</p>
+              </div>
+              <div class="rule-actions">
+                <template v-if="group.rows.length === 1 && group.rows[0]">
+                  <label v-if="editable(group.rows[0].issue)" class="edit">
+                    <input
+                      v-model="drafts[draftKey(group.rows[0].issue)]"
+                      :placeholder="group.rows[0].issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
+                      @focus="loadDraft(group.rows[0].issue)"
+                    />
+                    <UiButton size="sm" @click="saveDraft(group.rows[0].issue)">保存</UiButton>
+                  </label>
+                  <UiButton
+                    v-if="group.rows[0].issue.route.startsWith('/posts/')"
+                    size="sm"
+                    variant="ghost"
+                    @click="openPreview(group.rows[0].issue.route)"
+                  >
+                    预览
+                  </UiButton>
+                  <UiButton size="sm" variant="ghost" @click="fixIssue(group.rows[0].issue)">
+                    {{ settingsAction(group.rows[0].issue) ? '去设置' : '打开文章' }}
+                  </UiButton>
+                </template>
+                <UiButton
+                  v-else
+                  size="sm"
+                  variant="ghost"
+                  :icon-left="openKey === group.key ? icons.chevronDown : icons.chevronRight"
+                  @click="toggleGroup(group.key)"
+                >
+                  {{ openKey === group.key ? '收起' : '展开' }}
+                </UiButton>
+              </div>
+            </div>
+            <div v-if="group.rows.length > 1 && openKey === group.key" class="rows">
+              <div v-for="(row, index) in group.rows" :key="`${group.key}-${row.issue.route}-${index}`" class="row">
+                <span class="row-name">{{ row.name }}</span>
+                <span class="row-value">{{ row.value }}</span>
+                <div class="row-actions">
+                  <label v-if="editable(row.issue)" class="edit">
+                    <input
+                      v-model="drafts[draftKey(row.issue)]"
+                      :placeholder="row.issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
+                      @focus="loadDraft(row.issue)"
+                    />
+                    <UiButton size="sm" @click="saveDraft(row.issue)">保存</UiButton>
+                  </label>
+                  <UiButton v-if="row.issue.route.startsWith('/posts/')" size="sm" variant="ghost" @click="openPreview(row.issue.route)">
+                    预览
+                  </UiButton>
+                  <UiButton size="sm" variant="ghost" @click="fixIssue(row.issue)">
+                    {{ settingsAction(row.issue) ? '去设置' : '打开文章' }}
+                  </UiButton>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <details v-if="infoIssues.length" class="info-fold" :open="infoOpen" @toggle="infoOpen = ($event.target as HTMLDetailsElement).open">
+          <summary>另有 {{ infoIssues.length }} 条提示</summary>
+          <div v-for="issue in infoIssues" :key="`${issue.route}-${issue.rule}-${issue.detail}`" class="info-row">
+            <strong>{{ labelOf(issue.rule) }}</strong>
+            <span>{{ issue.detail }}</span>
+            <span class="scope">{{ rowName(issue) }}</span>
+          </div>
+        </details>
       </div>
 
-      <div class="columns">
-        <div class="main-col">
-          <UiPanel title="问题">
-            <UiEmpty
-              v-if="!report && !checkIssues.length"
-              title="还没有体检报告"
-              description="点右上角「体检」。它会构建站点，再按 dist 里的 HTML 列出问题。"
-              :icon="icons.seo"
-            />
-            <UiEmpty
-              v-else-if="!groups.length"
-              title="没有错误或警告"
-              description="构建前检查和上次报告里，没有需要马上处理的问题。"
-              :icon="icons.ok"
-            />
-            <div v-else class="groups">
-              <section v-for="group in groups" :key="group.route" class="group">
-                <header class="group-head">
-                  <h2>{{ group.title }}</h2>
-                  <span class="dim">{{ group.route }}</span>
-                </header>
-                <article v-for="issue in group.issues" :key="`${group.route}-${issue.rule}-${issue.detail}`" class="issue">
-                  <UiBadge :tone="levelTone(issue.level)">{{ levelLabel(issue.level) }}</UiBadge>
-                  <div class="issue-body">
-                    <strong>{{ labelOf(issue.rule) }}</strong>
-                    <p>{{ issue.detail }}</p>
-                    <p class="dim">{{ hintOf(issue.rule) }}</p>
-                  </div>
-                  <div class="issue-actions">
-                    <label v-if="editable(issue)" class="edit">
-                      <input
-                        v-model="drafts[draftKey(issue)]"
-                        :placeholder="issue.fix?.field === 'title' ? '新的标题' : '新的摘要'"
-                        @focus="loadDraft(issue)"
-                      />
-                      <UiButton size="sm" @click="saveDraft(issue)">保存</UiButton>
-                    </label>
-                    <UiButton size="sm" variant="ghost" @click="fixIssue(issue)">
-                      {{ issue.fix?.kind === 'settings' || issue.rule.startsWith('site-url') ? '去设置' : '打开文章' }}
-                    </UiButton>
-                  </div>
-                </article>
-              </section>
-            </div>
-          </UiPanel>
-
-          <details v-if="infoIssues.length" class="info-fold" :open="infoOpen" @toggle="infoOpen = ($event.target as HTMLDetailsElement).open">
-            <summary>提示 {{ infoIssues.length }} 条</summary>
-            <article v-for="issue in infoIssues" :key="`${issue.route}-${issue.rule}-${issue.detail}`" class="issue">
-              <UiBadge tone="neutral">提示</UiBadge>
-              <div class="issue-body">
-                <strong>{{ labelOf(issue.rule) }}</strong>
-                <p>{{ issue.detail }}</p>
-                <p class="dim">{{ issue.route }}</p>
+      <UiDialog v-model="previewOpen" :title="previewTitle" :width="560">
+        <div v-if="previewPage" class="dialog-preview">
+          <section>
+            <h3>搜索结果</h3>
+            <article class="serp">
+              <p class="serp-url">{{ previewPage.canonical || previewPage.route }}</p>
+              <p class="serp-title">{{ previewPage.title || '（没有标题）' }}</p>
+              <p class="serp-desc">{{ previewPage.description || '（没有摘要）' }}</p>
+            </article>
+          </section>
+          <section>
+            <h3>分享卡片</h3>
+            <article class="social">
+              <img v-if="previewImage" class="social-photo" :src="previewImage" alt="" />
+              <div v-else class="social-image">
+                <UiIcon :path="icons.image" :size="18" />
+                <span>这页没有 og:image</span>
+              </div>
+              <div class="social-body">
+                <p class="social-title">{{ previewPage.title || '（没有标题）' }}</p>
+                <p class="social-desc">{{ previewPage.description || '（没有摘要）' }}</p>
               </div>
             </article>
-          </details>
+          </section>
         </div>
-
-        <aside class="preview-col">
-          <UiPanel title="预览">
-            <UiEmpty
-              v-if="!report"
-              title="还没有可预览的页面"
-              description="体检完成后，这里显示该页真实的标题、摘要和分享图。"
-              :icon="icons.seo"
-            />
-            <template v-else>
-              <div class="preview-picker">
-                <UiField label="预览页面">
-                  <UiSelect v-model="selectedRoute" :options="pageOptions" placeholder="选择页面" />
-                </UiField>
-              </div>
-              <section class="preview-block">
-                <h3 class="preview-title">搜索结果</h3>
-                <article class="serp">
-                  <p class="serp-url">{{ selectedPage?.canonical || selectedPage?.route }}</p>
-                  <p class="serp-title">{{ selectedPage?.title || '（没有标题）' }}</p>
-                  <p class="serp-desc">{{ selectedPage?.description || '（没有摘要）' }}</p>
-                </article>
-              </section>
-              <section class="preview-block">
-                <h3 class="preview-title">分享卡片</h3>
-                <article class="social">
-                  <img v-if="cardImage" class="social-photo" :src="cardImage" alt="" />
-                  <div v-else class="social-image empty">
-                    <UiIcon :path="icons.image" :size="18" />
-                    <span>这页没有 og:image</span>
-                  </div>
-                  <div class="social-body">
-                    <p class="social-title">{{ selectedPage?.title || '（没有标题）' }}</p>
-                    <p class="social-desc">{{ selectedPage?.description || '（没有摘要）' }}</p>
-                  </div>
-                </article>
-              </section>
-            </template>
-          </UiPanel>
-        </aside>
-      </div>
+        <p v-else class="dim">这份报告里没有这一页的标题和摘要。</p>
+      </UiDialog>
     </template>
   </section>
 </template>
@@ -576,6 +628,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--ui-s4);
+  max-width: 880px;
 }
 
 .center {
@@ -589,22 +642,27 @@ watch(
 
 .head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ui-s4);
-}
-
-.head-text {
-  display: flex;
   flex-direction: column;
   gap: var(--ui-s1);
-  min-width: 0;
 }
 
-.head-text h1 {
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s3);
+}
+
+.title-row h1 {
   margin: 0;
   font-size: var(--ui-fs-5);
   font-weight: 600;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s2);
 }
 
 .dim {
@@ -621,91 +679,109 @@ watch(
   white-space: pre-wrap;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--ui-s3);
-}
-
-.stat {
+.bands {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-s1);
-  padding: var(--ui-s3) var(--ui-s4);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r);
-  background: var(--ui-panel);
+  gap: var(--ui-s5);
 }
 
-.stat-num {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-
-.stat-label {
-  color: var(--ui-text);
-  font-size: var(--ui-fs-2);
-  font-weight: 600;
-}
-
-.stat-hint {
-  color: var(--ui-text-3);
-  font-size: var(--ui-fs-1);
-}
-
-.stat.is-danger .stat-num {
-  color: var(--ui-danger);
-}
-
-.stat.is-warn .stat-num {
-  color: var(--ui-warn);
-}
-
-.columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: var(--ui-s4);
-  align-items: start;
-}
-
-.main-col,
-.groups,
-.group,
-.issue-body {
+.band {
   display: flex;
   flex-direction: column;
   gap: var(--ui-s2);
-  min-width: 0;
 }
 
-.group-head {
+.band h2 {
+  margin: 0;
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-1);
+  font-weight: 500;
+}
+
+.rule {
+  padding-bottom: var(--ui-s3);
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.rule-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--ui-s3);
 }
 
-.group-head h2 {
-  margin: 0;
+.rule-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rule-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ui-s3);
+}
+
+.rule-line strong {
   font-size: var(--ui-fs-3);
 }
 
-.issue-actions {
+.rule-copy p,
+.info-row span {
+  margin: 0;
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
+  line-height: var(--ui-lh);
+}
+
+.scope {
+  color: var(--ui-text-3);
+  font-size: var(--ui-fs-2);
+  white-space: nowrap;
+}
+
+.rule-actions,
+.row-actions,
+.edit {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: var(--ui-s2);
 }
 
-.edit {
+.rows {
   display: flex;
+  flex-direction: column;
+  max-height: 16rem;
+  margin-top: var(--ui-s2);
+  overflow: auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 3rem minmax(0, 1fr);
   gap: var(--ui-s2);
   align-items: center;
+  min-height: 2.5rem;
+  padding: 4px 0 4px var(--ui-s3);
+  border-top: 1px solid var(--ui-line);
+}
+
+.row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-value {
+  color: var(--ui-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .edit input {
-  width: 220px;
+  width: 180px;
   padding: 6px 8px;
   border: 1px solid var(--ui-line);
   border-radius: var(--ui-r-sm);
@@ -715,49 +791,31 @@ watch(
   font-size: var(--ui-fs-2);
 }
 
-.issue {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--ui-s3);
-  align-items: start;
-  padding-top: var(--ui-s2);
-  border-top: 1px solid var(--ui-line);
-}
-
-.issue-body p {
-  margin: 0;
-}
-
 .info-fold {
-  padding: var(--ui-s3);
-  border: 1px solid var(--ui-line);
-  border-radius: var(--ui-r);
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
 }
 
-.preview-col {
-  min-width: 0;
-  position: sticky;
-  top: var(--ui-s4);
+.info-fold summary {
+  cursor: pointer;
 }
 
-.preview-picker {
-  margin-bottom: var(--ui-s3);
+.info-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-s2);
+  align-items: baseline;
+  padding-top: var(--ui-s2);
 }
 
-.preview-block {
+.dialog-preview {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-s2);
-  padding-top: var(--ui-s3);
-  border-top: 1px solid var(--ui-line);
+  gap: var(--ui-s4);
 }
 
-.preview-block + .preview-block {
-  margin-top: var(--ui-s3);
-}
-
-.preview-title {
-  margin: 0;
+.dialog-preview h3 {
+  margin: 0 0 var(--ui-s2);
   color: var(--ui-text-3);
   font-size: var(--ui-fs-1);
   font-weight: 600;
@@ -820,15 +878,5 @@ watch(
   height: 88px;
   padding: 0 var(--ui-s3);
   color: var(--ui-text-3);
-}
-
-@media (max-width: 1180px) {
-  .columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .preview-col {
-    position: static;
-  }
 }
 </style>
