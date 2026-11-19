@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assessGithubToken,
   createVerifyCache,
+  explainOrgFineToken,
   explainWorkflowScope,
+  githubFineTokenLink,
+  seesOtherRepos,
   githubPagesUrl,
   mergeProbe,
   probeTokenCapabilities,
   reuseTokenOn,
   readGithubVerify,
-  requiredMissing,
   tokenExpiryText,
   tokenKindLabel,
   tokenStatusLine,
@@ -15,44 +18,48 @@ import {
 } from '../../../../apps/studio/src/main/publish-token.ts';
 
 describe('令牌验证', () => {
-  it('GitHub 经典令牌按 scopes 列出能力', () => {
+  it('经典令牌不通过', () => {
     const report = readGithubVerify({
       status: 200,
       scopes: 'repo, workflow',
-      expires: '2026-12-01T00:00:00Z',
+      expires: '',
       login: 'ShenYuanOR',
-      now: Date.parse('2026-11-19T00:00:00Z'),
     });
-    expect(report).toMatchObject({ status: 'valid', account: 'ShenYuanOR', kind: 'github-classic' });
-    expect(report.capabilities.find((item) => item.key === 'hosting')?.label).toBe('开启 Pages');
-    expect(requiredMissing(report)).toEqual([]);
-    expect(report.capabilities.find((item) => item.key === 'create')?.state).toBe('ok');
+    expect(report.status).toBe('rejected');
+    expect(report.kind).toBe('github-classic');
+    expect(report.message).toContain('经典令牌');
+    expect(tokenStatusLine(report)).toBe('令牌权限过大');
   });
 
-  it('经典令牌缺 workflow 时标出缺失，建仓库缺失不算必需失败', () => {
-    const report = readGithubVerify({
-      status: 200,
-      scopes: 'public_repo',
-      expires: '',
-      login: 'a',
-    });
-    expect(report.capabilities.find((item) => item.key === 'workflow')?.state).toBe('missing');
-    expect(requiredMissing(report).some((item) => item.key === 'create')).toBe(false);
-    expect(requiredMissing(report).map((item) => item.key)).toContain('workflow');
+  it('能访问别的仓库就不通过', () => {
+    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test'], 'ShenYuanOR', 'xiao-pages-test', false)).toBe(false);
+    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test', 'ShenYuanOR/XiaoBlog'], 'ShenYuanOR', 'xiao-pages-test', false)).toBe(
+      true,
+    );
+    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test'], 'ShenYuanOR', 'xiao-pages-test', true)).toBe(true);
+  });
+
+  it('组织禁止细粒度令牌时改写成中文', () => {
+    expect(explainOrgFineToken(403, 'fine-grained personal access tokens are disabled', 'ShenYuanOR')).toContain(
+      '组织 ShenYuanOR 没有允许细粒度令牌',
+    );
+    expect(explainOrgFineToken(404, 'missing', 'ShenYuanOR')).toBe('');
   });
 
   it('没有 scopes 头的细粒度令牌标成未知', () => {
-    const report = readGithubVerify({ status: 200, scopes: '', expires: '', login: 'a' });
+    const report = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
     expect(report.kind).toBe('github-fine');
+    expect(report.status).toBe('valid');
     expect(report.capabilities.every((item) => item.state === 'unknown')).toBe(true);
+    expect(report.capabilities.some((item) => item.key === 'workflow')).toBe(true);
   });
 
   it('401 和过期都给出明确状态', () => {
-    expect(readGithubVerify({ status: 401, scopes: '', expires: '', login: '' }).message).toBe('令牌已失效');
+    expect(readGithubVerify({ status: 401, scopes: null, expires: '', login: '' }).message).toBe('令牌已失效');
     expect(
       readGithubVerify({
         status: 200,
-        scopes: 'repo',
+        scopes: null,
         expires: '2020-01-01T00:00:00Z',
         login: 'a',
         now: Date.parse('2026-11-19T00:00:00Z'),
@@ -70,7 +77,7 @@ describe('令牌验证', () => {
     let now = 1_000;
     const cache = createVerifyCache(() => now);
     const key = verifyCacheKey('github', 'https://github.com', 'secret-token');
-    const report = readGithubVerify({ status: 401, scopes: '', expires: '', login: '' });
+    const report = readGithubVerify({ status: 401, scopes: null, expires: '', login: '' });
     cache.put(key, report);
     expect(cache.get(key)?.message).toBe('令牌已失效');
     now += 61_000;
@@ -79,7 +86,7 @@ describe('令牌验证', () => {
   });
 
   it('细粒度令牌只补上探测得到的项', async () => {
-    const base = readGithubVerify({ status: 200, scopes: '', expires: '', login: 'a' });
+    const base = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
     const seen: string[] = [];
     const fetchImpl = (async (url: string) => {
       seen.push(url);
@@ -98,8 +105,35 @@ describe('令牌验证', () => {
     expect(merged.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
     expect(merged.capabilities.find((item) => item.key === 'actions')?.state).toBe('missing');
     expect(merged.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
-    const classic = readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' });
-    expect(mergeProbe(classic, { push: 'missing' }).capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
+    expect(mergeProbe(base, { workflow: 'ok' }).capabilities.find((item) => item.key === 'workflow')?.state).toBe('ok');
+  });
+
+  it('只授权目标仓库且能推送才通过', async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url.endsWith('/user')) {
+        return new Response(JSON.stringify({ login: 'ShenYuanOR' }), { status: 200 });
+      }
+      if (url.includes('/user/repos')) {
+        return new Response(JSON.stringify([{ full_name: 'ShenYuanOR/xiao-pages-test' }]), { status: 200 });
+      }
+      if (url.endsWith('/pages')) return new Response(JSON.stringify({ build_type: 'workflow' }), { status: 200 });
+      if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
+      if (url.includes('/actions/runs')) return new Response('{}', { status: 200 });
+      if (url.includes('/repos/ShenYuanOR/xiao-pages-test')) return new Response('{}', { status: 200 });
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const report = await assessGithubToken({
+      token: 'fine',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      fetchImpl,
+    });
+    expect(report.status).toBe('valid');
+    expect(report.kind).toBe('github-fine');
+    expect(report.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
+    expect(report.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
+    expect(githubFineTokenLink('ShenYuanOR', 'xiao-pages-test')).toContain('target_name=ShenYuanOR');
+    expect(githubFineTokenLink('ShenYuanOR', 'xiao-pages-test')).toContain('contents=write');
   });
 
   it('缺 workflow 权限的推送失败写成中文', () => {
@@ -115,24 +149,26 @@ describe('已连接时的令牌短句', () => {
 
   it('失效、将过期、缺权限和有效', () => {
     expect(tokenStatusLine(null)).toBe('还没验证');
-    expect(tokenStatusLine(readGithubVerify({ status: 401, scopes: '', expires: '', login: '' }))).toBe('已失效');
+    expect(tokenStatusLine(readGithubVerify({ status: 401, scopes: null, expires: '', login: '' }))).toBe('已失效');
     expect(
       tokenStatusLine(
-        readGithubVerify({ status: 200, scopes: 'repo', expires: '2020-01-01T00:00:00Z', login: 'a', now }),
+        readGithubVerify({ status: 200, scopes: null, expires: '2020-01-01T00:00:00Z', login: 'a', now }),
         now,
       ),
     ).toBe('已失效');
     expect(
       tokenStatusLine(
-        readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '2026-12-01T00:00:00Z', login: 'a', now }),
+        readGithubVerify({ status: 200, scopes: null, expires: '2026-12-01T00:00:00Z', login: 'a', now }),
         now,
       ),
     ).toBe('将在 12 天后过期');
-    const missing = readGithubVerify({ status: 200, scopes: 'public_repo', expires: '', login: 'a' });
-    expect(tokenStatusLine(missing)).toBe('缺少修改构建配置');
-    expect(tokenStatusLine(readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' }))).toBe(
-      '有效',
-    );
+    const missing = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
+    const marked = {
+      ...missing,
+      capabilities: missing.capabilities.map((item) => (item.key === 'push' ? { ...item, state: 'missing' as const } : item)),
+    };
+    expect(tokenStatusLine(marked)).toBe('缺少推送内容');
+    expect(tokenStatusLine(readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' }))).toBe('有效');
   });
 });
 

@@ -20,7 +20,7 @@ import {
   tokenPage,
   type PrepStep,
 } from '../../../main/publish-prep.ts';
-import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
+import { TOKEN_CHECKLIST, tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
 import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -135,7 +135,7 @@ const sitePostCount = ref(0);
 const historyPersisted = ref(true);
 const target = ref<DeployTarget | null>(null);
 const tokenReport = ref<{
-  status: 'valid' | 'invalid' | 'expired';
+  status: 'valid' | 'invalid' | 'expired' | 'rejected';
   account: string;
   message: string;
   capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
@@ -172,7 +172,9 @@ const deletedPosts = computed(() => changes.value.posts.filter((post) => post.st
 const failedCheck = computed(() => checks.value.find((item) => !item.ok));
 const liveOk = computed(() => steps.value.some((step) => step.key === 'live' && step.state === 'ok'));
 const buildFailed = computed(() => steps.value.some((step) => step.key === 'build' && step.state === 'fail'));
-const tokenBlocked = computed(() => tokenReport.value?.status === 'invalid' || tokenReport.value?.status === 'expired');
+const tokenBlocked = computed(
+  () => tokenReport.value?.status === 'invalid' || tokenReport.value?.status === 'expired' || tokenReport.value?.status === 'rejected',
+);
 const blocked = computed(
   () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok) || tokenBlocked.value,
 );
@@ -433,7 +435,7 @@ async function verifyPasted(): Promise<void> {
   }
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.checkToken('github', 'https://github.com', token);
+    const result = await window.xiao.publish.checkToken('github', prep.value.remoteUrl, token);
     if (!result.ok) {
       notify(result.message, 'error', 'publish-prep');
       return;
@@ -885,8 +887,15 @@ watch(
                 <template v-if="step === 'token'">
                   <h3>令牌验证</h3>
                   <UiField label="访问令牌">
-                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴令牌" />
+                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴只授权这个仓库的细粒度令牌" />
                   </UiField>
+                  <p class="dim">只接受细粒度令牌，而且只能授权 {{ prep.owner }}/{{ prep.repo }}。</p>
+                  <ul class="cap-list">
+                    <li v-for="item in TOKEN_CHECKLIST" :key="item">{{ item }}</li>
+                  </ul>
+                  <div class="prep-actions">
+                    <UiButton variant="ghost" @click="openLink(tokenPage(prep))">创建只授权这个仓库的令牌</UiButton>
+                  </div>
                   <div class="prep-actions">
                     <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
                     <UiButton v-if="tokenGaps.length" variant="ghost" @click="openLink(tokenPage(prep))">去创建令牌</UiButton>

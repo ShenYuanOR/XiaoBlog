@@ -106,12 +106,13 @@ import {
   reuseTokenOn,
   probeTokenCapabilities,
   verifyCacheKey,
+  assessGithubToken,
   verifyGithubToken,
   type TokenReport,
 } from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { parseRepoUrl } from './publish-prep.ts';
-import { writeGithubWorkflow } from './publish-workflow.ts';
+import { parseGitRemote, writeGithubWorkflow } from './publish-workflow.ts';
 import { createRemoteRepo, enableGithubPages, listRemoteRepos, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
@@ -332,7 +333,9 @@ async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
   const target = deployStore().read()[siteDir];
   const token = secretStore().load(siteDir);
   if (!target || !token || target.provider !== 'github') return null;
-  return verifyGithubToken(token, apiFetch);
+  const remote = parseGitRemote(target.remoteUrl);
+  if (!remote) return verifyGithubToken(token, apiFetch);
+  return assessGithubToken({ token, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch });
 }
 
 function deployStore(): ReturnType<typeof createDeployStore> {
@@ -1309,7 +1312,10 @@ app.whenReady().then(() => {
       }
     }
     if (target.provider !== 'github') return fail('PUBLISH_PROVIDER', 'Gitea 已不再作为发布目标，请连接 GitHub 仓库');
-    const report = await verifyLooseToken(trimmed, target.remoteUrl, target.login);
+    const remote = parseGitRemote(target.remoteUrl);
+    const report = remote
+      ? await assessGithubToken({ token: trimmed, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch })
+      : await verifyLooseToken(trimmed);
     if (report.status !== 'valid') return ok(report);
     secretStore().save(siteDir, trimmed, report.expiresAt || '');
     tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
@@ -1319,12 +1325,15 @@ app.whenReady().then(() => {
     const trimmed = typeof token === 'string' ? token.trim() : '';
     if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
     const root = 'https://github.com';
-    const key = verifyCacheKey('github', root, trimmed);
+    const key = verifyCacheKey('github', String(_origin || root), trimmed);
     if (reuseTokenOn('prep')) {
       const cached = tokenCache.get(key);
       if (cached) return ok(cached);
     }
-    const report = await verifyLooseToken(trimmed);
+    const remote = parseGitRemote(String(_origin || ''));
+    const report = remote
+      ? await assessGithubToken({ token: trimmed, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch })
+      : await verifyLooseToken(trimmed);
     if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);
   });

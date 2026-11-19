@@ -30,7 +30,7 @@ import { writeGithubWorkflow } from '../../../../apps/studio/src/main/publish-wo
 
 const classic = readGithubVerify({
   status: 200,
-  scopes: 'repo, workflow',
+  scopes: null,
   expires: '',
   login: 'ShenYuanOR',
 });
@@ -63,18 +63,19 @@ describe('发布准备状态机', () => {
     expect(shown.step).toBe('token');
     expect(shown.report?.account).toBe('ShenYuanOR');
     expect(acceptToken(shown).step).toBe('site');
-    const invalid = applyTokenReport(draft, readGithubVerify({ status: 401, scopes: '', expires: '', login: '' }));
+    const invalid = applyTokenReport(draft, readGithubVerify({ status: 401, scopes: null, expires: '', login: '' }));
     expect(invalid.step).toBe('token');
     expect(invalid.error).toBe('令牌已失效');
     expect(invalid.token).toBe('secret-token');
     expect(acceptToken(invalid).step).toBe('token');
-    const noPush = applyTokenReport(
-      draft,
-      readGithubVerify({ status: 200, scopes: 'workflow', expires: '', login: 'a' }),
-    );
+    const fine = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
+    const noPush = applyTokenReport(draft, {
+      ...fine,
+      capabilities: fine.capabilities.map((item) => (item.key === 'push' ? { ...item, state: 'missing' as const } : item)),
+    });
     expect(noPush.error).toContain('推送内容');
-    expect(noPush.manualLink).toContain('github.com/settings/tokens/new');
-    const base = readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' });
+    expect(noPush.manualLink).toContain('personal-access-tokens/new');
+    const base = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
     const noCreateReport = {
       ...base,
       capabilities: base.capabilities.map((item) => (item.key === 'create' ? { ...item, state: 'missing' as const } : item)),
@@ -82,7 +83,7 @@ describe('发布准备状态机', () => {
     const noCreate = acceptToken(applyTokenReport(draft, noCreateReport));
     expect(noCreate.step).toBe('site');
     expect(canCreateRepo(noCreate.report)).toBe(false);
-    expect(canCreateRepo(classic)).toBe(true);
+    expect(canCreateRepo(classic)).toBe(false);
   });
 
   it('仓库：空仓库继续，非晓站点要确认，确认后地址还在', () => {

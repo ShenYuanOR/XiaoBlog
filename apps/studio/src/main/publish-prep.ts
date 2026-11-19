@@ -96,8 +96,8 @@ function advance(draft: PrepDraft, step: PrepStep): PrepDraft {
   return clearHint({ ...draft, step, done });
 }
 
-export function tokenPage(_draft: PrepDraft): string {
-  return githubTokenLink();
+export function tokenPage(draft: PrepDraft): string {
+  return githubTokenLink(draft.owner, draft.repo);
 }
 
 export function newRepoPage(draft: PrepDraft, name = ''): string {
@@ -118,6 +118,7 @@ export function applyTokenReport(draft: PrepDraft, report: TokenReport): PrepDra
   const link = tokenPage(draft);
   if (report.status === 'invalid') return stay(next, '令牌已失效', '换一个令牌再验证。', link);
   if (report.status === 'expired') return stay(next, '令牌已过期', '去创建令牌，再粘贴新的。', link);
+  if (report.status === 'rejected') return stay(next, report.message, '换一个只授权这个仓库的细粒度令牌。', link);
   if (report.status === 'valid' && pushBlocks(report)) {
     return stay(next, '缺少：推送内容', '去创建令牌并勾上仓库写权限，再回来验证。', link);
   }

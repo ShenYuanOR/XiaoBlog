@@ -385,7 +385,7 @@ export interface XiaoApi {
     ) => () => void;
     verify: (siteDir: string) => Promise<
       IpcResult<{
-        status: 'valid' | 'invalid' | 'expired';
+        status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
         kind: 'github-classic' | 'github-fine' | 'gitea';
         expiresAt: string;
@@ -398,7 +398,7 @@ export interface XiaoApi {
       token: string,
     ) => Promise<
       IpcResult<{
-        status: 'valid' | 'invalid' | 'expired';
+        status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
         kind: 'github-classic' | 'github-fine' | 'gitea';
         expiresAt: string;
@@ -412,7 +412,7 @@ export interface XiaoApi {
       token: string,
     ) => Promise<
       IpcResult<{
-        status: 'valid' | 'invalid' | 'expired';
+        status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
         kind: 'github-classic' | 'github-fine' | 'gitea';
         expiresAt: string;
@@ -428,7 +428,7 @@ export interface XiaoApi {
       login?: string,
     ) => Promise<
       IpcResult<{
-        status: 'valid' | 'invalid' | 'expired';
+        status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
         kind: 'github-classic' | 'github-fine' | 'gitea';
         expiresAt: string;
