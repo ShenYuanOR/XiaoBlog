@@ -5,6 +5,7 @@ import { copy, navItems, type NavKey } from '../copy.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { concealNativePreview } from '../preview-layer.ts';
+import { usePublish } from '../stores/publish.ts';
 import { useSession, type PreviewDevice } from '../stores/session.ts';
 import {
   UiButton,
@@ -30,6 +31,8 @@ import Seo from './Seo.vue';
 import Settings from './Settings.vue';
 
 const session = useSession();
+const publish = usePublish();
+publish.bind();
 const router = useRouter();
 
 const slug = ref('');
@@ -50,11 +53,22 @@ const navKey = computed({
 });
 
 const navItem = computed(() => navItems.find((item) => item.key === session.nav));
-const navOptions = navItems.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: icons[item.icon],
-}));
+const publishing = computed(() => publish.jobOf(session.siteDir)?.status === 'running');
+const publishLabel = computed(() => {
+  const job = publish.jobOf(session.siteDir);
+  if (!job || job.status !== 'running') return '';
+  const step = job.steps.find((item) => item.state === 'run');
+  if (!step) return '发布中';
+  const seconds = Math.max(0, Math.round((publish.now - step.startedAt) / 1000));
+  return `发布中：${step.label} ${seconds} 秒`;
+});
+const navOptions = computed(() =>
+  navItems.map((item) => ({
+    key: item.key,
+    label: item.key === 'publish' && publishing.value ? `${item.label} ●` : item.label,
+    icon: icons[item.icon],
+  })),
+);
 const showList = computed(
   () =>
     Boolean(session.siteDir) &&
@@ -231,6 +245,7 @@ function onPreviewWindow(event: Event): void {
 
 onMounted(() => {
   void session.load();
+  if (session.siteDir) void publish.hydrate(session.siteDir);
   void window.xiao.preview.hideDock();
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('xiao:open-post', onOpenPost);
@@ -244,6 +259,35 @@ onBeforeUnmount(() => {
   window.removeEventListener('xiao:focus-setting', onFocusSetting);
   window.removeEventListener('xiao:open-post', onOpenPost);
 });
+
+watch(
+  () => session.siteDir,
+  (siteDir) => {
+    if (siteDir) void publish.hydrate(siteDir);
+  },
+);
+
+watch(
+  () => publish.jobOf(session.siteDir),
+  (job, previous) => {
+    if (!job || !previous || previous.status !== 'running' || job.status === 'running') return;
+    if (session.nav === 'publish') return;
+    if (job.status === 'ok') {
+      notify('已上线', 'info', 'publish-done', {
+        label: '打开网站',
+        run: () => {
+          if (job.siteUrl) void window.xiao.app.openExternal(job.siteUrl);
+        },
+      });
+      return;
+    }
+    const failed = job.steps.find((step) => step.state === 'fail');
+    notify(`发布停在${failed?.label || '这一步'}`, 'error', 'publish-done', {
+      label: '查看',
+      run: () => session.setNav('publish'),
+    });
+  },
+);
 
 watch(
   () => session.previewUrl,
@@ -468,6 +512,9 @@ const modeKey = computed({
       <span v-if="session.previewUrl" class="sep">·</span>
       <span v-if="session.previewUrl" class="dim">{{ session.previewUrl }}</span>
       <span v-if="session.building" class="dim"><UiSpinner :size="12" /> 构建中…</span>
+      <button v-if="publishLabel" type="button" class="publish-live" @click="session.setNav('publish')">
+        {{ publishLabel }}
+      </button>
       <div class="grow" />
       <span class="dim">{{ session.status }}</span>
     </footer>
@@ -802,6 +849,14 @@ const modeKey = computed({
   align-items: center;
   gap: var(--ui-s1);
   color: var(--ui-text-3);
+}
+
+.publish-live {
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  cursor: pointer;
 }
 
 .on {

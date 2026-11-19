@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
+import { usePublish } from '../stores/publish.ts';
 import { useSession } from '../stores/session.ts';
 import { UiBadge, UiButton, UiDialog, UiEmpty, UiField, UiIcon, UiInput, UiSpinner } from '../ui/index.ts';
 
@@ -89,6 +90,7 @@ interface StepRow {
 }
 
 const session = useSession();
+const publish = usePublish();
 
 const emptyChanges = (): ChangeSummary => ({
   posts: [],
@@ -119,7 +121,6 @@ const disconnectOpen = ref(false);
 const repairOpen = ref(false);
 const phase = ref<'ready' | 'running' | 'result'>('ready');
 const steps = ref<StepRow[]>([]);
-const tick = ref(Date.now());
 const filesOpen = ref(false);
 const connectionOpen = ref(false);
 
@@ -207,7 +208,7 @@ function formatTime(at: string): string {
 }
 
 function stepMs(step: StepRow): number {
-  if (step.state === 'run' && step.startedAt) return Math.max(0, tick.value - step.startedAt);
+  if (step.state === 'run' && step.startedAt) return Math.max(0, publish.now - step.startedAt);
   return step.ms;
 }
 
@@ -439,17 +440,17 @@ async function loadAll(check = true): Promise<void> {
   loading.value = true;
   errorText.value = '';
   try {
-    const [changesResult, historyResult, targetResult, jobResult] = await Promise.all([
+    const [changesResult, historyResult, targetResult] = await Promise.all([
       window.xiao.publish.changes(siteDir),
       window.xiao.publish.history(siteDir),
       window.xiao.publish.target(siteDir),
-      window.xiao.publish.job(siteDir),
     ]);
     changes.value = changesResult.ok ? changesResult.data : emptyChanges();
     history.value = historyResult.ok ? historyResult.data.rows : [];
     historyPersisted.value = historyResult.ok ? historyResult.data.persisted : true;
     target.value = targetResult.ok ? targetResult.data : null;
-    const currentJob = jobResult.ok ? jobResult.data : null;
+    await publish.hydrate(siteDir);
+    const currentJob = publish.jobOf(siteDir);
     if (currentJob) applyJob(currentJob);
     if (target.value) {
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
@@ -477,32 +478,24 @@ async function openSite(): Promise<void> {
   session.setNav('publish');
 }
 
-let stopJob = (): void => {};
-let clock = 0;
-
 onMounted(() => {
-  clock = window.setInterval(() => {
-    tick.value = Date.now();
-  }, 1000);
-  stopJob = window.xiao.publish.onJob((payload) => {
-    if (payload.siteDir !== session.siteDir) return;
+  void loadAll();
+});
+
+watch(
+  () => publish.jobOf(session.siteDir),
+  (job) => {
     const wasRunning = phase.value === 'running';
-    applyJob(payload.job);
-    if (wasRunning && payload.job && payload.job.status !== 'running' && session.siteDir) {
+    applyJob(job);
+    if (wasRunning && job && job.status !== 'running' && session.siteDir) {
       void window.xiao.publish.history(session.siteDir).then((historyResult) => {
         if (!historyResult.ok) return;
         history.value = historyResult.data.rows;
         historyPersisted.value = historyResult.data.persisted;
       });
     }
-  });
-  void loadAll();
-});
-
-onBeforeUnmount(() => {
-  stopJob();
-  window.clearInterval(clock);
-});
+  },
+);
 
 watch(
   () => session.siteDir,

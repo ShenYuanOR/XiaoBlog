@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { icons } from '../icons.ts';
-import { dismiss, notices } from '../notice.ts';
+import { dismiss, notices, type NoticeAction } from '../notice.ts';
 import { UiButton, UiIcon } from '../ui/index.ts';
+
+function runAction(id: number, action: NoticeAction): void {
+  action.run();
+  dismiss(id);
+}
 </script>
 
 <template>
@@ -17,6 +22,9 @@ import { UiButton, UiIcon } from '../ui/index.ts';
         <UiIcon :path="item.kind === 'error' ? icons.alert : icons.ok" :size="16" />
       </span>
       <p class="toast__text">{{ item.text }}</p>
+      <button v-if="item.action" type="button" class="toast__action" @click.stop="runAction(item.id, item.action)">
+        {{ item.action.label }}
+      </button>
       <UiButton
         class="toast__close"
         variant="ghost"
@@ -79,6 +87,15 @@ import { UiButton, UiIcon } from '../ui/index.ts';
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.toast__action {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  cursor: pointer;
 }
 
 .toast__close {
