@@ -862,7 +862,7 @@ const modeKey = computed({
 }
 
 /* 发布是导航第 6 项，顺序见 copy.ts 的 navItems。 */
-.nav-mark.live :deep(.ui-segmented__item:nth-child(6))::after {
+.nav-mark.live :deep(.ui-segmented__item:nth-child(6)::after) {
   content: '';
   width: 6px;
   height: 6px;
