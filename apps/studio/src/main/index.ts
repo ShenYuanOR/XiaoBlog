@@ -1068,7 +1068,9 @@ app.whenReady().then(() => {
       const target = deployStore().read()[siteDir];
       const audit = await auditSite(siteDir);
       if (!audit.ok) return fail('PUBLISH_CHECK', audit.message);
-      const reportIssues = Array.isArray(audit.data.report?.issues) ? audit.data.report.issues : [];
+      const reportIssues: { level?: string; rule?: string; detail?: string }[] = Array.isArray(audit.data.report?.issues)
+        ? audit.data.report.issues
+        : [];
       const posts = listPosts(siteDir);
       const prebuild = seoRows(config, posts).filter((row) => row.level === 'error');
       const errors: { rule: string; detail: string }[] = [];

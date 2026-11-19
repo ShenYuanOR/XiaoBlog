@@ -232,7 +232,7 @@ function openArticle(slug: string): void {
   window.dispatchEvent(new CustomEvent('xiao:open-post', { detail: { slug } }));
 }
 
-function openSite(): void {
+function openPublishedSite(): void {
   const url = target.value?.siteUrl || steps.value.find((step) => step.key === 'live')?.url || '';
   if (url) void window.xiao.app.openExternal(url);
 }
@@ -607,8 +607,8 @@ watch(
       </section>
 
       <template v-else-if="phase === 'ready'">
-        <p v-if="target.actionsState && target.actionsState !== 'ready'" class="alert">
-          {{ target.actionsDetail }}
+        <p v-if="target?.actionsState && target?.actionsState !== 'ready'" class="alert">
+          {{ target?.actionsDetail }}
         </p>
         <section class="block">
           <h2>将发布什么</h2>
@@ -680,7 +680,7 @@ watch(
           </li>
         </ol>
         <div v-if="liveOk" class="actions">
-          <UiButton variant="primary" @click="openSite">打开网站</UiButton>
+          <UiButton variant="primary" @click="openPublishedSite">打开网站</UiButton>
           <UiButton @click="finishPublish">完成</UiButton>
         </div>
         <div v-else-if="phase === 'result'" class="actions">
