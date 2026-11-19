@@ -988,10 +988,11 @@ watch(
               <button
                 v-if="stepPhase(prep.step, step, prep.done) === 'done'"
                 type="button"
-                class="fold"
+                class="fold done-step"
                 @click="prep = reopen(prep, step)"
               >
-                {{ stepLine(prep, step) }}
+                <UiIcon :path="icons.ok" :size="16" />
+                <span>{{ stepLine(prep, step) }}</span>
               </button>
               <p v-else-if="stepPhase(prep.step, step, prep.done) === 'later'" class="later-step">{{ stepTitle(step) }}</p>
               <div v-else class="prep-current">
@@ -1532,8 +1533,25 @@ watch(
   gap: var(--ui-s2);
 }
 
-.prep-current h3 {
+.done-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-s2);
+}
+
+.prep-current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s3);
+  width: 100%;
+}
+
+.prep-current h3,
+.prep-current p {
   margin: 0;
+}
+
+.prep-current h3 {
   font-size: var(--ui-fs-3);
   font-weight: 400;
 }
