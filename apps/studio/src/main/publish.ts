@@ -11,6 +11,7 @@ import {
 import path from 'node:path';
 import git from 'isomorphic-git';
 import { createHttpClient, checkPush, type HttpFetch } from './git.ts';
+import { parseGiteaRemote } from './publish-workflow.ts';
 
 /**
  * 发布远端：先用 Electron 的 net.fetch 走系统代理，再交给 isomorphic-git。
@@ -278,13 +279,14 @@ async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
   }
 
   try {
+    const refs = pushRefs(branch, target.branch || branch);
     await git.push({
       fs,
       dir: siteDir,
       http: input.http as never,
       remote: 'origin',
-      ref: branch,
-      ...(target.branch && target.branch !== branch ? { remoteRef: target.branch } : {}),
+      ref: refs.ref,
+      ...(refs.remoteRef ? { remoteRef: refs.remoteRef } : {}),
       force: Boolean(input.force),
       onAuth: () => ({ username: input.login || 'x-access-token', password: input.token }),
       onAuthFailure: () => ({ cancel: true }),
@@ -338,25 +340,55 @@ export async function probeRemote(
   }
 }
 
-/** 读远端的默认分支（空仓库或匿名可读时读不到，回退 master）。 */
+/** 空仓库没有 HEAD。Gitea 这时的默认分支是接口里的 default_branch，通常是 main。 */
+export function chooseDefaultBranch(head: string | undefined, apiBranch: string | undefined): string {
+  if (head?.startsWith('refs/heads/')) return head.slice('refs/heads/'.length);
+  const fromApi = apiBranch?.trim();
+  return fromApi || 'main';
+}
+
+/** 本地分支和远端默认分支不同时，推到远端那条，不把远端改成本地的名字。 */
+export function pushRefs(local: string, remote: string): { ref: string; remoteRef?: string } {
+  if (remote && remote !== local) return { ref: local, remoteRef: remote };
+  return { ref: local };
+}
+
+/** 读远端的默认分支。空仓库改问 Gitea 的 default_branch。 */
 export async function remoteDefaultBranch(
   remoteUrl: string,
   login: string,
   token: string,
   httpClient: ReturnType<typeof createHttpClient>,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
+  let head = '';
   try {
     const info = (await git.getRemoteInfo({
       http: httpClient as never,
       url: remoteUrl,
       onAuth: () => ({ username: login || 'x-access-token', password: token }),
     })) as { HEAD?: string };
-    const head = info.HEAD;
-    if (head?.startsWith('refs/heads/')) return head.slice('refs/heads/'.length);
+    head = info.HEAD ?? '';
+    if (head.startsWith('refs/heads/')) return chooseDefaultBranch(head, undefined);
   } catch {
-    // 空仓库、或服务端不允许匿名读时拿不到 HEAD，按 master 处理。
+    head = '';
   }
-  return 'master';
+  let apiBranch = '';
+  try {
+    const remote = parseGiteaRemote(remoteUrl);
+    if (remote) {
+      const response = await fetchImpl(`${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`, {
+        headers: { Authorization: `token ${token}` },
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { default_branch?: string };
+        apiBranch = body.default_branch ?? '';
+      }
+    }
+  } catch {
+    apiBranch = '';
+  }
+  return chooseDefaultBranch(head, apiBranch);
 }
 
 export interface DeployStore {
