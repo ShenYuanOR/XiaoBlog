@@ -1,80 +1,52 @@
 ---
-import { loadConfig } from '../../lib/config';
-import { withBase } from '../../lib/base';
-import { publishedPosts } from '../../lib/posts';
-import SideTree from './SideTree.astro';
-
-const config = loadConfig();
-const posts = await publishedPosts();
-const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
-const current = posts.find((post) => path.endsWith(`/posts/${post.id}`))?.id;
-function currentNav(href: string): 'page' | undefined {
-  const target = withBase(href).replace(/\/+$/, '') || '/';
-  return path === target ? 'page' : undefined;
-}
+import SiteNav from '../xiao/SiteNav.astro';
+import SiteSearchButton from '../xiao/SiteSearchButton.astro';
+import SiteThemeToggle from '../xiao/SiteThemeToggle.astro';
+import SiteTitle from '../xiao/SiteTitle.astro';
 ---
 
 <header class="topbar">
+  <SiteTitle />
+  <SiteNav />
+  <SiteSearchButton />
+  <SiteThemeToggle />
   <details class="nav-drawer">
-    <summary class="icon-btn" aria-label="打开菜单">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
+    <summary class="icon-btn" aria-label="打开导航">
+      <svg class="drawer-open-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+      <svg class="drawer-close-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 6l12 12M18 6 6 18"></path>
       </svg>
     </summary>
     <div class="drawer-mask"></div>
     <div class="drawer-panel">
-      <nav aria-label="站点">
-        {config.nav.map((item) => (
-          <a href={withBase(item.href)} aria-current={currentNav(item.href)}>
-            {item.label}
-          </a>
-        ))}
-      </nav>
-      <SideTree posts={posts} current={current} />
+      <SiteNav variant="drawer" class="drawer-nav" />
     </div>
   </details>
-  <a class="brand" href={withBase()}>
-    {config.site.title}
-  </a>
-  <nav class="nav-desktop" aria-label="站点">
-    {config.nav.map((item) => (
-      <a href={withBase(item.href)} aria-current={currentNav(item.href)}>
-        {item.label}
-      </a>
-    ))}
-  </nav>
-  <a class="search-btn" href={withBase('search/')} aria-label="搜索 ⌘K">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="11" cy="11" r="6"></circle>
-      <path d="M16 16l4 4"></path>
-    </svg>
-    <span class="search-label">搜索 ⌘K</span>
-  </a>
-  <button class="icon-btn theme-toggle" type="button" id="theme-toggle" aria-label="切换主题">
-    <svg class="sun" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="4"></circle>
-      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"></path>
-    </svg>
-    <svg class="moon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"></path>
-    </svg>
-  </button>
   <script is:inline>
-    document.getElementById('theme-toggle')?.addEventListener('click', () => {
-      const root = document.documentElement;
-      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-      root.dataset.theme = next;
-      localStorage.setItem('xiao-theme', next);
+    document.querySelectorAll('.topbar .theme-toggle').forEach((button) => {
+      button.addEventListener('click', () => {
+        const root = document.documentElement;
+        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        localStorage.setItem('xiao-theme', next);
+      });
     });
     document.querySelectorAll('.nav-drawer').forEach((drawer) => {
+      const summary = drawer.querySelector('summary');
+      drawer.addEventListener('toggle', () => {
+        summary?.setAttribute('aria-label', drawer.open ? '收起导航' : '打开导航');
+      });
       drawer.querySelector('.drawer-mask')?.addEventListener('click', () => {
         drawer.open = false;
       });
     });
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
-      document.querySelectorAll('.nav-drawer').forEach((drawer) => {
+      document.querySelectorAll('.nav-drawer[open]').forEach((drawer) => {
         drawer.open = false;
+        drawer.querySelector('summary')?.focus();
       });
     });
   </script>

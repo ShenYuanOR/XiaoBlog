@@ -1,0 +1,20 @@
+---
+/** 文章目录参数，移动端/侧栏用同一个组件。 */
+import Toc from '../site/Toc.astro';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  headings?: Heading[];
+  mobile?: boolean;
+  class?: string;
+}
+const { headings = [], mobile = false, class: extraClass } = Astro.props;
+---
+
+<div class:list={[extraClass]}>
+  <Toc headings={headings} mobile={mobile} />
+</div>

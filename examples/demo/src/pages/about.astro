@@ -1,10 +1,25 @@
 ---
 import PageLayout from '../layouts/PageLayout.astro';
+import { withBase } from '../lib/base';
 import { loadConfig } from '../lib/config';
 
 const config = loadConfig();
+const avatar = config.author.avatar?.trim() ?? '';
+const social = (config.social ?? []).filter((item) => item?.url?.trim());
 ---
 
 <PageLayout title="关于" page="about">
-  <p>{config.author.bio}</p>
+  <div class="about-page">
+    {avatar && <img class="about-avatar" src={withBase(avatar)} alt="" />}
+    <p class="about-bio">{config.author.bio}</p>
+    {social.length > 0 && (
+      <p class="about-social">
+        {social.map((item) => (
+          <a href={item.url} target="_blank" rel="noreferrer noopener">
+            {item.name}
+          </a>
+        ))}
+      </p>
+    )}
+  </div>
 </PageLayout>

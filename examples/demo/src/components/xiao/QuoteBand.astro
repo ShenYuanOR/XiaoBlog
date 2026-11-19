@@ -1,0 +1,18 @@
+---
+/** 引用区块。 */
+import Container from './Container.astro';
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  class?: string;
+}
+const { pad = 'lg', bg = 'surface', class: extraClass } = Astro.props;
+---
+
+<Section pad={pad} bg={bg} width="full" class={extraClass}>
+  <Container width="prose" align="center">
+    <slot />
+  </Container>
+</Section>

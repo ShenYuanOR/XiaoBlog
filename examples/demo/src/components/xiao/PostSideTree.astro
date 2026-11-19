@@ -1,0 +1,16 @@
+---
+/** 侧栏文章树参数。 */
+import SideTree from '../site/SideTree.astro';
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  posts: PostEntry[];
+  current?: string;
+  class?: string;
+}
+const { posts, current, class: extraClass } = Astro.props;
+---
+
+<nav class:list={[extraClass]}>
+  <SideTree posts={posts} current={current} />
+</nav>

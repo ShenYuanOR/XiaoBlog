@@ -1,7 +1,14 @@
 ---
 import Base from './BaseLayout.astro';
-import SideTree from '../components/site/SideTree.astro';
-import { publishedPosts } from '../lib/posts';
+import Hero from '../components/site/Hero.astro';
+import NarrowBrief from '../components/site/NarrowBrief.astro';
+import NarrowIndex from '../components/site/NarrowIndex.astro';
+import PageDescription from '../components/xiao/PageDescription.astro';
+import PageShell from '../components/xiao/PageShell.astro';
+import PageTitle from '../components/xiao/PageTitle.astro';
+import Sidebar from '../components/site/Sidebar.astro';
+import { withBase } from '../lib/base';
+import { loadConfig } from '../lib/config';
 import type { HeadEntry } from '../lib/seo';
 
 interface Props {
@@ -9,21 +16,45 @@ interface Props {
   description?: string;
   heads?: HeadEntry[];
   showHeading?: boolean;
+  /** 是否在标题下显示摘要，默认不显示。 */
+  showDescription?: boolean;
+  /** 侧栏位置：left / right / none。 */
+  sidebar?: 'left' | 'right' | 'none';
   /** 页面标识：透传给 BaseLayout 的 <body data-page> 与按页样式表查找。 */
   page?: string;
+  /** 顶部横幅尺寸；留空时套用默认 slot（小尺寸 + 页面标题）。 */
+  heroSize?: 'large' | 'medium' | 'small';
+  heroImage?: string;
+  /** 版式根节点的附加 class。 */
+  class?: string;
 }
-const { title, description, heads = [], showHeading = true, page } = Astro.props;
-const posts = await publishedPosts();
+const {
+  title,
+  description,
+  heads = [],
+  showHeading = true,
+  showDescription = false,
+  sidebar = 'right',
+  page,
+  heroSize = 'small',
+  heroImage,
+  class: extraClass,
+} = Astro.props;
+const config = loadConfig();
+const heroSrc = (heroImage ?? config.site.heroImage)?.trim();
 ---
 
 <Base title={title} description={description} heads={heads} page={page}>
-  <div class="shell">
-    <aside class="side side-desktop">
-      <SideTree posts={posts} />
-    </aside>
-    <main class="page-body">
-      {showHeading && title && <h1>{title}</h1>}
-      <slot />
-    </main>
-  </div>
+  <slot name="hero">
+    <Hero src={heroSrc && withBase(heroSrc)} size={heroSize}>
+      <PageTitle title={title} show={showHeading} />
+      <PageDescription description={description} show={showDescription} />
+    </Hero>
+  </slot>
+  {sidebar !== 'none' && <NarrowBrief />}
+  <PageShell sidebar={sidebar} mainClass="page-body" class={extraClass}>
+    {sidebar !== 'none' && <Sidebar slot="side" />}
+    <slot />
+  </PageShell>
+  {sidebar !== 'none' && <NarrowIndex />}
 </Base>

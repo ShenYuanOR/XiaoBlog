@@ -1,0 +1,20 @@
+---
+/** 行动号召区块。 */
+import Container from './Container.astro';
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  class?: string;
+}
+const { pad = 'xl', bg = 'accent', class: extraClass } = Astro.props;
+---
+
+<Section pad={pad} bg={bg} width="full" class={extraClass}>
+  <Container width="prose" align="center">
+    <div class="x-stack x-dir-column x-gap-sm x-align-center x-talign-center">
+      <slot />
+    </div>
+  </Container>
+</Section>

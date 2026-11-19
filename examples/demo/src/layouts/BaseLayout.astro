@@ -8,7 +8,7 @@ import { breakpointCss, resolveBreakpoints } from '../lib/breakpoints';
 import { withBase } from '../lib/base';
 import Header from '../components/site/Header.astro';
 import Footer from '../components/site/Footer.astro';
-import type { HeadEntry } from '../lib/seo';
+import { pageHeads, type HeadEntry } from '../lib/seo';
 
 /**
  * 页面级样式（R-04）：
@@ -46,19 +46,32 @@ function withAssetBase(url: string): string {
 }
 
 const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
+const forcedNoindex = pageSlug === '404' || pageSlug === 'search';
+/** 只有发布构建会设置。本地预览和普通构建不输出，避免把开发机的状态当成已上线。 */
+const buildSha = (process.env.XIAO_BUILD_SHA ?? '').trim();
+const resolvedHeads =
+  heads.length > 0
+    ? heads
+    : pageHeads({
+        kind: 'page',
+        path: Astro.url.pathname,
+        title: title || config.site.title,
+        description: desc,
+        noindex: forcedNoindex,
+      });
 ---
 
 <!doctype html>
 <html
   lang={config.site.lang}
-  data-theme={theme.colorScheme}
-  data-width={theme.contentWidth}
-  data-font={theme.font}
-  data-preset={theme.preset ?? undefined}
+  data-theme={theme.mode}
+  data-site-theme={theme.id}
+  data-palette={theme.palette ?? undefined}
 >
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {buildSha ? <meta name="xiao-build" content={buildSha} /> : null}
     <title>{pageTitle}</title>
     <meta name="description" content={desc} />
     <link rel="icon" href={withBase(config.site.favicon)} />
@@ -71,7 +84,7 @@ const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
         if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
       })();
     </script>
-    {heads.map((entry) =>
+    {resolvedHeads.map((entry) =>
       entry.tag === 'title' ? null : entry.tag === 'script' ? (
         <script type={entry.attrs?.type} set:html={entry.children} />
       ) : entry.tag === 'meta' ? (

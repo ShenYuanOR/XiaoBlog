@@ -1,39 +1,42 @@
 ---
+import Hero from '../components/site/Hero.astro';
+import PostCard from '../components/site/PostCard.astro';
 import PageLayout from '../layouts/PageLayout.astro';
-import { loadConfig } from '../lib/config';
+import { withBase } from '../lib/base';
+import { loadConfig, resolveOptions } from '../lib/config';
 import { publishedPosts } from '../lib/posts';
 import { websiteHeads } from '../lib/seo';
-import { withBase } from '../lib/base';
 
 const config = loadConfig();
 const posts = await publishedPosts();
 const heads = websiteHeads();
+const { featuredFirst } = resolveOptions(config);
+const hero = config.site.heroImage?.trim();
+const avatar = config.author.avatar?.trim() ?? '';
+const subtitle = config.site.subtitle?.trim() ?? '';
+const display = subtitle || config.site.title;
 ---
 
 <PageLayout
   title={config.site.title}
   description={config.site.description}
   heads={heads}
-  showHeading={false}
+  sidebar="right"
   page="index"
 >
-  <header class="home-intro">
-    <h1>{config.site.title}</h1>
-    <p class="subtitle">{config.site.subtitle}</p>
-    <p class="bio">{config.author.bio}</p>
-  </header>
-  <h2>最近更新</h2>
-  <ul class="recent">
-    {posts.map((post) => (
-      <li>
-        <div class="recent-row">
-          <a class="recent-title" href={withBase(`posts/${post.id}/`)}>
-            {post.data.title}
-          </a>
-          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
+  <Fragment slot="hero">
+    <Hero src={hero && withBase(hero)} size="large">
+      <div class="hero-identity">
+        {avatar && <img class="hero-avatar" src={withBase(avatar)} alt="" />}
+        <div>
+          {subtitle && <p class="hero-kicker">{config.site.title}</p>}
+          <h1>{display}</h1>
+          {config.author.bio && <p class="hero-bio">{config.author.bio}</p>}
         </div>
-        {post.data.description && <p>{post.data.description}</p>}
-      </li>
-    ))}
-  </ul>
+      </div>
+    </Hero>
+  </Fragment>
+  <ol class="post-card-list">
+    {posts.map((post, index) => <PostCard post={post} featured={featuredFirst && index === 0} />)}
+  </ol>
 </PageLayout>

@@ -1,10 +1,23 @@
 ---
-import { loadConfig } from '../../lib/config';
+import { loadConfig, resolveOptions } from '../../lib/config';
+import { publishedPosts, siteFacts } from '../../lib/posts';
 
 const config = loadConfig();
 const name = config.author.name.trim() || config.site.title;
+const showFacts = resolveOptions(config).widgets.includes('stats');
+const facts = siteFacts(await publishedPosts(), config.site.since);
 ---
 
 <footer class="footer">
-  © {config.site.since} {name}
+  <p>
+    © {config.site.since} {name}
+  </p>
+  <p>由「晓」驱动</p>
+  {showFacts && (
+    <p class="footer-facts">
+      <span>累计 {facts.words.toLocaleString('zh-CN')} 字</span>
+      <span>运行 {facts.days.toLocaleString('zh-CN')} 天</span>
+      {facts.latest && <span>更新于 {facts.latest}</span>}
+    </p>
+  )}
 </footer>

@@ -1,11 +1,20 @@
 ---
 import Base from './BaseLayout.astro';
-import SideTree from '../components/site/SideTree.astro';
+import Hero from '../components/site/Hero.astro';
+import NarrowBrief from '../components/site/NarrowBrief.astro';
+import NarrowIndex from '../components/site/NarrowIndex.astro';
+import RecentPostsWidget from '../components/site/widgets/RecentPostsWidget.astro';
+import PageShell from '../components/xiao/PageShell.astro';
+import PostLicense from '../components/xiao/PostLicense.astro';
+import PostMeta from '../components/xiao/PostMeta.astro';
+import PostTags from '../components/xiao/PostTags.astro';
+import PostTitle from '../components/xiao/PostTitle.astro';
+import Sidebar from '../components/site/Sidebar.astro';
 import Toc from '../components/site/Toc.astro';
 import { withBase } from '../lib/base';
 import { loadConfig } from '../lib/config';
-import { publishedPosts, readingMinutes, type PostEntry } from '../lib/posts';
-import { articleHeads } from '../lib/seo';
+import type { PostEntry } from '../lib/posts';
+import { excerptFromBody, pageHeads } from '../lib/seo';
 
 interface Props {
   post: PostEntry;
@@ -14,83 +23,52 @@ interface Props {
   next?: PostEntry;
   /** 页面标识：默认不用传，posts/[...slug].astro 会传文章 id。 */
   page?: string;
+  /** 版式根节点的附加 class。 */
+  class?: string;
 }
-const { post, headings, prev, next, page } = Astro.props;
-const posts = await publishedPosts();
+const { post, headings, page, class: extraClass } = Astro.props;
 const config = loadConfig();
-const heads = articleHeads({
-  slug: post.id,
+const cover = post.data.cover;
+const coverSrc =
+  typeof cover === 'string'
+    ? cover
+    : cover && typeof cover === 'object' && 'src' in cover
+      ? (cover as { src: string }).src
+      : undefined;
+const seoDescription = post.data.description?.trim() || excerptFromBody(post.body);
+const heads = pageHeads({
+  kind: 'article',
+  path: withBase(`posts/${post.id}/`),
   title: post.data.title,
-  description: post.data.description ?? post.data.title,
+  description: seoDescription,
+  image: coverSrc,
   date: post.data.date,
   updated: post.data.updated,
   tags: post.data.tags,
+  category: post.data.category,
   noindex: post.data.noindex,
 });
-const source =
-  'body' in post && typeof post.body === 'string' ? post.body : (post.data.description ?? '');
-const minutes = readingMinutes(source);
+const siteHero = config.site.heroImage?.trim();
+const heroSrc = coverSrc ?? (siteHero ? withBase(siteHero) : undefined);
 ---
 
-<Base title={post.data.title} description={post.data.description} heads={heads} page={page}>
-  <div class="shell">
-    <aside class="side side-desktop">
-      <SideTree posts={posts} current={post.id} />
-    </aside>
-    <main>
-      <article class="prose">
-        <h1>{post.data.title}</h1>
-        <p class="meta">
-          <time datetime={post.data.date}>{post.data.date.slice(0, 10)}</time>
-          {post.data.category && (
-            <>
-              {' · '}
-              <a href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
-                {post.data.category}
-              </a>
-            </>
-          )}
-          {' · '}
-          <span>预计阅读 {minutes} 分钟</span>
-        </p>
-        <Toc headings={headings} mobile />
-        <slot />
-        {post.data.tags.length > 0 && (
-          <ul class="pills tag-pills">
-            {post.data.tags.map((tag) => (
-              <li>
-                <a href={withBase(`tags/${encodeURIComponent(tag)}/`)}>{tag}</a>
-              </li>
-            ))}
-          </ul>
-        )}
-        {(prev || next) && (
-          <nav class="pager" aria-label="相邻文章">
-            {prev ? (
-              <a href={withBase(`posts/${prev.id}/`)}>
-                <small>上一篇</small>
-                <span>{prev.data.title}</span>
-              </a>
-            ) : (
-              <span></span>
-            )}
-            {next ? (
-              <a href={withBase(`posts/${next.id}/`)}>
-                <small>下一篇</small>
-                <span>{next.data.title}</span>
-              </a>
-            ) : (
-              <span></span>
-            )}
-          </nav>
-        )}
-        {config.posts.license.enabled && (
-          <p class="license">
-            许可协议：<a href={config.posts.license.url}>{config.posts.license.name}</a>
-          </p>
-        )}
-      </article>
-    </main>
-    <Toc headings={headings} />
-  </div>
+<Base title={post.data.title} description={seoDescription} heads={heads} page={page}>
+  <Hero src={heroSrc} size="medium">
+    <PostTitle post={post} />
+    <PostMeta post={post} separator="" />
+  </Hero>
+  <NarrowBrief />
+  <PageShell sidebar="right" class={extraClass}>
+    <Sidebar slot="side" headings={headings} exclude={post.id} />
+    <article class="prose">
+      <Toc headings={headings} mobile />
+      <slot />
+      <PostTags post={post} />
+      <PostLicense />
+    </article>
+    <div class="narrow-more">
+      <RecentPostsWidget exclude={post.id} limit={3} title="继续阅读" />
+    </div>
+  </PageShell>
+  <NarrowIndex />
 </Base>

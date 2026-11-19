@@ -1,5 +1,5 @@
 ---
-const { code = '', ...rest } = Astro.props;
+const { code = '', class: extraClass, ...rest } = Astro.props;
 ---
 
-<pre class="x-code" {...rest}><code>{code}</code></pre>
+<pre class:list={['x-code', extraClass]} {...rest}><code>{code}</code></pre>

@@ -1,0 +1,340 @@
+{
+  "id": "default",
+  "name": "默认",
+  "version": "1.0.0",
+  "author": "晓",
+  "summary": "笔尖插画横幅、账簿式文章列表、右侧挂件栏。",
+  "palettes": {
+    "default": "midnight",
+    "items": [
+      {
+        "id": "midnight",
+        "name": "深夜",
+        "summary": "冷墨底配金色强调。",
+        "light": {
+          "accent": "#d9a441",
+          "accentInk": "#8d651c",
+          "accentSoft": "#f2e9d9",
+          "onAccent": "#11151c",
+          "bg": "#f7f8fa",
+          "surface": "#eef0f3",
+          "text": "#1c2026",
+          "text2": "#5a6270",
+          "text3": "#8b92a0",
+          "line": "#dfe3e8",
+          "scrim": "rgb(17 21 28 / 45%)"
+        },
+        "dark": {
+          "accent": "#d9a441",
+          "accentInk": "#d9a441",
+          "accentSoft": "#3d3424",
+          "onAccent": "#11151c",
+          "bg": "#11151c",
+          "surface": "#161b24",
+          "text": "#e8eaef",
+          "text2": "#a7adb8",
+          "text3": "#6b7280",
+          "line": "#262c38",
+          "scrim": "rgb(17 21 28 / 62%)"
+        }
+      },
+      {
+        "id": "paper",
+        "name": "纸感",
+        "summary": "米白底配棕色强调。",
+        "light": {
+          "accent": "#8a5a2b",
+          "accentSoft": "#efe4d2",
+          "onAccent": "#ffffff",
+          "bg": "#f8f4ea",
+          "surface": "#f1ebdd",
+          "text": "#2a2620",
+          "text2": "#5c564a",
+          "text3": "#857e6f",
+          "line": "#ded5c4",
+          "scrim": "rgb(42 38 32 / 40%)"
+        },
+        "dark": {
+          "accent": "#d6b07a",
+          "accentSoft": "#2f2820",
+          "onAccent": "#1b1915",
+          "bg": "#1b1915",
+          "surface": "#24201a",
+          "text": "#e9e3d6",
+          "text2": "#b3ab99",
+          "text3": "#8b8473",
+          "line": "#3a352b",
+          "scrim": "rgb(0 0 0 / 55%)"
+        }
+      },
+      {
+        "id": "magazine",
+        "name": "杂志",
+        "summary": "纯白底配洋红强调。",
+        "light": {
+          "accent": "#e11d48",
+          "accentSoft": "#fde8ed",
+          "onAccent": "#ffffff",
+          "bg": "#ffffff",
+          "surface": "#f4f4f5",
+          "text": "#111114",
+          "text2": "#52525b",
+          "text3": "#86868f",
+          "line": "#e4e4e7",
+          "scrim": "rgb(0 0 0 / 40%)"
+        },
+        "dark": {
+          "accent": "#fb7185",
+          "accentSoft": "#2c1219",
+          "onAccent": "#0a0a0b",
+          "bg": "#0a0a0b",
+          "surface": "#17171a",
+          "text": "#f4f4f5",
+          "text2": "#a1a1aa",
+          "text3": "#71717a",
+          "line": "#27272a",
+          "scrim": "rgb(0 0 0 / 60%)"
+        }
+      },
+      {
+        "id": "terminal",
+        "name": "终端",
+        "summary": "近黑底配绿色强调。",
+        "light": {
+          "accent": "#0f7b3f",
+          "accentSoft": "#dcf2e4",
+          "onAccent": "#ffffff",
+          "bg": "#f6f8f6",
+          "surface": "#edf2ee",
+          "text": "#10251a",
+          "text2": "#3d5c4a",
+          "text3": "#6b8574",
+          "line": "#d3ded6",
+          "scrim": "rgb(16 37 26 / 40%)"
+        },
+        "dark": {
+          "accent": "#4ade80",
+          "accentSoft": "#10251a",
+          "onAccent": "#050706",
+          "bg": "#050706",
+          "surface": "#0c110e",
+          "text": "#d6e7da",
+          "text2": "#8fb39b",
+          "text3": "#60806b",
+          "line": "#1c2b21",
+          "scrim": "rgb(0 0 0 / 65%)"
+        }
+      },
+      {
+        "id": "warm",
+        "name": "暖阳",
+        "summary": "暖灰底配琥珀强调。",
+        "light": {
+          "accent": "#b45309",
+          "accentSoft": "#fbe8d3",
+          "onAccent": "#ffffff",
+          "bg": "#fbf7f2",
+          "surface": "#f4ede3",
+          "text": "#2b2520",
+          "text2": "#6b5f52",
+          "text3": "#948779",
+          "line": "#e6dccd",
+          "scrim": "rgb(43 37 32 / 40%)"
+        },
+        "dark": {
+          "accent": "#f59e0b",
+          "accentSoft": "#2e2113",
+          "onAccent": "#171310",
+          "bg": "#171310",
+          "surface": "#201a15",
+          "text": "#f0e7dc",
+          "text2": "#b6a795",
+          "text3": "#8a7c6b",
+          "line": "#332a21",
+          "scrim": "rgb(0 0 0 / 60%)"
+        }
+      },
+      {
+        "id": "minimal",
+        "name": "极简",
+        "summary": "纯黑白灰。",
+        "light": {
+          "accent": "#111111",
+          "accentSoft": "#f0f0f0",
+          "onAccent": "#ffffff",
+          "bg": "#ffffff",
+          "surface": "#fafafa",
+          "text": "#111111",
+          "text2": "#555555",
+          "text3": "#8a8a8a",
+          "line": "#e8e8e8",
+          "scrim": "rgb(0 0 0 / 35%)"
+        },
+        "dark": {
+          "accent": "#ededed",
+          "accentSoft": "#1f1f1f",
+          "onAccent": "#0a0a0a",
+          "bg": "#0a0a0a",
+          "surface": "#141414",
+          "text": "#ededed",
+          "text2": "#a3a3a3",
+          "text3": "#737373",
+          "line": "#262626",
+          "scrim": "rgb(0 0 0 / 60%)"
+        }
+      }
+    ]
+  },
+  "options": [
+    {
+      "key": "font",
+      "group": "排版",
+      "label": "字体",
+      "type": "select",
+      "default": "sans",
+      "choices": [
+        { "value": "sans", "label": "无衬线（系统）" },
+        { "value": "serif", "label": "衬线" },
+        { "value": "mono", "label": "等宽" },
+        { "value": "custom", "label": "自定义字体栈" }
+      ]
+    },
+    {
+      "key": "fontStack",
+      "group": "排版",
+      "label": "自定义字体栈",
+      "type": "text",
+      "default": "",
+      "placeholder": "'LXGW WenKai', 'Songti SC', serif",
+      "when": { "key": "font", "value": "custom" }
+    },
+    {
+      "key": "scale",
+      "group": "排版",
+      "label": "字号",
+      "hint": "同时缩放字号与间距，按钮、卡片、正文一起变。",
+      "type": "segmented",
+      "default": "normal",
+      "choices": [
+        { "value": "compact", "label": "紧凑" },
+        { "value": "normal", "label": "标准" },
+        { "value": "spacious", "label": "宽松" }
+      ]
+    },
+    {
+      "key": "lineHeight",
+      "group": "排版",
+      "label": "行高",
+      "type": "segmented",
+      "default": "normal",
+      "choices": [
+        { "value": "tight", "label": "紧" },
+        { "value": "normal", "label": "标准" },
+        { "value": "loose", "label": "松" }
+      ]
+    },
+    {
+      "key": "density",
+      "group": "排版",
+      "label": "密度",
+      "hint": "只压缩间距，不缩字号。",
+      "type": "segmented",
+      "default": "normal",
+      "choices": [
+        { "value": "compact", "label": "紧凑" },
+        { "value": "normal", "label": "标准" }
+      ]
+    },
+    {
+      "key": "contentWidth",
+      "group": "排版",
+      "label": "正文宽度",
+      "type": "select",
+      "default": "prose",
+      "choices": [
+        { "value": "narrow", "label": "窄（560px）" },
+        { "value": "prose", "label": "标准（720px）" },
+        { "value": "wide", "label": "宽（1200px）" },
+        { "value": "full", "label": "通栏" }
+      ]
+    },
+    {
+      "key": "radius",
+      "group": "质感",
+      "label": "圆角",
+      "type": "select",
+      "default": "md",
+      "choices": [
+        { "value": "none", "label": "无圆角" },
+        { "value": "sm", "label": "小（6px）" },
+        { "value": "md", "label": "中（12px）" },
+        { "value": "lg", "label": "大（20px）" },
+        { "value": "pill", "label": "胶囊" }
+      ]
+    },
+    {
+      "key": "shadow",
+      "group": "质感",
+      "label": "阴影",
+      "type": "select",
+      "default": "soft",
+      "choices": [
+        { "value": "none", "label": "无阴影" },
+        { "value": "soft", "label": "柔和" },
+        { "value": "strong", "label": "强烈" }
+      ]
+    },
+    {
+      "key": "motion",
+      "group": "质感",
+      "label": "过渡动效",
+      "hint": "关闭后悬停等过渡瞬间完成；系统开了减少动态效果时始终关闭。",
+      "type": "switch",
+      "default": true
+    },
+    {
+      "key": "heroArt",
+      "group": "横幅",
+      "label": "笔尖插画",
+      "hint": "站点设置里配了题图、或文章有封面时，横幅显示图片，不画插画。",
+      "type": "switch",
+      "default": true
+    },
+    {
+      "key": "heroBits",
+      "group": "横幅",
+      "label": "二进制底纹",
+      "type": "switch",
+      "default": true
+    },
+    {
+      "key": "featuredFirst",
+      "group": "首页",
+      "label": "放大最新一篇",
+      "type": "switch",
+      "default": true
+    },
+    {
+      "key": "announcement",
+      "group": "侧栏",
+      "label": "公告",
+      "hint": "留空不显示公告。窄屏下显示为作者信息下方的一行横幅。",
+      "type": "textarea",
+      "default": ""
+    },
+    {
+      "key": "widgets",
+      "group": "侧栏",
+      "label": "侧栏挂件",
+      "hint": "作者卡始终显示。窄屏下归档与标签合成页脚上方的滑动条，站点信息并入页脚。",
+      "type": "checks",
+      "default": ["recent", "tags", "archive", "stats"],
+      "choices": [
+        { "value": "recent", "label": "最新文章" },
+        { "value": "tags", "label": "标签云" },
+        { "value": "archive", "label": "归档" },
+        { "value": "stats", "label": "站点信息" }
+      ]
+    }
+  ]
+}

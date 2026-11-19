@@ -3,6 +3,7 @@ import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
 import { xiaoMarkdownIntegration } from './src/lib/md-xiao.mjs';
 import { configFieldErrors } from './src/lib/rules.mjs';
+import { allowInSitemap } from './src/lib/sitemap-filter.mjs';
 import { xiaoValidate } from './src/lib/validate.mjs';
 
 const config = JSON.parse(readFileSync(new URL('./xiao.config.json', import.meta.url), 'utf8'));
@@ -16,7 +17,7 @@ export default defineConfig({
   base: config.site.base,
   devToolbar: { enabled: false },
   redirects: config.redirects,
-  integrations: [sitemap(), xiaoMarkdownIntegration(), xiaoValidate()],
+  integrations: [sitemap({ filter: allowInSitemap }), xiaoMarkdownIntegration(), xiaoValidate()],
   image: {
     layout: 'constrained',
     responsiveStyles: true,

@@ -1,4 +1,5 @@
-import raw from '../../xiao.config.json';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { Breakpoint } from './breakpoints';
 import {
   BASE_FONT_SIZES,
@@ -10,8 +11,6 @@ import {
   DURATIONS,
   FONT_STACKS,
   LINE_HEIGHTS,
-  PRESETS,
-  PRESET_IDS,
   RADII,
   SCALE_FACTOR,
   SHADOWS,
@@ -20,39 +19,42 @@ import {
   type DensityId,
   type LegacyFontId,
   type LineHeightId,
+  type OptionValue,
   type Palette,
-  type PresetId,
   type RadiusId,
   type ScaleId,
   type ShadowId,
+  type ThemeManifest,
+  type ThemeOptionDef,
 } from './themes';
 
-/** theme.colors 里可以按亮/暗覆盖的字段；缺哪项就取预设（旧配置则继续由 --hue 派生）。 */
+/** theme.colors 里可以按亮/暗覆盖的字段；缺哪项就取配色（没选配色则由 --hue 派生）。 */
 export interface ThemeColors {
   light?: Partial<Palette>;
   dark?: Partial<Palette>;
 }
 
 /**
- * xiao.config.json 的 theme 段。
- * 只增字段不删旧字段：1.x 的 hue/font/contentWidth/radius/colorScheme 全部保留且仍然生效。
+ * xiao.config.json 的 theme 段（D-99）：主题 / 主题配色 / 主题自定义项三层分开。
+ * 旧键（preset / colorScheme / font / scale …）仍然可读，Studio 保存时迁移到新键。
  */
 export interface ThemeConfig {
-  preset?: PresetId;
-  colorScheme?: ColorSchemeId;
+  /** 主题：站点用的是哪一套版式，对应 src/theme.json 的 id。 */
+  id?: string;
+  /** 主题配色：src/theme.json 里 palettes 的某一项；省略且没有旧 preset 时按 hue 派生。 */
+  palette?: string;
+  /** 亮暗模式。 */
+  mode?: ColorSchemeId;
   hue?: number;
   colors?: ThemeColors;
-  font?: LegacyFontId;
-  fontStack?: string;
-  scale?: ScaleId;
-  lineHeight?: LineHeightId;
-  density?: DensityId;
-  radius?: RadiusId;
-  contentWidth?: ContentWidthId;
-  shadow?: ShadowId;
-  motion?: boolean;
+  /** 主题自定义项，键与取值见 src/theme.json 的 options。 */
+  options?: Record<string, OptionValue>;
   /** 响应式断点；省略时用 lib/breakpoints.ts 的 DEFAULT_BREAKPOINTS。 */
   breakpoints?: Breakpoint[];
+  /** 以下为旧键，只读兼容。 */
+  preset?: string;
+  colorScheme?: ColorSchemeId;
+  [legacy: string]: unknown;
 }
 
 export interface XiaoConfig {
@@ -66,6 +68,10 @@ export interface XiaoConfig {
     description: string;
     favicon: string;
     ogImage: string;
+    /** 横幅题图。留空则显示主题自带的插画。 */
+    heroImage?: string;
+    /** 旧键：公告已移到主题自定义项 announcement，这里只读兼容。 */
+    announcement?: string;
     since: number;
   };
   author: { name: string; avatar: string; bio: string; email: string };
@@ -77,44 +83,71 @@ export interface XiaoConfig {
   redirects: Record<string, string>;
 }
 
-/**
- * 最终算好的主题令牌。
- * colors 的语义：有 preset 时是合并覆盖后的完整两套色板；没有 preset 时只放用户显式覆盖项
- * （空对象＝保持 1.x 的 --hue 派生色，保证旧站点颜色不变）。
- */
-export interface ResolvedTheme {
-  preset: PresetId | null;
-  colorScheme: ColorSchemeId;
-  hue: number;
+/** 解析后的默认主题自定义项。 */
+export interface ThemeOptions {
   font: LegacyFontId;
-  headingWeight: number;
+  fontStack: string;
   scale: ScaleId;
   lineHeight: LineHeightId;
   density: DensityId;
-  radius: RadiusId;
   contentWidth: ContentWidthId;
+  radius: RadiusId;
   shadow: ShadowId;
   motion: boolean;
+  heroArt: boolean;
+  heroBits: boolean;
+  featuredFirst: boolean;
+  announcement: string;
+  widgets: string[];
+}
+
+/**
+ * 最终算好的主题令牌。
+ * colors 的语义：选了配色时是合并覆盖后的完整两套色板；没选时只放用户显式覆盖项
+ * （空对象＝保持 1.x 的 --hue 派生色，保证旧站点颜色不变）。
+ */
+export interface ResolvedTheme {
+  id: string;
+  palette: string | null;
+  mode: ColorSchemeId;
+  hue: number;
+  options: ThemeOptions;
   colors: { light: Partial<Palette>; dark: Partial<Palette> };
   /** 非颜色令牌，直接写进 :root 的自定义属性。 */
   tokens: Record<string, string>;
 }
 
-/** 2.0 默认预设。旧配置没写 preset 时不会套用它（否则颜色会突变）。 */
-export const DEFAULT_PRESET: PresetId = 'midnight';
-
-export function loadConfig(): XiaoConfig {
-  return raw as XiaoConfig;
+/**
+ * 按站点根目录定位文件。astro dev / astro build 都在站点根目录下运行；不能用 import.meta.url，
+ * 构建时这段代码被打进 dist/.prerender/chunks，相对路径会指到 dist 里去。
+ */
+function siteFile(...parts: string[]): string {
+  return path.resolve(process.cwd(), ...parts);
 }
 
-const FONT_IDS = ['sans', 'serif', 'mono', 'custom', 'mono-heading'] as const;
+/** 每次渲染读磁盘。astro dev 下一次请求就能看到刚保存的配置，不用整站重建。 */
+export function loadConfig(): XiaoConfig {
+  return JSON.parse(readFileSync(siteFile('xiao.config.json'), 'utf8')) as XiaoConfig;
+}
+
+/** 主题声明文件；同样每次读盘，改了配色或自定义项声明不用重启。 */
+export function loadManifest(): ThemeManifest {
+  return JSON.parse(readFileSync(siteFile('src', 'theme.json'), 'utf8')) as ThemeManifest;
+}
+
 const COLOR_SCHEMES = ['auto', 'light', 'dark'] as const;
-const SCALES = ['compact', 'normal', 'spacious'] as const;
-const LINE_HEIGHT_IDS = ['tight', 'normal', 'loose'] as const;
-const DENSITIES = ['compact', 'normal'] as const;
-const RADIUS_IDS = ['none', 'sm', 'md', 'lg', 'pill'] as const;
-const CONTENT_WIDTH_IDS = ['narrow', 'prose', 'wide', 'full'] as const;
-const SHADOW_IDS = ['none', 'soft', 'strong'] as const;
+/** 从配色里拆出来、旧配置写在 theme 顶层的排版键。 */
+const LEGACY_OPTION_KEYS = [
+  'font',
+  'fontStack',
+  'scale',
+  'lineHeight',
+  'density',
+  'contentWidth',
+  'radius',
+  'shadow',
+  'motion',
+] as const;
 
 const COLOR_VALUE_RE = /^[#a-zA-Z0-9%(),./\s-]+$/;
 
@@ -122,10 +155,6 @@ function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallb
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
     ? (value as T)
     : fallback;
-}
-
-function pickPreset(value: unknown): PresetId | null {
-  return PRESET_IDS.includes(value as PresetId) ? (value as PresetId) : null;
 }
 
 function resolveHue(value: unknown): number {
@@ -152,6 +181,45 @@ function resolvePalette(input: unknown): Partial<Palette> {
   return out;
 }
 
+/** 按声明校验一个自定义项的值，不合法就回默认值。 */
+function optionValue(def: ThemeOptionDef, value: unknown): OptionValue {
+  const allowed = def.choices?.map((choice) => choice.value);
+  switch (def.type) {
+    case 'switch':
+      return typeof value === 'boolean' ? value : def.default;
+    case 'checks':
+      return Array.isArray(value)
+        ? value.filter(
+            (item): item is string =>
+              typeof item === 'string' && (!allowed || allowed.includes(item)),
+          )
+        : def.default;
+    case 'select':
+    case 'segmented':
+      return typeof value === 'string' && (!allowed || allowed.includes(value))
+        ? value
+        : def.default;
+    default:
+      return typeof value === 'string' ? value : def.default;
+  }
+}
+
+/** 主题自定义项：声明默认值 ← 旧顶层键 ← theme.options。 */
+export function resolveOptions(
+  config: XiaoConfig = loadConfig(),
+  manifest: ThemeManifest = loadManifest(),
+): ThemeOptions {
+  const theme: ThemeConfig = config?.theme ?? {};
+  const legacy: Record<string, unknown> = {};
+  for (const key of LEGACY_OPTION_KEYS) if (theme[key] !== undefined) legacy[key] = theme[key];
+  if (config?.site?.announcement) legacy.announcement = config.site.announcement;
+  const input: Record<string, unknown> = { ...legacy, ...(theme.options ?? {}) };
+  const out: Record<string, OptionValue> = {};
+  for (const def of manifest.options) out[def.key] = optionValue(def, input[def.key]);
+  if (input.font === 'mono-heading') out.font = 'mono-heading';
+  return out as unknown as ThemeOptions;
+}
+
 function pixel(value: number): string {
   return `${Math.round(value * 10) / 10}px`;
 }
@@ -174,61 +242,50 @@ function declaration(vars: Record<string, string>): string {
 /**
  * 把 xiao.config.json 的 theme 段解析成最终令牌。
  *
- * 合并规则（与 spec 一致）：预设只作为默认来源，显式字段优先；
- * 没有 preset 时按 1.x 行为走 --hue 派生色板，并把旧字段映射到新令牌。
+ * 主题配色只决定颜色；字体、字号等来自主题自定义项。没有选配色（也没有旧 preset）时
+ * 按 1.x 行为走 --hue 派生色板。
  */
 export function resolveTheme(config: XiaoConfig = loadConfig()): ResolvedTheme {
+  const manifest = loadManifest();
   const theme: ThemeConfig = config?.theme ?? {};
-  const presetId = pickPreset(theme.preset);
-  const preset = presetId ? PRESETS[presetId] : null;
-
-  const colorScheme = pickEnum(theme.colorScheme, COLOR_SCHEMES, 'auto');
-  const font = pickEnum(theme.font, FONT_IDS, preset?.font ?? 'sans');
-  const scaleId = pickEnum(theme.scale, SCALES, preset?.scale ?? 'normal');
-  const lineHeightId = pickEnum(theme.lineHeight, LINE_HEIGHT_IDS, preset?.lineHeight ?? 'normal');
-  const densityId = pickEnum(theme.density, DENSITIES, preset?.density ?? 'normal');
-  const radiusId = pickEnum(theme.radius, RADIUS_IDS, preset?.radius ?? 'md');
-  const contentWidth = pickEnum(
-    theme.contentWidth,
-    CONTENT_WIDTH_IDS,
-    preset?.contentWidth ?? 'prose',
-  );
-  const shadowId = pickEnum(theme.shadow, SHADOW_IDS, preset?.shadow ?? 'none');
-  const motion = typeof theme.motion === 'boolean' ? theme.motion : (preset?.motion ?? true);
+  const paletteId = typeof theme.palette === 'string' ? theme.palette : theme.preset;
+  const palette = manifest.palettes.items.find((item) => item.id === paletteId) ?? null;
+  const mode = pickEnum(theme.mode ?? theme.colorScheme, COLOR_SCHEMES, 'auto');
   const hue = resolveHue(theme.hue);
-  const headingWeight = preset?.headingWeight ?? 600;
+  const options = resolveOptions(config, manifest);
 
   const overrides = {
     light: resolvePalette(theme.colors?.light),
     dark: resolvePalette(theme.colors?.dark),
   };
-  const colors = preset
+  const colors = palette
     ? {
-        light: { ...preset.colors.light, ...overrides.light },
-        dark: { ...preset.colors.dark, ...overrides.dark },
+        light: { ...palette.light, ...overrides.light },
+        dark: { ...palette.dark, ...overrides.dark },
       }
     : overrides;
 
-  const customStack = typeof theme.fontStack === 'string' ? theme.fontStack.trim() : '';
+  const customStack = options.fontStack.trim();
   const stackOf = (id: LegacyFontId): string => {
     if (customStack) return customStack;
     const stack = FONT_STACKS[id === 'mono-heading' ? 'sans' : id];
     return stack || FONT_STACKS.sans;
   };
-  const fontBody = stackOf(font);
-  const fontHeading = font === 'mono' || font === 'mono-heading' ? FONT_STACKS.mono : fontBody;
+  const fontBody = stackOf(options.font);
+  const fontHeading =
+    options.font === 'mono' || options.font === 'mono-heading' ? FONT_STACKS.mono : fontBody;
 
-  const scaleFactor = SCALE_FACTOR[scaleId];
-  const spaceFactor = scaleFactor * DENSITY_FACTOR[densityId];
-  const radius = RADII[radiusId];
-  const shadow = SHADOWS[shadowId];
-  const lineHeight = LINE_HEIGHTS[lineHeightId];
+  const scaleFactor = SCALE_FACTOR[options.scale];
+  const spaceFactor = scaleFactor * DENSITY_FACTOR[options.density];
+  const radius = RADII[options.radius];
+  const shadow = SHADOWS[options.shadow];
+  const lineHeight = LINE_HEIGHTS[options.lineHeight];
   const fontSize = (value: number): string => pixel(value * scaleFactor);
 
   const tokens: Record<string, string> = {
     '--hue': String(hue),
-    '--w-content': CONTENT_WIDTHS[contentWidth],
-    '--content': CONTENT_WIDTHS[contentWidth],
+    '--w-content': CONTENT_WIDTHS[options.contentWidth],
+    '--content': CONTENT_WIDTHS[options.contentWidth],
     '--radius': radius.base,
     '--radius-xs': radius.xs,
     '--radius-sm': radius.sm,
@@ -238,7 +295,6 @@ export function resolveTheme(config: XiaoConfig = loadConfig()): ResolvedTheme {
     '--font-body': fontBody,
     '--font-heading': fontHeading,
     '--font-mono': FONT_STACKS.mono,
-    '--weight-heading': String(headingWeight),
     '--font-size-xs': fontSize(BASE_FONT_SIZES.xs),
     '--font-size-sm': fontSize(BASE_FONT_SIZES.sm),
     '--font-size-base': fontSize(BASE_FONT_SIZES.base),
@@ -254,26 +310,19 @@ export function resolveTheme(config: XiaoConfig = loadConfig()): ResolvedTheme {
     '--lh-heading': String(lineHeight.heading),
     '--shadow-1': shadow.one,
     '--shadow-2': shadow.two,
-    '--dur': motion ? DURATIONS.normal : '0ms',
-    '--dur-2': motion ? DURATIONS.slow : '0ms',
+    '--dur': options.motion ? DURATIONS.normal : '0ms',
+    '--dur-2': options.motion ? DURATIONS.slow : '0ms',
   };
   BASE_SPACES.forEach((value, index) => {
     tokens[`--space-${index + 1}`] = pixel(value * spaceFactor);
   });
 
   return {
-    preset: presetId,
-    colorScheme,
+    id: manifest.id,
+    palette: palette?.id ?? null,
+    mode,
     hue,
-    font,
-    headingWeight,
-    scale: scaleId,
-    lineHeight: lineHeightId,
-    density: densityId,
-    radius: radiusId,
-    contentWidth,
-    shadow: shadowId,
-    motion,
+    options,
     colors,
     tokens,
   };

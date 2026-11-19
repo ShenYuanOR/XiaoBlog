@@ -8,7 +8,7 @@ const { posts } = Astro.props;
 ---
 
 <section>
-  <ul class="recent">
+  <ul class="search-fallback">
     {posts.map((post) => (
       <li>
         <a href={withBase(`posts/${post.slug}/`)}>{post.title}</a>

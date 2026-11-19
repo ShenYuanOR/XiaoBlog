@@ -1,0 +1,30 @@
+---
+/**
+ * 页面骨架：侧栏 + 正文 + 目录三块。
+ *
+ * 侧栏/目录由调用方通过具名 slot 传入，版式画布可以把它们当普通组件移动、
+ * 替换成参数部件或直接删掉。`sidebar="none"` 收成一栏。
+ */
+interface Props {
+  sidebar?: 'left' | 'right' | 'none';
+  /** 主内容区的附加 class，例如 page-body 需要正文留白。 */
+  mainClass?: string;
+  class?: string;
+  stickySide?: boolean;
+}
+const { sidebar = 'left', mainClass = '', class: extraClass, stickySide = true } = Astro.props;
+const side = sidebar === 'right' ? 'right' : sidebar === 'none' ? 'none' : 'left';
+---
+
+<div
+  class:list={['shell', `is-side-${side}`, !stickySide && 'is-side-static', extraClass]}
+  data-shell-side={side}
+>
+  <aside class="side side-desktop">
+    <slot name="side" />
+  </aside>
+  <main class={mainClass}>
+    <slot />
+  </main>
+  <slot name="toc" />
+</div>

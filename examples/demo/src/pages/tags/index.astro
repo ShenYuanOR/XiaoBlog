@@ -1,19 +1,22 @@
 ---
 import PageLayout from '../../layouts/PageLayout.astro';
-import { publishedPosts, tagsOf } from '../../lib/posts';
+import { tagsOf, publishedPosts } from '../../lib/posts';
 import { withBase } from '../../lib/base';
 
 const tags = tagsOf(await publishedPosts());
+const max = Math.max(1, ...tags.map((tag) => tag.count));
+function weight(count: number): number {
+  return 1 + Math.min(1.4, count / max);
+}
 ---
 
 <PageLayout title="标签" page="tags">
-  <ul class="pills">
+  <div class="tag-cloud-page">
     {tags.map((tag) => (
-      <li>
-        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)}>
-          {tag.name} {tag.count}
-        </a>
-      </li>
+      <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)} style={`--w:${weight(tag.count)}`}>
+        {tag.name}
+        <span>{tag.count}</span>
+      </a>
     ))}
-  </ul>
+  </div>
 </PageLayout>

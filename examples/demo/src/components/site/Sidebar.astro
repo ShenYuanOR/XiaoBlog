@@ -1,0 +1,47 @@
+---
+/**
+ * 右侧栏。文章页：作者卡 / 公告 + 吸顶的「文章目录 + 最新文章」；
+ * 其余页面：作者卡 / 公告 / 最新文章 / 标签云 / 归档 / 站点信息。
+ * 除作者卡外，哪些挂件出现由主题自定义项 widgets 决定。
+ */
+import { resolveOptions } from '../../lib/config';
+import AnnouncementWidget from './widgets/AnnouncementWidget.astro';
+import ArchiveWidget from './widgets/ArchiveWidget.astro';
+import AuthorWidget from './widgets/AuthorWidget.astro';
+import RecentPostsWidget from './widgets/RecentPostsWidget.astro';
+import StatsWidget from './widgets/StatsWidget.astro';
+import TagCloudWidget from './widgets/TagCloudWidget.astro';
+import TocWidget from './widgets/TocWidget.astro';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  headings?: Heading[];
+  exclude?: string;
+}
+const { headings, exclude } = Astro.props;
+const widgets = new Set(resolveOptions().widgets);
+---
+
+<div class="side-stack">
+  <AuthorWidget />
+  <AnnouncementWidget />
+  {
+    headings ? (
+      <div class="side-sticky">
+        <TocWidget headings={headings} />
+        {widgets.has('recent') && <RecentPostsWidget exclude={exclude} limit={4} />}
+      </div>
+    ) : (
+      <>
+        {widgets.has('recent') && <RecentPostsWidget exclude={exclude} />}
+        {widgets.has('tags') && <TagCloudWidget />}
+        {widgets.has('archive') && <ArchiveWidget />}
+        {widgets.has('stats') && <StatsWidget />}
+      </>
+    )
+  }
+</div>

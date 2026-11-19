@@ -1,8 +1,8 @@
 ---
-const { title = '', type = 'info', ...rest } = Astro.props;
+const { title = '', type = 'info', class: extraClass, ...rest } = Astro.props;
 ---
 
-<aside class="x-callout" data-type={type} {...rest}>
+<aside class:list={['x-callout', extraClass]} data-type={type} {...rest}>
   {title && <strong>{title}</strong>}
   <slot />
 </aside>

@@ -1,0 +1,23 @@
+---
+import { withBase } from '../../../lib/base';
+import { publishedPosts, tagsOf } from '../../../lib/posts';
+
+const tags = tagsOf(await publishedPosts());
+const max = Math.max(1, ...tags.map((tag) => tag.count));
+function weight(count: number): number {
+  return 1 + Math.min(1, count / max);
+}
+---
+
+{tags.length > 0 && (
+  <div class="widget widget-tags">
+    <p class="widget-title">标签云</p>
+    <p class="widget-tag-cloud">
+      {tags.map((tag) => (
+        <a href={withBase(`tags/${encodeURIComponent(tag.name)}/`)} style={`--w:${weight(tag.count)}`}>
+          {tag.name}
+        </a>
+      ))}
+    </p>
+  </div>
+)}

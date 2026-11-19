@@ -73,6 +73,8 @@ const views = {
 };
 
 export function getStaticPaths() {
+  // 组件演示只给开发时看。生产构建不生成这些路由，sitemap 也不会收录。
+  if (!import.meta.env.DEV) return [];
   return [
     'Section',
     'Container',
@@ -118,7 +120,7 @@ const View = views[name];
 <PageLayout title={name} page={`xiao-${name}`}>
   <View
     href="/about"
-    slug="hello-xiao"
+    slug="hello"
     labels={['一', '二']}
     title="折叠"
     code="const n = 1;"

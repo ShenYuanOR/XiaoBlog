@@ -1,0 +1,25 @@
+---
+/** 文章封面参数；没有封面时不渲染。 */
+import type { PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  ratio?: 'auto' | '16:9' | '4:3' | '1:1' | '21:9';
+  class?: string;
+}
+const { post, ratio = 'auto', class: extraClass } = Astro.props;
+const cover = post.data.cover;
+const src =
+  typeof cover === 'string'
+    ? cover
+    : cover && typeof cover === 'object' && 'src' in cover
+      ? String((cover as { src: unknown }).src)
+      : '';
+const ratioClass = ratio === 'auto' ? '' : `x-ratio-${ratio.replace(':', 'x')}`;
+---
+
+{src && (
+  <figure class:list={['post-cover', extraClass]}>
+    <img class:list={['x-media', ratioClass]} src={src} alt={post.data.title} />
+  </figure>
+)}

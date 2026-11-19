@@ -1,7 +1,7 @@
 ---
-const { ...rest } = Astro.props;
+const { class: extraClass, ...rest } = Astro.props;
 ---
 
-<span class="x-bg-accent" {...rest}>
+<span class:list={['x-bg-accent', extraClass]} {...rest}>
   <slot />
 </span>

@@ -1,11 +1,12 @@
 ---
-const { pad, bg, hideOn, ...rest } = Astro.props;
+const { pad, bg, hideOn, class: extraClass, ...rest } = Astro.props;
 const hide = Array.isArray(hideOn) ? hideOn : hideOn ? [hideOn] : [];
 const classes = [
   'x-box',
   pad ? `x-pad-${pad}` : '',
   bg ? `x-bg-${bg}` : '',
   ...hide.map((item) => `x-hide-${item}`),
+  extraClass,
 ]
   .filter(Boolean)
   .join(' ');

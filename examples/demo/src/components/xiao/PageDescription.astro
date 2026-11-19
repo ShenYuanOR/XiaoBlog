@@ -1,0 +1,12 @@
+---
+/** 页面摘要参数；默认不显示，版式显式打开时才渲染。 */
+interface Props {
+  description?: string;
+  show?: boolean | string;
+  class?: string;
+}
+const { description, show = true, class: extraClass } = Astro.props;
+const visible = show !== false && show !== 'false' && show !== 'no';
+---
+
+{visible && description && <p class:list={['page-description', extraClass]}>{description}</p>}

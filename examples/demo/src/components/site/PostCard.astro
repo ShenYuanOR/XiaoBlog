@@ -1,0 +1,46 @@
+---
+/**
+ * 账簿式文章条目：左侧日期票根，右侧正文。featured 用于列表第一篇，放大标题与票根。
+ * 封面只有 md 文章才可能有（html 文章的 cover 是原始 frontmatter 值，不渲染）。
+ */
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import { withBase } from '../../lib/base';
+import { readingMinutes, type PostEntry } from '../../lib/posts';
+
+interface Props {
+  post: PostEntry;
+  featured?: boolean;
+}
+const { post, featured = false } = Astro.props;
+const cover = post.format === 'md' ? (post.data.cover as ImageMetadata | undefined) : undefined;
+const [year, month, day] = post.data.date.slice(0, 10).split('-');
+const href = withBase(`posts/${post.id}/`);
+---
+
+<li class:list={['post-card', featured && 'post-card-featured', cover && 'has-cover']}>
+  <time class="post-card-date" datetime={post.data.date}>
+    <span class="post-card-day">{day}</span>
+    <span class="post-card-month">{year}年{Number(month)}月</span>
+  </time>
+  <div class="post-card-body">
+    <a class="post-card-title" href={href}>{post.data.title}</a>
+    {post.data.description && <p class="post-card-desc">{post.data.description}</p>}
+    <p class="post-card-meta">
+      {post.data.category && (
+        <a class="post-card-category" href={withBase(`categories/${encodeURIComponent(post.data.category)}/`)}>
+          {post.data.category}
+        </a>
+      )}
+      <span>{readingMinutes(post.body)} 分钟读完</span>
+      {post.data.tags.slice(0, 4).map((tag) => (
+        <a class="post-card-tag" href={withBase(`tags/${encodeURIComponent(tag)}/`)}>#{tag}</a>
+      ))}
+    </p>
+  </div>
+  {cover && (
+    <a class="post-card-cover" href={href} tabindex="-1" aria-hidden="true">
+      <Image src={cover} alt="" width={featured ? 720 : 320} height={featured ? 400 : 220} />
+    </a>
+  )}
+</li>

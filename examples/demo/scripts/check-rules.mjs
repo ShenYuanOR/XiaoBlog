@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { configFieldErrors, slugErrors } from '../src/lib/rules.mjs';
-import { checkBuiltSite } from '../src/lib/validate.mjs';
+import { checkBuiltSite, htmlPostProblems } from '../src/lib/validate.mjs';
 
 const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
@@ -29,6 +29,24 @@ writeFileSync(path.join(dir, 'about', 'index.html'), '<a href="/missing">x</a>')
 const dead = checkBuiltSite(dir);
 rmSync(dir, { recursive: true, force: true });
 if (!dead.some((item) => item.includes('/missing'))) throw new Error('死链没有被发现');
+
+const quoted = mkdtempSync(path.join(tmpdir(), 'xiao-html-date-'));
+mkdirSync(path.join(quoted, 'draft-html'), { recursive: true });
+writeFileSync(
+  path.join(quoted, 'draft-html', 'index.html'),
+  '---\ntitle: "HTML 草稿"\ndate: "2026-11-18 00:00:00"\ndraft: "true"\nnoindex: "false"\nstandalone: "true"\n---\n<article><p>正文</p></article>\n',
+);
+const quotedOk = htmlPostProblems(quoted, ['draft-html']);
+writeFileSync(
+  path.join(quoted, 'draft-html', 'index.html'),
+  '---\ntitle: "HTML 草稿"\ndate: "yesterday"\n---\n<p>x</p>\n',
+);
+const quotedBad = htmlPostProblems(quoted, ['draft-html']);
+rmSync(quoted, { recursive: true, force: true });
+if (quotedOk.length > 0) throw new Error(`带引号的日期不该失败：${quotedOk.join('；')}`);
+if (!quotedBad.some((item) => item.includes('date 格式不对'))) {
+  throw new Error('不合法的日期没有被拦住');
+}
 
 const configPath = path.join(root, 'xiao.config.json');
 const original = readFileSync(configPath, 'utf8');

@@ -1,0 +1,17 @@
+---
+/** 许可协议参数；配置关闭时不渲染。 */
+import { loadConfig } from '../../lib/config';
+
+interface Props {
+  class?: string;
+}
+const { class: extraClass } = Astro.props;
+const config = loadConfig();
+---
+
+{config.posts.license.enabled && (
+  <p class:list={['license', extraClass]}>
+    许可协议：
+    <a href={config.posts.license.url}>{config.posts.license.name}</a>
+  </p>
+)}

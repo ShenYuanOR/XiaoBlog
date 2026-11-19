@@ -1,0 +1,31 @@
+---
+/** 首屏区块：标题/说明/按钮由页面内容传入，这里只管骨架与间距。 */
+import Container from './Container.astro';
+import Section from './Section.astro';
+
+interface Props {
+  pad?: string;
+  bg?: string;
+  width?: 'narrow' | 'prose' | 'wide' | 'full';
+  align?: 'start' | 'center' | 'end';
+  class?: string;
+}
+const {
+  pad = 'xl',
+  bg = 'surface',
+  width = 'full',
+  align = 'center',
+  class: extraClass,
+} = Astro.props;
+const stackAlign =
+  align === 'center' ? 'x-align-center' : align === 'end' ? 'x-align-end' : 'x-align-start';
+const textAlign = align === 'center' ? 'x-talign-center' : align === 'end' ? 'x-talign-end' : '';
+---
+
+<Section pad={pad} bg={bg} width={width} class={extraClass}>
+  <Container width="prose" align={align}>
+    <div class:list={['x-stack', 'x-dir-column', 'x-gap-md', stackAlign, textAlign]}>
+      <slot />
+    </div>
+  </Container>
+</Section>
