@@ -35,26 +35,33 @@ const classic = readGithubVerify({
 });
 
 function reachedRepo() {
-  let draft = { ...blankPrep(), token: 'secret-token' };
-  draft = applyTokenReport(draft, classic);
-  return acceptToken(draft);
+  return { ...blankPrep(), token: 'secret-token' };
 }
 
 describe('发布准备状态机', () => {
   it('六步都在，后面的只是名称', () => {
     const draft = blankPrep();
-    expect(stepPhase(draft.step, 'token', draft.done)).toBe('current');
+    expect(stepPhase(draft.step, 'repo', draft.done)).toBe('current');
+    expect(stepPhase(draft.step, 'token', draft.done)).toBe('later');
     expect(stepPhase(draft.step, 'publish', draft.done)).toBe('later');
     expect(stepTitle('publish')).toBe('首次发布');
   });
 
   it('令牌验证：先展示结果，失效和不能推送停住，缺建仓库权限仍可继续', () => {
-    let draft = blankPrep();
+    let draft = applyRepo(reachedRepo(), {
+      remoteUrl: 'https://github.com/ShenYuanOR/xiao-pages-test',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      branch: 'main',
+      empty: true,
+      xiao: false,
+      isPrivate: false,
+    });
     draft = { ...draft, token: 'secret-token' };
     const shown = applyTokenReport(draft, classic);
     expect(shown.step).toBe('token');
     expect(shown.report?.account).toBe('ShenYuanOR');
-    expect(acceptToken(shown).step).toBe('repo');
+    expect(acceptToken(shown).step).toBe('site');
     const invalid = applyTokenReport(draft, readGithubVerify({ status: 401, scopes: '', expires: '', login: '' }));
     expect(invalid.step).toBe('token');
     expect(invalid.error).toBe('令牌已失效');
@@ -72,7 +79,7 @@ describe('发布准备状态机', () => {
       capabilities: base.capabilities.map((item) => (item.key === 'create' ? { ...item, state: 'missing' as const } : item)),
     };
     const noCreate = acceptToken(applyTokenReport(draft, noCreateReport));
-    expect(noCreate.step).toBe('repo');
+    expect(noCreate.step).toBe('site');
     expect(canCreateRepo(noCreate.report)).toBe(false);
     expect(canCreateRepo(classic)).toBe(true);
   });
@@ -88,7 +95,7 @@ describe('发布准备状态机', () => {
       xiao: false,
       isPrivate: false,
     });
-    expect(empty.step).toBe('site');
+    expect(empty.step).toBe('token');
     const foreign = applyRepo(draft, {
       remoteUrl: 'https://github.com/ShenYuanOR/notes',
       owner: 'ShenYuanOR',
@@ -112,7 +119,7 @@ describe('发布准备状态机', () => {
       isPrivate: false,
       confirmed: true,
     });
-    expect(confirmed.step).toBe('site');
+    expect(confirmed.step).toBe('token');
     expect(confirmed.remoteUrl).toContain('notes');
     const priv = applyRepo(draft, {
       remoteUrl: 'https://github.com/ShenYuanOR/secret',
@@ -256,7 +263,7 @@ describe('准备用的远端判断', () => {
       xiao: false,
       isPrivate: false,
     });
-    expect(picked.step).toBe('site');
+    expect(picked.step).toBe('token');
     expect(suggestSite(picked)).toEqual({
       siteUrl: 'https://shenyuanor.github.io/xiao-pages-test/',
       base: '/xiao-pages-test/',

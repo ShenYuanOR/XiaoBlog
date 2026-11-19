@@ -35,7 +35,7 @@ export interface PrepDraft {
   manualLink: string;
 }
 
-export const PREP_ORDER: PrepStep[] = ['token', 'repo', 'site', 'build', 'publish'];
+export const PREP_ORDER: PrepStep[] = ['repo', 'token', 'site', 'build', 'publish'];
 
 const STEP_TITLES: Record<PrepStep, string> = {
   token: '令牌验证',
@@ -57,7 +57,7 @@ export function stepPhase(current: PrepStep, step: PrepStep, done: PrepStep[]): 
 
 export function blankPrep(): PrepDraft {
   return {
-    step: 'token',
+    step: 'repo',
     done: [],
     provider: 'github',
     origin: 'https://github.com',
@@ -126,7 +126,7 @@ export function applyTokenReport(draft: PrepDraft, report: TokenReport): PrepDra
 
 export function acceptToken(draft: PrepDraft): PrepDraft {
   if (!draft.report || draft.report.status !== 'valid' || pushBlocks(draft.report)) return draft;
-  return advance(draft, 'repo');
+  return advance(draft, 'site');
 }
 
 export interface RepoPick {
@@ -162,7 +162,7 @@ export function applyRepo(draft: PrepDraft, info: RepoPick): PrepDraft {
       '确认这就是要发布的仓库后再继续。',
     );
   }
-  return advance(next, 'site');
+  return advance(next, 'token');
 }
 
 export function suggestSite(draft: PrepDraft): { siteUrl: string; base: string; needHost: boolean } {
