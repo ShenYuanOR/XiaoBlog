@@ -138,6 +138,7 @@ export interface RepoPick {
   xiao: boolean;
   isPrivate: boolean;
   confirmed?: boolean;
+  missing?: boolean;
 }
 
 export function applyRepo(draft: PrepDraft, info: RepoPick): PrepDraft {
@@ -152,8 +153,9 @@ export function applyRepo(draft: PrepDraft, info: RepoPick): PrepDraft {
     isPrivate: info.isPrivate,
     foreignConfirmed: Boolean(info.confirmed),
   };
-  if (draft.provider === 'github' && info.isPrivate) {
-    return stay(next, '这个仓库是私有的。免费账户的 GitHub Pages 只给公开仓库。', '换一个公开仓库，或改成公开后再检查。');
+  if (info.missing) return advance(next, 'token');
+  if (info.isPrivate) {
+    return stay(next, '免费套餐只有公开仓库能用 Pages。', '改成公开仓库，或换一个公开仓库后再检查。');
   }
   if (!info.empty && !info.xiao && !info.confirmed) {
     return stay(

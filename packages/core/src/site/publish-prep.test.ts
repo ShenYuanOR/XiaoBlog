@@ -21,6 +21,7 @@ import {
   interpretPagesCreate,
   interpretPagesRead,
   readCreatedRepo,
+  interpretPublicRepo,
   readRemoteFacts,
   readRepoChoices,
 } from '../../../../apps/studio/src/main/publish-remote.ts';
@@ -131,7 +132,7 @@ describe('发布准备状态机', () => {
       isPrivate: true,
     });
     expect(priv.step).toBe('repo');
-    expect(priv.error).toContain('私有');
+    expect(priv.error).toContain('免费套餐只有公开仓库能用 Pages');
   });
 
   it('网站地址：GitHub 自动算，根路径和子路径都对，Gitea 没填就停', () => {
@@ -221,6 +222,27 @@ describe('准备用的远端判断', () => {
     expect(interpretPagesRead(200, 'workflow')).toBe('ok');
     expect(interpretPagesRead(200, 'legacy')).toBe('update');
     expect(readCreatedRepo(403, {}).message).toContain('不能新建仓库');
+    const missing = interpretPublicRepo({
+      owner: 'ShenYuanOR',
+      repo: 'not-there',
+      remoteUrl: 'https://github.com/ShenYuanOR/not-there',
+      repoStatus: 404,
+      repoBody: {},
+      commitsStatus: 404,
+      configStatus: 404,
+    });
+    expect(missing.found).toBe(false);
+    expect(missing.message).toContain('没找到');
+    const empty = interpretPublicRepo({
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      remoteUrl: 'https://github.com/ShenYuanOR/xiao-pages-test',
+      repoStatus: 200,
+      repoBody: { private: false, default_branch: 'main' },
+      commitsStatus: 409,
+      configStatus: 404,
+    });
+    expect(empty).toMatchObject({ found: true, empty: true, isPrivate: false, xiao: false, branch: 'main' });
   });
 
   it('xiao-pages-test：公开、空、main，Pages 未开启', async () => {

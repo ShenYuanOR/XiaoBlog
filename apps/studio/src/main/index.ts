@@ -110,8 +110,9 @@ import {
   type TokenReport,
 } from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
+import { parseRepoUrl } from './publish-prep.ts';
 import { writeGithubWorkflow } from './publish-workflow.ts';
-import { createRemoteRepo, enableGithubPages, listRemoteRepos, readRemoteFacts } from './publish-remote.ts';
+import { createRemoteRepo, enableGithubPages, listRemoteRepos, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -1326,6 +1327,13 @@ app.whenReady().then(() => {
     const report = await verifyLooseToken(trimmed);
     if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);
+  });
+  ipcMain.handle('publish:lookup', async (_event, text: string) => {
+    const parsed = parseRepoUrl(String(text || ''), 'https://github.com');
+    if (!parsed) return fail('PUBLISH_URL', '仓库地址要像 owner/repo，或 https://github.com/owner/repo。');
+    const looked = await lookupPublicRepo(parsed.remoteUrl, apiFetch);
+    if ('ok' in looked && looked.ok === false) return fail('PUBLISH_REPO', looked.message);
+    return ok(looked);
   });
   ipcMain.handle('publish:repos', async (_event, _provider: string, _origin: string, token: string) => {
     const listed = await listRemoteRepos({

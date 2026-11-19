@@ -8,7 +8,6 @@ import {
   applySite,
   applyTokenReport,
   blankPrep,
-  canCreateRepo,
   newRepoPage,
   parseRepoUrl,
   PREP_ORDER,
@@ -144,9 +143,7 @@ const tokenReport = ref<{
 const prep = ref(blankPrep());
 
 const repoQuery = ref('');
-const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>([]);
-const newRepoName = ref('');
-const createOpen = ref(false);
+
 const heldTarget = ref<DeployTarget | null>(null);
 
 const prepBusy = ref(false);
@@ -249,18 +246,7 @@ const prepHelp: Record<PrepStep, { title: string; body: string }> = {
   },
 };
 const shownPrep = computed(() => PREP_ORDER);
-const filteredRepos = computed(() => {
-  const raw = repoQuery.value.trim().toLowerCase().replace(/\.git$/, '');
-  const needle = raw.replace(/^https?:\/\/[^/]+\//, '');
-  const rows = repoChoices.value.filter((item) => {
-    if (!needle) return true;
-    return `${item.owner}/${item.name}`.toLowerCase().includes(needle);
-  });
-  return [...rows].sort(
-    (a, b) => Number(b.empty) - Number(a.empty) || `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`),
-  );
-});
-const repoChosen = computed(() => Boolean(prep.value.remoteUrl && prep.value.owner && prep.value.repo));
+const repoChosen = computed(() => Boolean(prep.value.remoteUrl && prep.value.owner && prep.value.repo && !prep.value.error.includes('没找到')));
 const foreignWarn = computed(
   () => repoChosen.value && prep.value.empty === false && prep.value.xiao === false && !prep.value.foreignConfirmed && !prep.value.isPrivate,
 );
@@ -271,7 +257,6 @@ const tokenGaps = computed(
   () => prep.value.report?.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing') ?? [],
 );
 const suggestedSite = computed(() => suggestSite(prep.value));
-const offerCreate = computed(() => canCreateRepo(prep.value.report));
 
 const resultEntries = computed(() => {
   const failed = steps.value.find((step) => step.state === 'fail');
@@ -459,47 +444,7 @@ async function verifyPasted(): Promise<void> {
   }
 }
 
-async function loadRepos(): Promise<void> {
-  prepBusy.value = true;
-  try {
-    const result = await window.xiao.publish.repos('github', 'https://github.com', prep.value.token);
-    if (!result.ok) {
-      prep.value = { ...prep.value, error: result.message, next: '也可以直接粘贴仓库地址。', manualLink: '' };
-      return;
-    }
-    repoChoices.value = result.data;
-    if (!prep.value.error.includes('已有别的内容') && !prep.value.error.includes('私有')) {
-      prep.value = { ...prep.value, error: '', next: '', manualLink: '' };
-    }
-  } finally {
-    prepBusy.value = false;
-  }
-}
-
-async function useRemote(remoteUrl: string): Promise<void> {
-  prepBusy.value = true;
-  try {
-    const result = await window.xiao.publish.repoFacts('github', remoteUrl, prep.value.token);
-    if (!result.ok) {
-      prep.value = { ...prep.value, remoteUrl, error: result.message, next: '检查地址后再试。已填的地址还留着。' };
-      return;
-    }
-    prep.value = applyRepo(prep.value, {
-      remoteUrl,
-      owner: result.data.owner,
-      repo: result.data.repo,
-      branch: result.data.branch,
-      empty: result.data.empty,
-      xiao: result.data.xiao,
-      isPrivate: result.data.isPrivate,
-    });
-  } finally {
-    prepBusy.value = false;
-  }
-}
-
 function clearRepoPick(): void {
-  createOpen.value = false;
   prep.value = {
     ...prep.value,
     remoteUrl: '',
@@ -529,40 +474,56 @@ function confirmForeign(): void {
 }
 
 async function useTypedRepo(): Promise<void> {
-  const parsed = parseRepoUrl(repoQuery.value, prep.value.origin || 'https://github.com');
-  if (!parsed) {
-    notify('仓库地址要像 https://github.com/owner/repo，或 owner/repo。', 'error', 'publish-prep');
-    return;
-  }
-  await useRemote(parsed.remoteUrl);
-}
-
-async function createRepoNow(): Promise<void> {
-  const name = newRepoName.value.trim();
-  if (!name) {
-    notify('先填仓库名。', 'error', 'publish-prep');
+  const text = repoQuery.value.trim();
+  if (!text) {
+    notify('先填 owner/repo，或仓库网址。', 'error', 'publish-prep');
     return;
   }
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.createRepo('github', 'https://github.com', prep.value.token, name);
+    const result = await window.xiao.publish.lookup(text);
     if (!result.ok) {
-      notify(result.message, 'error', 'publish-prep');
+      prep.value = { ...prep.value, error: result.message, next: '检查地址后再试。' };
       return;
     }
-    if (!result.data.ok) {
+    const data = result.data;
+    if (!data.found) {
       prep.value = {
         ...prep.value,
-        error: result.data.message,
-        next: '用网页新建后点「我已建好，重新检查」。',
-        manualLink: newRepoPage(prep.value, name),
+        remoteUrl: data.remoteUrl,
+        owner: data.owner,
+        repo: data.repo,
+        branch: 'main',
+        error: data.message,
+        next: '可以去网页新建。建好后点「我已建好，重新检查」，或先继续，等令牌验证再确认。',
       };
       return;
     }
-    await useRemote(result.data.remoteUrl);
+    prep.value = applyRepo(prep.value, {
+      remoteUrl: data.remoteUrl,
+      owner: data.owner,
+      repo: data.repo,
+      branch: data.branch,
+      empty: data.empty,
+      xiao: data.xiao,
+      isPrivate: data.isPrivate,
+    });
   } finally {
     prepBusy.value = false;
   }
+}
+
+function continueMissing(): void {
+  prep.value = applyRepo(prep.value, {
+    remoteUrl: prep.value.remoteUrl,
+    owner: prep.value.owner,
+    repo: prep.value.repo,
+    branch: prep.value.branch || 'main',
+    empty: false,
+    xiao: false,
+    isPrivate: false,
+    missing: true,
+  });
 }
 
 async function acceptSite(): Promise<void> {
@@ -863,18 +824,11 @@ watch(
     steps.value = [];
     prep.value = blankPrep();
     heldTarget.value = null;
-    repoChoices.value = [];
     repoQuery.value = '';
     void loadAll();
   },
 );
 
-watch(
-  () => prep.value.step,
-  (step) => {
-    if (step === 'repo' && prep.value.token) void loadRepos();
-  },
-);
 </script>
 
 <template>
@@ -967,31 +921,17 @@ watch(
                     </div>
                   </template>
                   <template v-else>
-                    <UiField label="搜索或粘贴地址">
-                      <UiInput v-model="repoQuery" placeholder="名字，或 owner/repo" />
+                    <UiField label="仓库">
+                      <UiInput v-model="repoQuery" placeholder="owner/repo，或 https://github.com/owner/repo" />
                     </UiField>
-                    <ul v-if="filteredRepos.length" class="repo-list">
-                      <li v-for="item in filteredRepos" :key="item.url">
-                        <button type="button" class="link" @click="useRemote(item.url)">{{ item.owner }}/{{ item.name }}</button>
-                        <span v-if="item.empty" class="dim mark">空</span>
-                        <span v-if="item.private" class="dim mark">私有</span>
-                      </li>
-                    </ul>
-                    <p v-else class="dim">列表里还没有仓库。可以粘贴地址，或去网页新建。</p>
                     <div class="prep-actions">
-                      <UiButton :loading="prepBusy" @click="useTypedRepo">使用这个地址</UiButton>
-                      <UiButton variant="ghost" :loading="prepBusy" @click="loadRepos">我已建好，重新检查</UiButton>
-                      <UiButton variant="ghost" @click="openLink(newRepoPage(prep, newRepoName))">去新建仓库</UiButton>
+                      <UiButton variant="primary" :loading="prepBusy" @click="useTypedRepo">检查仓库</UiButton>
+                      <UiButton variant="ghost" :loading="prepBusy" @click="useTypedRepo">我已建好，重新检查</UiButton>
+                      <UiButton variant="ghost" @click="openLink(newRepoPage(prep, repoQuery.split('/').pop() || ''))">去网页新建仓库</UiButton>
                     </div>
-                    <button v-if="offerCreate && !createOpen" type="button" class="fold" @click="createOpen = true">直接新建</button>
-                    <template v-if="offerCreate && createOpen">
-                      <UiField label="直接新建">
-                        <UiInput v-model="newRepoName" placeholder="仓库名，建在当前账号下" />
-                      </UiField>
-                      <div class="prep-actions">
-                        <UiButton :loading="prepBusy" @click="createRepoNow">创建</UiButton>
-                      </div>
-                    </template>
+                    <div v-if="prep.error.includes('没找到') && prep.owner" class="prep-actions">
+                      <UiButton @click="continueMissing">先继续</UiButton>
+                    </div>
                   </template>
                 </template>
                 <template v-else-if="step === 'site'">

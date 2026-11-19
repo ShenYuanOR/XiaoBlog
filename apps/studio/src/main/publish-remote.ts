@@ -120,6 +120,93 @@ export async function listRemoteRepos(input: {
   }
 }
 
+export interface PublicLookup {
+  owner: string;
+  repo: string;
+  remoteUrl: string;
+  found: boolean;
+  empty: boolean;
+  isPrivate: boolean;
+  xiao: boolean;
+  branch: string;
+  message: string;
+}
+
+/** 不带令牌。提交列表 409 表示空仓库。404 允许下一步再用令牌确认。 */
+export function interpretPublicRepo(input: {
+  owner: string;
+  repo: string;
+  remoteUrl: string;
+  repoStatus: number;
+  repoBody: unknown;
+  commitsStatus: number;
+  configStatus: number;
+}): PublicLookup {
+  const base = {
+    owner: input.owner,
+    repo: input.repo,
+    remoteUrl: input.remoteUrl,
+    empty: false,
+    isPrivate: false,
+    xiao: false,
+    branch: 'main',
+  };
+  if (input.repoStatus === 404) {
+    return { ...base, found: false, message: '没找到，可能是私有仓库或还没建。' };
+  }
+  if (input.repoStatus !== 200) {
+    return { ...base, found: false, message: `查仓库失败（HTTP ${input.repoStatus}）。` };
+  }
+  const record = readRepoRecord(input.repoBody);
+  return {
+    ...base,
+    found: true,
+    empty: input.commitsStatus === 409,
+    isPrivate: record.isPrivate,
+    xiao: input.configStatus >= 200 && input.configStatus < 300,
+    branch: record.branch,
+    message: record.isPrivate ? '免费套餐只有公开仓库能用 Pages。' : '',
+  };
+}
+
+export async function lookupPublicRepo(remoteUrl: string, fetchImpl: typeof fetch): Promise<PublicLookup | { ok: false; message: string }> {
+  const remote = parseGitRemote(remoteUrl);
+  if (!remote) return { ok: false, message: '仓库地址解析不了。' };
+  const repoUrl = `https://api.github.com/repos/${remote.owner}/${remote.repo}`;
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' };
+  try {
+    const response = await fetchImpl(repoUrl, { headers });
+    if (response.status === 404) {
+      return interpretPublicRepo({
+        owner: remote.owner,
+        repo: remote.repo,
+        remoteUrl: `https://github.com/${remote.owner}/${remote.repo}`,
+        repoStatus: 404,
+        repoBody: {},
+        commitsStatus: 404,
+        configStatus: 404,
+      });
+    }
+    if (!response.ok) return { ok: false, message: `查仓库失败（HTTP ${response.status}）。` };
+    const body = await response.json();
+    const [commits, config] = await Promise.all([
+      fetchImpl(`${repoUrl}/commits?per_page=1`, { headers }),
+      fetchImpl(`${repoUrl}/contents/xiao.config.json`, { headers }),
+    ]);
+    return interpretPublicRepo({
+      owner: remote.owner,
+      repo: remote.repo,
+      remoteUrl: `https://github.com/${remote.owner}/${remote.repo}`,
+      repoStatus: response.status,
+      repoBody: body,
+      commitsStatus: commits.status,
+      configStatus: config.status,
+    });
+  } catch (error) {
+    return { ok: false, message: `连不上 GitHub：${error instanceof Error ? error.message : '网络失败'}` };
+  }
+}
+
 export async function readRemoteFacts(input: {
   remoteUrl: string;
   token: string;

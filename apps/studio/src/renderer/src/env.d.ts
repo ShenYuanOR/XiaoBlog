@@ -436,6 +436,19 @@ export interface XiaoApi {
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
+    lookup: (text: string) => Promise<
+      IpcResult<{
+        owner: string;
+        repo: string;
+        remoteUrl: string;
+        found: boolean;
+        empty: boolean;
+        isPrivate: boolean;
+        xiao: boolean;
+        branch: string;
+        message: string;
+      }>
+    >;
     repos: (
       provider: 'github' | 'gitea',
       origin: string,
