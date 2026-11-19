@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { chooseDefaultBranch, guardCommitSize, pushRefs, skipPath } from '../../../../apps/studio/src/main/publish.ts';
+import {
+  chooseDefaultBranch,
+  explainPushFailure,
+  guardCommitSize,
+  pushRefs,
+  skipPath,
+} from '../../../../apps/studio/src/main/publish.ts';
 
 describe('远端默认分支', () => {
   it('空仓库用接口给的 default_branch', () => {
@@ -25,6 +31,12 @@ describe('远端默认分支', () => {
     expect(guardCommitSize(many)).toContain('.pnpm-store');
     expect(guardCommitSize([{ path: 'src/big.bin', bytes: 21 * 1024 * 1024 }])).toContain('20 MB');
     expect(guardCommitSize([{ path: 'src/ok.md', bytes: 10 }])).toBeNull();
+  });
+
+  it('读文件失败时不把 JS 异常原文给用户', () => {
+    const text = explainPushFailure(new TypeError("Cannot read properties of null (reading 'length')"));
+    expect(text).toContain('文件读不出来');
+    expect(text).not.toContain('Cannot read');
   });
 
   it('本地分支不同就推到远端默认分支', () => {

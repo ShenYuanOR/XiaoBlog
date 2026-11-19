@@ -171,12 +171,17 @@ export async function repairRepository(
 }
 
 async function stageChanges(siteDir: string): Promise<{ staged: string[]; removed: string[] }> {
-  const matrix = (await git.statusMatrix({ fs, dir: siteDir })) as unknown as [
-    string,
-    number,
-    number,
-    number,
-  ][];
+  let matrix: [string, number, number, number][] = [];
+  try {
+    matrix = (await git.statusMatrix({ fs, dir: siteDir })) as unknown as [
+      string,
+      number,
+      number,
+      number,
+    ][];
+  } catch (error) {
+    throw new Error(explainPushFailure(error));
+  }
   const staged: string[] = [];
   const removed: string[] = [];
   const adding: string[] = [];
@@ -253,14 +258,16 @@ function readPreflight(siteDir: string, paths: string[]) {
   return { files, gitignore };
 }
 
-function friendlyPushError(error: unknown, token: string): string {
+/** 推送失败只给中文。JS 异常原文不进界面。 */
+export function explainPushFailure(error: unknown, token = ''): string {
   const raw = error instanceof Error ? error.message : String(error);
   const text = token ? raw.split(token).join('[secret]') : raw;
+  if (text.startsWith('REPO_BROKEN:')) return text;
   if (/fast-forward|PushRejected/i.test(text)) {
     return '远端有你本地没有的提交。确认要覆盖远端内容后，点「覆盖远端并发」重试。';
   }
   if (/canceled|cancelled|401|Unauthorized|authentication/i.test(text)) {
-    return '认证失败：检查「用户名」和访问令牌是否属于这个仓库、是否过期或有写权限。';
+    return '认证失败：检查用户名和访问令牌是否属于这个仓库、是否过期或有写权限。';
   }
   if (/HttpError.*403|Forbidden/i.test(text)) {
     return '令牌没有写入权限：在 Gitea 里给这个令牌勾上仓库写权限。';
@@ -268,7 +275,11 @@ function friendlyPushError(error: unknown, token: string): string {
   if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|fetch failed/i.test(text)) {
     return '连不上远端：检查地址、网络，或这台电脑是否需要代理。';
   }
-  return `推送失败：${text}`;
+  if (/Cannot read properties of null|reading 'length'|is not a function/i.test(text)) {
+    return '发布时有文件读不出来。多半是依赖缓存被算进了改动，先确认 .pnpm-store 已被忽略。';
+  }
+  if (/[\u4e00-\u9fff]/.test(text)) return text;
+  return '发布没有完成。请看站点目录是否能正常读取后再试。';
 }
 
 /** 舞台 → 提交 → 推送。远端不是快进时抛错，由界面确认后带 force 重试。 */
@@ -282,7 +293,7 @@ export async function pushSite(input: PushSiteInput): Promise<PushSiteResult> {
         'REPO_BROKEN:这个站点的 git 历史里有旧版 Studio 写入的 .git 条目，需要重建 git 历史（站点文件不动，旧 .git 会备份）。',
       );
     }
-    throw error;
+    throw new Error(explainPushFailure(error, input.token));
   }
 }
 
@@ -338,7 +349,7 @@ async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
       onAuthFailure: () => ({ cancel: true }),
     });
   } catch (error) {
-    throw new Error(friendlyPushError(error, input.token));
+    throw new Error(explainPushFailure(error, input.token));
   }
 
   if (!sha) sha = await git.resolveRef({ fs, dir: siteDir, ref: 'HEAD' });
