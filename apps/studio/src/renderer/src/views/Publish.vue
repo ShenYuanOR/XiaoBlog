@@ -37,6 +37,7 @@ interface PreflightItem {
   detail: string;
   more?: string;
   slug?: string;
+  skip?: boolean;
   action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
 }
 
@@ -144,8 +145,9 @@ const checkedLabel = computed(() => {
   const minutes = Math.floor(Math.max(0, publish.now - checkedAt.value) / 60000);
   return minutes < 1 ? '刚刚检查' : `${minutes} 分钟前检查`;
 });
-const failedChecks = computed(() => checks.value.filter((item) => !item.ok));
-const passedCount = computed(() => checks.value.filter((item) => item.ok).length);
+const failedChecks = computed(() => checks.value.filter((item) => !item.ok && !item.skip));
+const passedCount = computed(() => checks.value.filter((item) => item.ok && !item.skip).length);
+const skippedChecks = computed(() => checks.value.filter((item) => item.skip));
 const checksClear = computed(() => checks.value.length > 0 && failedChecks.value.length === 0);
 const previewPosts = computed(() => changes.value.posts.slice(0, 3));
 const shownHistory = computed(() => (historyAll.value ? historyRows.value : historyRows.value.slice(0, 5)));
@@ -668,6 +670,15 @@ watch(
                 </li>
               </ul>
               <p v-if="passedCount" class="dim">其余 {{ passedCount }} 项通过</p>
+              <ul v-if="skippedChecks.length" class="checks skipped">
+                <li v-for="item in skippedChecks" :key="item.key">
+                  <UiIcon :path="icons.more" :size="16" />
+                  <div>
+                    <p>{{ item.label }}</p>
+                    <p class="dim">未进行</p>
+                  </div>
+                </li>
+              </ul>
             </template>
             <div class="publish-row">
               <p v-if="blockReason" class="dim">{{ blockReason }}</p>
@@ -982,6 +993,10 @@ watch(
   gap: var(--ui-s2);
   margin: 0;
   font-weight: 400;
+}
+
+.skipped {
+  color: var(--ui-text-3);
 }
 
 .link {

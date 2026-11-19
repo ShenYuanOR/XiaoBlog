@@ -9,6 +9,8 @@ export interface PreflightItem {
   more: string;
   /** 能定位到文章时给出 slug，入口才是「打开这篇文章」。 */
   slug: string;
+  /** 前面的检查没过，这一项还没跑。不算失败。 */
+  skip?: boolean;
   action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
 }
 
@@ -230,10 +232,11 @@ export function buildPreflight(input: PreflightInput): PreflightItem[] {
   const seoErrors = input.buildFailed ? [] : input.errors.filter((item) => item.rule !== 'site-url-placeholder' && item.rule !== 'site-url-missing');
   const seo: PreflightItem = {
     key: 'seo',
-    ok: !input.buildFailed && seoErrors.length === 0,
+    ok: input.buildFailed || seoErrors.length === 0,
+    skip: input.buildFailed,
     label: 'SEO 没有错误',
     detail: input.buildFailed
-      ? '构建没通过，还没有页面报告'
+      ? '未进行'
       : seoErrors.length
         ? seoErrors.slice(0, 5).map((item) => reason(item.rule, item.detail)).join('\n')
         : '没有错误',

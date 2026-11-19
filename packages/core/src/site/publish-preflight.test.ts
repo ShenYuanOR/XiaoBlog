@@ -34,6 +34,7 @@ describe('发布前检查', () => {
       errors: [],
     });
     expect(broken.find((item) => item.key === 'build')).toMatchObject({ ok: false });
+    expect(broken.find((item) => item.key === 'seo')).toMatchObject({ skip: true, detail: '未进行' });
     expect(broken.find((item) => item.key === 'build')?.detail).toContain('date 格式不对');
 
     const seo = buildPreflight({
