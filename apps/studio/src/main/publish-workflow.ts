@@ -1,7 +1,7 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const WORKFLOW_VERSION = 1;
+export const WORKFLOW_VERSION = 2;
 export const WORKFLOW_PATH = '.gitea/workflows/xiao-deploy.yml';
 
 export interface GiteaRemote {
@@ -37,39 +37,38 @@ name: 发布站点
 on:
   push:
     branches: ["${safe}"]
-permissions:
-  contents: write
+  workflow_dispatch:
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: xiao
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      REPO_URL: \${{ github.server_url }}/\${{ github.repository }}.git
+      TOKEN: \${{ secrets.GITEA_TOKEN }}
     steps:
-      - name: 取出源码
-        uses: actions/checkout@v4
-      - name: 准备 Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: 安装依赖
-        run: corepack enable && corepack pnpm install --frozen-lockfile
-      - name: 构建
-        run: corepack pnpm exec astro build
-        env:
-          XIAO_BUILD_SHA: \${{ github.sha }}
-      - name: 推到 pages 分支
+      - name: 取代码
         run: |
-          set -eu
-          cd dist
-          git init
-          git config user.name "晓"
-          git config user.email "xiao@localhost"
-          git add -A
-          git commit -m "发布 \${XIAO_BUILD_SHA}"
-          server="\${{ github.server_url }}"
-          scheme="\${server%%://*}"
-          host="\${server#*://}"
-          git push --force "\${scheme}://x-access-token:\${{ github.token }}@\${host}/\${{ github.repository }}.git" HEAD:pages
+          git -c http.extraHeader="Authorization: token $TOKEN" clone --depth 1 --branch "\${{ github.ref_name }}" "$REPO_URL" site
+      - name: 安装依赖
+        working-directory: site
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: 构建
+        working-directory: site
         env:
           XIAO_BUILD_SHA: \${{ github.sha }}
+        run: pnpm build
+      - name: 推送到 pages 分支
+        working-directory: site/dist
+        run: |
+          head=$(git -c http.extraHeader="Authorization: token $TOKEN" ls-remote "$REPO_URL" "refs/heads/\${{ github.ref_name }}" | cut -f1)
+          if [ "$head" != "\${{ github.sha }}" ]; then echo "已有更新的提交 $head，本次不推送"; exit 0; fi
+          touch .nojekyll
+          git init -q -b pages
+          git add -A
+          git -c user.name=xiao-bot -c user.email=xiao-bot@localhost commit -q -m "pages: \${{ github.sha }}"
+          git -c http.extraHeader="Authorization: token $TOKEN" push -f "$REPO_URL" pages
 `;
 }
 
