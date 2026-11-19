@@ -84,12 +84,21 @@ const walkSkip = new Set([
   'release2',
 ]);
 
+/** 只跳过 .git 本体和修复备份。`.gitea`、`.github`、`.gitignore` 都要能提交。 */
+export function skipPath(filepath: string): boolean {
+  const normalized = filepath.replaceAll('\\', '/');
+  const first = normalized.split('/')[0] ?? normalized;
+  if (first === '.git' || normalized.startsWith('.git/')) return true;
+  if (first.startsWith('.git-broken-')) return true;
+  return first === '.xiao-recycle' || first === '.xiao-pnpm-store' || first === '.shim';
+}
+
 function walkFiles(root: string, dir = root): string[] {
   const found: string[] = [];
   for (const name of readdirSync(dir)) {
-    if (walkSkip.has(name) || name.startsWith('.git')) continue;
     const full = path.join(dir, name);
     const rel = path.relative(root, full).replaceAll('\\', '/');
+    if (walkSkip.has(name) || skipPath(rel)) continue;
     if (statSync(full).isDirectory()) found.push(...walkFiles(root, full));
     else found.push(rel);
   }
@@ -141,17 +150,8 @@ async function stageChanges(siteDir: string): Promise<{ staged: string[]; remove
   const removed: string[] = [];
   // 旧版 Studio 把 .git/HEAD 之类提交进了索引；isomorphic-git 会拒绝含 .git 的路径，这里跳过。
   // 同时跳过 .git-broken-*（修复备份）与 Studio 自己的临时目录。
-  const skipPath = (filepath: string): boolean => {
-    const first = filepath.split('/')[0] ?? filepath;
-    return (
-      first.startsWith('.git') ||
-      first === '.xiao-recycle' ||
-      first === '.xiao-pnpm-store' ||
-      first === '.shim'
-    );
-  };
   for (const [filepath, head, workdir, stage] of matrix) {
-    if (skipPath(filepath)) continue;
+    if (!filepath || skipPath(filepath)) continue;
     if (workdir === 0 && head === 1) {
       await git.remove({ fs, dir: siteDir, filepath });
       removed.push(filepath);
