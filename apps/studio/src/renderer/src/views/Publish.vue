@@ -123,7 +123,9 @@ const repairOpen = ref(false);
 const phase = ref<'ready' | 'running' | 'result'>('ready');
 const steps = ref<StepRow[]>([]);
 const filesOpen = ref(false);
-const connectionOpen = ref(false);
+const settingsOpen = ref(false);
+const historyAll = ref(false);
+const moreKey = ref('');
 
 const addedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'added'));
 const editedPosts = computed(() =>
@@ -141,6 +143,28 @@ const checkedLabel = computed(() => {
   if (!checkedAt.value) return '';
   const minutes = Math.floor(Math.max(0, publish.now - checkedAt.value) / 60000);
   return minutes < 1 ? '刚刚检查' : `${minutes} 分钟前检查`;
+});
+const failedChecks = computed(() => checks.value.filter((item) => !item.ok));
+const passedCount = computed(() => checks.value.filter((item) => item.ok).length);
+const checksClear = computed(() => checks.value.length > 0 && failedChecks.value.length === 0);
+const previewPosts = computed(() => changes.value.posts.slice(0, 3));
+const shownHistory = computed(() => (historyAll.value ? historyRows.value : historyRows.value.slice(0, 5)));
+const blockReason = computed(() => {
+  if (checking.value) return '正在检查';
+  if (!checks.value.length) return '还没有检查';
+  return failedChecks.value[0]?.detail ?? '';
+});
+const failureView = computed(() => {
+  const failed = steps.value.find((step) => step.state === 'fail');
+  if (!failed) return { reason: '', log: '' };
+  const [reason, ...rest] = failed.detail.split('\n');
+  const extra = failed.key === 'check' ? failedCheck.value?.more ?? '' : '';
+  return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
+});
+const runnerLabel = computed(() => {
+  if (target.value?.actionsState === 'ready') return '就绪';
+  if (target.value?.actionsState === 'no-runner' || target.value?.actionsState === 'disabled') return '没有构建机';
+  return '没有构建机';
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 
@@ -164,7 +188,7 @@ const resultEntries = computed(() => {
       key: 'reconnect',
       label: '重新连接',
       run: () => {
-        connectionOpen.value = true;
+        settingsOpen.value = true;
       },
     });
   } else if (failed.key === 'build' && failed.url) {
@@ -208,9 +232,36 @@ const fileLines = computed(() => {
   return lines;
 });
 
-function formatTime(at: string): string {
-  const date = new Date(at);
-  return Number.isNaN(date.getTime()) ? at : date.toLocaleString('zh-CN', { hour12: false });
+function repoName(url: string): string {
+  const parts = url.replace(/\.git$/, '').split('/').filter(Boolean);
+  const repo = parts.at(-1) ?? url;
+  const owner = parts.at(-2) ?? '';
+  return owner ? `${owner}/${repo}` : repo;
+}
+
+function relativeTime(at: string): string {
+  const then = new Date(at).getTime();
+  if (Number.isNaN(then)) return at;
+  const minutes = Math.round((publish.now - then) / 60000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.round(hours / 24)} 天前`;
+}
+
+function stepMark(step: StepRow): string {
+  if (step.state === 'ok') return '完成';
+  if (step.state === 'fail') return '失败';
+  if (step.state === 'run') return '进行中';
+  return phase.value === 'result' ? '未进行' : '等待';
+}
+
+function stepIcon(step: StepRow): string {
+  if (step.state === 'ok') return icons.ok;
+  if (step.state === 'fail') return icons.alert;
+  if (step.state === 'run') return icons.refresh;
+  return icons.more;
 }
 
 function stepMs(step: StepRow): number {
@@ -535,16 +586,12 @@ watch(
 
     <template v-else>
       <header class="head">
-        <div class="head-main">
-          <h1>发布</h1>
-          <p class="dim">{{ target ? (phase === 'ready' ? '待发布' : '发布进度') : '还没选择发布目标' }}</p>
-        </div>
-        <UiButton size="sm" :icon-left="icons.refresh" @click="loadAll()">刷新</UiButton>
+        <h1>发布</h1>
       </header>
 
       <p v-if="errorText" class="alert">{{ errorText }}</p>
 
-      <section v-if="!target" class="card">
+      <section v-if="!target" class="connect card">
         <h2>选择发布目标</h2>
         <p class="dim">先连接一个 Gitea 仓库。令牌只加密保存在本机，不会写进站点。</p>
         <div class="fields">
@@ -569,167 +616,169 @@ watch(
         <p class="dim next">GitHub Pages：下一步支持。</p>
       </section>
 
-      <template v-else-if="phase === 'ready'">
-        <p v-if="target?.actionsState && target?.actionsState !== 'ready'" class="alert">
-          {{ target?.actionsDetail }}
-        </p>
-        <section class="block">
-          <h2>将发布什么</h2>
-          <p class="summary">{{ summaryLine }}</p>
-          <button v-if="fileLines.length" type="button" class="fold" @click="filesOpen = !filesOpen">
-            {{ filesOpen ? '收起文件明细' : '展开文件明细' }}
-          </button>
-          <ul v-if="filesOpen && fileLines.length" class="files">
-            <li v-for="line in fileLines" :key="line.key" :class="{ deleted: line.deleted }">{{ line.text }}</li>
-            <li v-if="!fileLines.length" class="dim">没有文件变化。</li>
-          </ul>
-        </section>
+      <div v-else class="frame">
+        <section class="panel card">
+          <template v-if="phase === 'ready'">
+            <h2>将发布什么</h2>
+            <p class="summary">{{ summaryLine }}</p>
+            <ul v-if="previewPosts.length" class="titles">
+              <li v-for="post in previewPosts" :key="post.slug">{{ post.title }}</li>
+            </ul>
+            <button v-if="fileLines.length" type="button" class="fold" @click="filesOpen = !filesOpen">
+              {{ filesOpen ? '收起明细' : '明细' }}
+            </button>
+            <ul v-if="filesOpen && fileLines.length" class="files">
+              <li v-for="line in fileLines" :key="line.key" :class="{ deleted: line.deleted }">{{ line.text }}</li>
+            </ul>
 
-        <section class="block">
-          <h2>发布前检查</h2>
-          <p v-if="checkedLabel && !checking" class="dim">{{ checkedLabel }}</p>
-          <UiButton size="sm" variant="ghost" :disabled="checking" @click="runPreflight(true)">重新检查</UiButton>
-          <p v-if="checking" class="dim">正在构建并检查…</p>
-          <ul v-else class="checks">
-            <li v-for="item in checks" :key="item.key">
-              <UiIcon :path="item.ok ? icons.ok : icons.alert" :size="16" :class="item.ok ? 'good' : 'bad'" />
-              <div>
-                <p>{{ item.label }}</p>
-                <p class="dim">{{ item.detail }}</p>
-                <details v-if="item.more" class="more">
-                  <summary>详细信息</summary>
-                  <pre>{{ item.more }}</pre>
-                </details>
-              </div>
-              <UiButton v-if="item.action === 'open-post' && item.slug" size="sm" variant="ghost" @click="openArticle(item.slug)">
-                打开这篇文章
+            <div class="check-head">
+              <h2>检查</h2>
+              <UiButton size="sm" variant="ghost" :disabled="checking" @click="runPreflight(true)">重新检查</UiButton>
+            </div>
+            <p v-if="checking" class="dim">正在构建并检查…</p>
+            <p v-else-if="checksClear" class="pass-line">
+              <UiIcon :path="icons.ok" :size="16" class="good" />
+              检查通过 {{ checks.length }} 项<span v-if="checkedLabel">，{{ checkedLabel }}</span>
+            </p>
+            <template v-else>
+              <ul class="checks">
+                <li v-for="item in failedChecks" :key="item.key">
+                  <UiIcon :path="icons.alert" :size="16" class="bad" />
+                  <div>
+                    <p>{{ item.label }}</p>
+                    <p class="dim">{{ item.detail }}</p>
+                    <button v-if="item.more" type="button" class="fold" @click="moreKey = moreKey === item.key ? '' : item.key">
+                      详细信息
+                    </button>
+                    <pre v-if="item.more && moreKey === item.key" class="log">{{ item.more }}</pre>
+                  </div>
+                  <UiButton v-if="item.action === 'open-post' && item.slug" size="sm" variant="ghost" @click="openArticle(item.slug)">
+                    打开这篇文章
+                  </UiButton>
+                  <UiButton v-else-if="item.action === 'seo'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
+                  <UiButton v-else-if="item.action === 'settings'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
+                  <UiButton v-else-if="item.action === 'apply-url'" size="sm" variant="ghost" @click="applyTargetUrl">
+                    一键改成目标网址
+                  </UiButton>
+                </li>
+              </ul>
+              <p v-if="passedCount" class="dim">其余 {{ passedCount }} 项通过</p>
+            </template>
+            <div class="publish-row">
+              <p v-if="blockReason" class="dim">{{ blockReason }}</p>
+              <UiButton
+                variant="primary"
+                :icon-left="icons.publish"
+                :disabled="blocked || checking"
+                @click="startPublish(false)"
+              >
+                发布
               </UiButton>
-              <UiButton v-else-if="item.action === 'seo'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
-              <UiButton v-else-if="item.action === 'settings'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
-              <UiButton v-else-if="item.action === 'apply-url'" size="sm" variant="ghost" @click="applyTargetUrl">
-                一键改成目标网址
-              </UiButton>
-            </li>
-          </ul>
-        </section>
-
-        <div class="actions">
-          <UiButton
-            variant="primary"
-            :icon-left="icons.publish"
-            :disabled="blocked || pushing || checking"
-            :loading="pushing"
-            @click="startPublish(false)"
-          >
-            发布
-          </UiButton>
-        </div>
-      </template>
-
-      <section v-else class="block">
-        <h2>{{ liveOk ? '已上线' : steps.some((step) => step.state === 'fail') ? '发布停住了' : '发布进度' }}</h2>
-        <p v-if="liveOk && target?.siteUrl" class="site-url">{{ target.siteUrl }}</p>
-        <ol class="steps">
-          <li v-for="step in steps" :key="step.key" :class="step.state">
-            <span class="step-label">{{ step.label }}</span>
-            <span class="step-state">
-              {{
-                step.state === 'ok'
-                  ? '完成'
-                  : step.state === 'fail'
-                    ? '失败'
-                    : step.state === 'run'
-                      ? '进行中'
-                      : phase === 'result'
-                        ? '未进行'
-                        : '等待'
-              }}
-            </span>
-            <span v-if="step.state === 'ok' || step.state === 'fail' || step.state === 'run'" class="dim">
-              {{ (stepMs(step) / 1000).toFixed(1) }} 秒
-            </span>
-            <p class="dim step-detail">{{ step.detail }}</p>
-            <details v-if="step.key === 'check' && step.state === 'fail' && failedCheck?.more" class="more">
-              <summary>详细信息</summary>
-              <pre>{{ failedCheck.more }}</pre>
-            </details>
-            <a v-if="step.url && step.key === 'build' && !buildFailed" class="dim" :href="step.url">在 Gitea 查看</a>
-          </li>
-        </ol>
-        <div v-if="liveOk" class="actions">
-          <UiButton variant="primary" @click="openPublishedSite">打开网站</UiButton>
-          <UiButton @click="finishPublish">完成</UiButton>
-        </div>
-        <div v-else-if="phase === 'result'" class="actions">
-          <template v-if="needsForce">
-            <UiButton size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
-            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
+            </div>
           </template>
-          <template v-else-if="buildFailed">
-            <UiButton
-              v-if="steps.find((step) => step.key === 'build')?.url"
-              size="sm"
-              variant="ghost"
-              @click="openBuildLog"
-            >
-              在 Gitea 查看
-            </UiButton>
-            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
-          </template>
+
           <template v-else>
-            <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
-            <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
-              {{ entry.label }}
-            </UiButton>
-            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
+            <h2>{{ liveOk ? '已上线' : steps.some((step) => step.state === 'fail') ? '发布停住了' : '发布进度' }}</h2>
+            <ol class="rail">
+              <li v-for="step in steps" :key="step.key" :class="step.state">
+                <UiIcon :path="stepIcon(step)" :size="18" />
+                <span>{{ step.label }}</span>
+                <span class="dim">{{ stepMark(step) }}</span>
+                <span v-if="step.state === 'ok' || step.state === 'fail' || step.state === 'run'" class="dim">
+                  {{ (stepMs(step) / 1000).toFixed(1) }} 秒
+                </span>
+              </li>
+            </ol>
+            <p v-if="liveOk && (target?.siteUrl || publish.jobOf(session.siteDir)?.siteUrl)" class="site-url">
+              <button type="button" class="link" @click="openPublishedSite">
+                {{ target?.siteUrl || publish.jobOf(session.siteDir)?.siteUrl }}
+              </button>
+            </p>
+            <p v-else-if="failureView.reason" class="summary">{{ failureView.reason }}</p>
+            <p v-else class="dim">{{ steps.find((step) => step.state === 'run')?.detail }}</p>
+            <pre v-if="failureView.log" class="log">{{ failureView.log }}</pre>
+            <div v-if="liveOk" class="publish-row">
+              <UiButton variant="primary" @click="openPublishedSite">打开网站</UiButton>
+              <UiButton @click="finishPublish">完成</UiButton>
+            </div>
+            <div v-else-if="phase === 'result'" class="publish-row">
+              <template v-if="needsForce">
+                <UiButton size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
+                <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
+              </template>
+              <template v-else-if="buildFailed">
+                <UiButton v-if="steps.find((step) => step.key === 'build')?.url" size="sm" variant="ghost" @click="openBuildLog">
+                  在 Gitea 查看
+                </UiButton>
+                <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
+              </template>
+              <template v-else>
+                <UiButton size="sm" :disabled="checking" @click="startPublish(false)">重试</UiButton>
+                <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
+                  {{ entry.label }}
+                </UiButton>
+                <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
+              </template>
+            </div>
           </template>
-        </div>
-      </section>
+        </section>
 
-      <details
-        v-if="target"
-        class="drawer"
-        :open="connectionOpen"
-        @toggle="connectionOpen = ($event.target as HTMLDetailsElement).open"
-      >
-        <summary>发布目标与连接</summary>
-        <p v-if="target" class="dim">
-          {{ target.remoteUrl }} · 分支 {{ target.branch }}。令牌只存在本机。
-        </p>
-        <UiField v-if="target" label="站点网址">
+        <aside class="side">
+          <section class="card">
+            <h2>发布目标</h2>
+            <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
+            <p class="dim">分支 {{ target?.branch }}</p>
+            <button v-if="target?.siteUrl" type="button" class="link" @click="openPublishedSite">{{ target?.siteUrl }}</button>
+            <p class="dim">构建机 {{ runnerLabel }}</p>
+            <p v-if="target?.actionsState && target?.actionsState !== 'ready'" class="dim">{{ target?.actionsDetail }}</p>
+            <UiButton size="sm" variant="ghost" @click="settingsOpen = true">设置</UiButton>
+          </section>
+          <section class="card">
+            <h2>最近发布</h2>
+            <p v-if="!historyPersisted" class="dim">本机无法保存，重启后清空</p>
+            <p v-if="!historyRows.length" class="dim">还没有发布记录。</p>
+            <ul v-else class="recent">
+              <li v-for="item in shownHistory" :key="item.at" :title="historyStepDetail(item.steps) || undefined">
+                <UiIcon :path="historyConclusion(item) === '已上线' ? icons.ok : icons.alert" :size="14" />
+                <span>{{ historyConclusion(item) }}</span>
+                <span class="dim">{{ relativeTime(item.at) }}</span>
+                <span class="dim">{{ item.sha ? item.sha.slice(0, 7) : '' }}</span>
+              </li>
+            </ul>
+            <button v-if="historyRows.length > 5" type="button" class="fold" @click="historyAll = !historyAll">
+              {{ historyAll ? '收起' : '全部' }}
+            </button>
+          </section>
+        </aside>
+      </div>
+
+      <UiDialog v-model="settingsOpen" title="发布设置" :width="440">
+        <UiField label="站点网址">
           <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
         </UiField>
-        <div v-if="target" class="actions">
-          <UiButton size="sm" @click="saveSiteUrl">保存网址</UiButton>
-          <UiButton size="sm" variant="danger" @click="disconnectOpen = true">断开连接</UiButton>
-        </div>
-      </details>
-
-      <details v-if="target" class="drawer">
-        <summary>发布历史</summary>
-        <p v-if="!historyPersisted" class="dim">本机无法保存，重启后清空</p>
-        <p v-if="!historyRows.length" class="dim">还没有发布记录。</p>
-        <table v-else class="history">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>仓库</th>
-              <th>结果</th>
-              <th>提交</th>
-              <th>耗时</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in historyRows" :key="item.at">
-              <td>{{ formatTime(item.at) }}</td>
-              <td :title="item.repo">{{ item.repo }}</td>
-              <td :title="historyStepDetail(item.steps) || undefined">{{ historyConclusion(item) }}</td>
-              <td :title="item.sha">{{ item.sha ? item.sha.slice(0, 7) : '没有记录' }}</td>
-              <td>{{ item.ms ? `${(item.ms / 1000).toFixed(1)} 秒` : '没有记录' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </details>
+        <p class="dim">令牌只存在本机。</p>
+        <template #actions="{ close }">
+          <UiButton variant="ghost" @click="close">关闭</UiButton>
+          <UiButton
+            variant="danger"
+            @click="
+              close();
+              disconnectOpen = true;
+            "
+          >
+            断开连接
+          </UiButton>
+          <UiButton
+            variant="primary"
+            @click="
+              close();
+              void saveSiteUrl();
+            "
+          >
+            保存网址
+          </UiButton>
+        </template>
+      </UiDialog>
 
       <UiDialog v-model="forceOpen" title="覆盖远端内容？" :width="440">
         <p>推送被远端的新提交挡住了。覆盖会用本站内容重写远端分支 {{ target?.branch }}，远端上其他提交会丢失。</p>
@@ -773,9 +822,135 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--ui-s4);
-  width: min(1200px, calc(100vw - 2 * var(--ui-s6)));
+  width: min(1120px, 100%);
   max-width: 100%;
   margin-inline: auto;
+}
+
+.frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--ui-s4);
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s3);
+  min-width: 0;
+}
+
+.connect {
+  width: min(560px, 100%);
+  margin-inline: auto;
+}
+
+.titles,
+.recent,
+.rail {
+  display: flex;
+  gap: var(--ui-s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.titles,
+.recent {
+  flex-direction: column;
+}
+
+.rail {
+  justify-content: space-between;
+}
+
+.rail li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--ui-fs-2);
+}
+
+.rail .ok {
+  color: var(--ui-ok);
+}
+
+.rail .fail {
+  color: var(--ui-danger);
+}
+
+.rail .run {
+  color: var(--ui-warn);
+}
+
+.files {
+  max-height: 240px;
+  overflow: auto;
+}
+
+.log {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--ui-s2);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r);
+  background: var(--ui-bg);
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  font-size: var(--ui-fs-2);
+}
+
+.publish-row,
+.check-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ui-s2);
+}
+
+.check-head {
+  justify-content: space-between;
+}
+
+.pass-line {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s2);
+  margin: 0;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.recent li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-s2);
+  font-size: var(--ui-fs-2);
+}
+
+@media (max-width: 1100px) {
+  .frame {
+    grid-template-columns: 1fr;
+  }
 }
 
 .center {
