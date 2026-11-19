@@ -1056,7 +1056,8 @@ app.whenReady().then(() => {
       const audit = await auditSite(siteDir);
       if (!audit.ok) return fail('PUBLISH_CHECK', audit.message);
       const reportIssues = Array.isArray(audit.data.report?.issues) ? audit.data.report.issues : [];
-      const prebuild = seoRows(config, listPosts(siteDir)).filter((row) => row.level === 'error');
+      const posts = listPosts(siteDir);
+      const prebuild = seoRows(config, posts).filter((row) => row.level === 'error');
       const errors: { rule: string; detail: string }[] = [];
       const seen = new Set<string>();
       for (const issue of [...prebuild, ...reportIssues.filter((row) => row.level === 'error')]) {
@@ -1073,6 +1074,8 @@ app.whenReady().then(() => {
         workflowReady: existsSync(join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml')),
         buildFailed: audit.data.buildFailed,
         buildMessage: audit.data.message,
+        buildLog: audit.data.log,
+        postTitles: Object.fromEntries(posts.map((post) => [post.slug, post.title])),
         errors,
       });
       return ok({ items, blocked: items.some((item) => !item.ok) });

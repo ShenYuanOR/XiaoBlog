@@ -252,7 +252,9 @@ export interface XiaoApi {
           ok: boolean;
           label: string;
           detail: string;
-          action: '' | 'seo' | 'settings' | 'apply-url';
+          more?: string;
+          slug?: string;
+          action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
         }[];
       }>
     >;

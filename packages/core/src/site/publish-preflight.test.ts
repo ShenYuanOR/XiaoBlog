@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildPreflight, siteBaseFromUrl } from '../../../../apps/studio/src/main/publish-preflight.ts';
+import { buildPreflight, explainLocalBuild, siteBaseFromUrl } from '../../../../apps/studio/src/main/publish-preflight.ts';
+
+const titles = { coffee: '咖啡' };
 
 describe('发布前检查', () => {
   it('占位地址、构建失败、页面错误都用中文拦住', () => {
@@ -42,6 +44,92 @@ describe('发布前检查', () => {
     expect(seoItem?.detail).toContain('分享图文件不存在');
     expect(seoItem?.detail).not.toContain('og-image-missing-file');
     expect(seoItem?.action).toBe('seo');
+  });
+
+  it('开头信息写错时指出文章和行号，原文去掉堆栈和绝对路径', () => {
+    const log = [
+      'Flow sequence in block collection must be sufficiently indented and end with a ] at line 3, column 1:',
+      'title: [坏',
+      '  Location:',
+      '    F:\\XiaoBlog\\blog\\test\\src\\content\\posts\\coffee\\index.md:2:0',
+      '  Stack trace:',
+      '    at Module.parse (F:\\XiaoBlog\\blog\\test\\node_modules\\yaml\\parse.js:1:1)',
+    ].join('\n');
+    const explained = explainLocalBuild(log, titles);
+    expect(explained.summary).toBe('文章《咖啡》开头信息第 2 行写法不对');
+    expect(explained.slug).toBe('coffee');
+    expect(explained.detail).toContain('src/content/posts/coffee/index.md:2:0');
+    expect(explained.detail).not.toContain('Stack trace');
+    expect(explained.detail).not.toContain('F:\\XiaoBlog');
+    expect(explained.detail).not.toContain('at Module.parse');
+    const item = buildPreflight({
+      siteUrl: 'https://blog.xiaoblog.test',
+      targetUrl: 'https://blog.xiaoblog.test',
+      workflowReady: true,
+      buildFailed: true,
+      buildMessage: '构建没有通过',
+      buildLog: log,
+      postTitles: titles,
+      errors: [],
+    }).find((row) => row.key === 'build');
+    expect(item).toMatchObject({ detail: explained.summary, action: 'open-post', slug: 'coffee' });
+  });
+
+  it('封面图找不到时指出文章和图片路径', () => {
+    const log = [
+      '[ImageNotFound] Could not find requested image `/media/nope-gate.png`. Does it exist?',
+      '  Hint:',
+      '    This is often caused by a typo in the image path. Please make sure the file exists, and is spelled correctly.',
+      '  Location:',
+      '    F:\\XiaoBlog\\blog\\test\\node_modules\\astro\\dist\\assets\\utils\\node.js:108:10',
+      '  Stack trace:',
+      '    at Object.load (F:\\XiaoBlog\\blog\\test\\src\\content\\posts\\coffee\\index.md:1:1)',
+      '    at async (F:\\XiaoBlog\\blog\\test\\node_modules\\astro\\dist\\content\\vite-plugin-content-assets.js:36:1)',
+    ].join('\n');
+    const explained = explainLocalBuild(log, titles);
+    expect(explained.summary).toBe('文章《咖啡》的封面图 /media/nope-gate.png 找不到');
+    expect(explained.slug).toBe('coffee');
+    expect(explained.detail).toContain('typo in the image path');
+    expect(explained.detail).toContain('node_modules/astro/dist/assets/utils/node.js:108:10');
+    expect(explained.detail).not.toContain('Stack trace');
+    expect(explained.detail).not.toContain('F:\\XiaoBlog');
+    const item = buildPreflight({
+      siteUrl: 'https://blog.xiaoblog.test',
+      targetUrl: 'https://blog.xiaoblog.test',
+      workflowReady: true,
+      buildFailed: true,
+      buildMessage: '',
+      buildLog: log,
+      postTitles: titles,
+      errors: [],
+    }).find((row) => row.key === 'build');
+    expect(item?.action).toBe('open-post');
+  });
+
+  it('站点配置校验失败时不给文章入口', () => {
+    const log = [
+      'Error: xiao.config.json 字段无效：site.url',
+      '    at file:///F:/XiaoBlog/blog/test/astro.config.mjs:12:9',
+      '  Stack trace:',
+      '    at loadConfig (F:\\XiaoBlog\\blog\\test\\node_modules\\astro\\dist\\core\\config.js:1:1)',
+    ].join('\n');
+    const explained = explainLocalBuild(log, titles);
+    expect(explained.summary).toBe('站点配置 xiao.config.json 校验失败：site.url');
+    expect(explained.slug).toBe('');
+    expect(explained.detail).not.toContain('Stack trace');
+    expect(explained.detail).not.toContain('F:/XiaoBlog');
+    expect(explained.detail).not.toContain('F:\\XiaoBlog');
+    const item = buildPreflight({
+      siteUrl: 'https://blog.xiaoblog.test',
+      targetUrl: 'https://blog.xiaoblog.test',
+      workflowReady: true,
+      buildFailed: true,
+      buildMessage: log,
+      postTitles: titles,
+      errors: [],
+    }).find((row) => row.key === 'build');
+    expect(item).toMatchObject({ action: '', slug: '' });
+    expect(item?.detail).toContain('xiao.config.json 校验失败');
   });
 
   it('按网址路径得到站点 base', () => {

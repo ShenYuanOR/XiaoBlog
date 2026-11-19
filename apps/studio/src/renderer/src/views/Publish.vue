@@ -33,7 +33,9 @@ interface PreflightItem {
   ok: boolean;
   label: string;
   detail: string;
-  action: '' | 'seo' | 'settings' | 'apply-url';
+  more?: string;
+  slug?: string;
+  action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
 }
 
 interface DeployRecord {
@@ -114,6 +116,7 @@ const editedPosts = computed(() =>
   changes.value.posts.filter((post) => post.status === 'modified' || post.status === 'renamed'),
 );
 const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
+const failedCheck = computed(() => checks.value.find((item) => !item.ok));
 const blocked = computed(
   () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
 );
@@ -130,6 +133,8 @@ const resultEntries = computed(() => {
       entries.push({ key: 'url', label: '一键改成目标网址', run: () => void applyTargetUrl() });
     } else if (item?.key === 'url') {
       entries.push({ key: 'settings', label: '去设置', run: () => go('settings') });
+    } else if (item?.action === 'open-post' && item.slug) {
+      entries.push({ key: 'post', label: '打开这篇文章', run: () => openArticle(item.slug ?? '') });
     } else if (item?.key === 'seo' || item?.key === 'build') {
       entries.push({ key: 'seo', label: '去 SEO', run: () => go('seo') });
     }
@@ -202,6 +207,13 @@ function freshSteps(): StepRow[] {
 
 function go(nav: 'seo' | 'settings'): void {
   session.setNav(nav);
+}
+
+function openArticle(slug: string): void {
+  if (!slug) return;
+  session.activePost = slug;
+  session.setNav('posts');
+  window.dispatchEvent(new CustomEvent('xiao:open-post', { detail: { slug } }));
 }
 
 async function connectGitea(): Promise<void> {
@@ -591,8 +603,15 @@ watch(
               <div>
                 <p>{{ item.label }}</p>
                 <p class="dim">{{ item.detail }}</p>
+                <details v-if="item.more" class="more">
+                  <summary>详细信息</summary>
+                  <pre>{{ item.more }}</pre>
+                </details>
               </div>
-              <UiButton v-if="item.action === 'seo'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
+              <UiButton v-if="item.action === 'open-post' && item.slug" size="sm" variant="ghost" @click="openArticle(item.slug)">
+                打开这篇文章
+              </UiButton>
+              <UiButton v-else-if="item.action === 'seo'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
               <UiButton v-else-if="item.action === 'settings'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
               <UiButton v-else-if="item.action === 'apply-url'" size="sm" variant="ghost" @click="applyTargetUrl">
                 一键改成目标网址
@@ -624,6 +643,10 @@ watch(
             </span>
             <span v-if="step.ms" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
             <p class="dim step-detail">{{ step.detail }}</p>
+            <details v-if="step.key === 'check' && step.state === 'fail' && failedCheck?.more" class="more">
+              <summary>详细信息</summary>
+              <pre>{{ failedCheck.more }}</pre>
+            </details>
             <a v-if="step.url" class="dim" :href="step.url">{{ step.key === 'live' ? '打开网站' : '在 Gitea 查看' }}</a>
           </li>
         </ol>
@@ -877,6 +900,23 @@ h2 {
 
 .step-detail {
   white-space: pre-wrap;
+}
+
+.more {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.more summary {
+  cursor: pointer;
+  color: var(--ui-text-2);
+}
+
+.more pre {
+  margin: var(--ui-s2) 0 0;
+  white-space: pre-wrap;
+  font: inherit;
+  color: var(--ui-text-2);
 }
 
 .steps .ok .step-state {
