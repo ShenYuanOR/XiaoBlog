@@ -6,6 +6,8 @@ export interface FollowUpdate {
   detail: string;
   log?: string;
   url?: string;
+  /** 远端构建用 Gitea 的开始到结束；没有时间戳时才是本地计时。 */
+  ms?: number;
 }
 
 interface RunRow {
@@ -14,6 +16,21 @@ interface RunRow {
   conclusion?: string;
   html_url?: string;
   head_sha?: string;
+  started_at?: string;
+  completed_at?: string;
+  run_started_at?: string;
+  updated_at?: string;
+}
+
+/** 优先用运行记录上的开始和结束时间。缺任何一个就退回本地计时。 */
+export function runDurationMs(
+  run: { started_at?: string; completed_at?: string; run_started_at?: string; updated_at?: string },
+  fallback: number,
+): number {
+  const start = Date.parse(run.started_at || run.run_started_at || '');
+  const end = Date.parse(run.completed_at || '');
+  if (Number.isFinite(start) && Number.isFinite(end) && end >= start) return end - start;
+  return fallback;
 }
 
 function runsOf(body: unknown): RunRow[] {
@@ -167,10 +184,25 @@ export async function watchBuild(options: {
       } else {
         const kind = phaseOf(run);
         const runUrl = run.html_url || page;
-        if (kind === 'success') return { phase: 'build', state: 'ok', detail: '远端构建成功。', url: runUrl };
+        if (kind === 'success') {
+          return {
+            phase: 'build',
+            state: 'ok',
+            detail: '远端构建成功。',
+            url: runUrl,
+            ms: runDurationMs(run, now() - started),
+          };
+        }
         if (kind === 'failure') {
           const log = run.id ? await failureLog(remote.origin, remote.owner, remote.repo, run.id, options.token, fetchImpl) : '';
-          return { phase: 'build', state: 'fail', detail: '远端构建失败。', log, url: runUrl };
+          return {
+            phase: 'build',
+            state: 'fail',
+            detail: '远端构建失败。',
+            log,
+            url: runUrl,
+            ms: runDurationMs(run, now() - started),
+          };
         }
         if (kind === 'queued') {
           queuedAt ??= now();

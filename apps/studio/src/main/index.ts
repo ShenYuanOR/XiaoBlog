@@ -1203,7 +1203,7 @@ app.whenReady().then(() => {
         actionsState: target.actionsState,
         actionsDetail: target.actionsDetail,
       });
-      const buildMs = Date.now() - buildStarted;
+      const buildMs = build.ms ?? Date.now() - buildStarted;
       if (build.state !== 'ok') {
         return {
           ok: true,

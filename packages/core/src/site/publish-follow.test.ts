@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { extractFailureLog, waitForLive, watchBuild } from '../../../../apps/studio/src/main/publish-follow.ts';
+import { extractFailureLog, runDurationMs, waitForLive, watchBuild } from '../../../../apps/studio/src/main/publish-follow.ts';
 
 const sleep = async (): Promise<void> => {};
 
@@ -77,6 +77,16 @@ describe('跟踪发布', () => {
       },
     });
     expect(result.detail).toContain('没有为这次提交启动构建');
+  });
+
+  it('远端构建耗时用运行记录的开始和结束', () => {
+    expect(
+      runDurationMs(
+        { started_at: '2026-11-19T08:00:00.000Z', completed_at: '2026-11-19T08:00:34.700Z' },
+        100,
+      ),
+    ).toBe(34700);
+    expect(runDurationMs({}, 100)).toBe(100);
   });
 
   it('真实失败日志只留构建步骤，路径改成相对路径', () => {
