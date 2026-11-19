@@ -13,6 +13,8 @@ import {
   choosePlatform,
   newRepoPage,
   parseRepoUrl,
+  stepPhase,
+  stepTitle,
   suggestSite,
 } from '../../../../apps/studio/src/main/publish-prep.ts';
 import {
@@ -43,6 +45,14 @@ function reachedRepo() {
 }
 
 describe('发布准备状态机', () => {
+  it('六步都在，后面的只是名称', () => {
+    const draft = choosePlatform(blankPrep(), 'github');
+    expect(stepPhase(draft.step, 'platform', draft.done)).toBe('done');
+    expect(stepPhase(draft.step, 'token', draft.done)).toBe('current');
+    expect(stepPhase(draft.step, 'publish', draft.done)).toBe('later');
+    expect(stepTitle('publish')).toBe('首次发布');
+  });
+
   it('平台：GitHub 进入令牌，Gitea 没填地址就停住且地址还在', () => {
     const github = choosePlatform(blankPrep(), 'github');
     expect(github.step).toBe('token');

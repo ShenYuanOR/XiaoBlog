@@ -15,9 +15,10 @@ import {
   pushBlocks,
   reopen,
   stepLine,
+  stepPhase,
+  stepTitle,
   suggestSite,
   tokenPage,
-  type PrepStep,
 } from '../../../main/publish-prep.ts';
 import { tokenStatusLine } from '../../../main/publish-token.ts';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
@@ -240,10 +241,7 @@ const prepHelp: Record<string, { title: string; body: string }> = {
     body: '权限够就自动写入构建配置，并开启 Pages 或 Actions。做不到的会给你网页链接，做完点「我已完成，重新检查」。',
   },
 };
-const shownPrep = computed(() => {
-  const index = PREP_ORDER.indexOf(prep.value.step as PrepStep);
-  return PREP_ORDER.slice(0, index < 0 ? PREP_ORDER.length : index + 1);
-});
+const shownPrep = computed(() => PREP_ORDER);
 const filteredRepos = computed(() => {
   const query = repoQuery.value.trim().toLowerCase();
   if (!query || query.includes('/')) return repoChoices.value;
@@ -908,14 +906,15 @@ watch(
           <ol class="prep-steps">
             <li v-for="step in shownPrep" :key="step">
               <button
-                v-if="prep.done.includes(step) && prep.step !== step"
+                v-if="stepPhase(prep.step, step, prep.done) === 'done'"
                 type="button"
                 class="fold"
                 @click="prep = reopen(prep, step)"
               >
                 {{ stepLine(prep, step) }}
               </button>
-              <div v-else-if="prep.step === step" class="prep-current">
+              <p v-else-if="stepPhase(prep.step, step, prep.done) === 'later'" class="later-step">{{ stepTitle(step) }}</p>
+              <div v-else class="prep-current">
                 <template v-if="step === 'platform'">
                   <h3>平台</h3>
                   <div class="platform-cards">
@@ -1014,6 +1013,9 @@ watch(
                     </UiButton>
                     <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
                   </div>
+                </template>
+                <template v-else-if="step === 'publish'">
+                  <h3>首次发布</h3>
                 </template>
                 <p v-if="prep.error" class="alert">{{ prep.error }}</p>
                 <p v-if="prep.next" class="dim">{{ prep.next }}</p>
@@ -1369,6 +1371,11 @@ watch(
 .platform-card span {
   color: var(--ui-text-2);
   font-size: var(--ui-fs-2);
+}
+
+.later-step {
+  margin: 0;
+  color: var(--ui-text-3);
 }
 
 .prep-actions {

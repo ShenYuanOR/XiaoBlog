@@ -37,7 +37,26 @@ export interface PrepDraft {
   manualLink: string;
 }
 
-export const PREP_ORDER: PrepStep[] = ['platform', 'token', 'repo', 'site', 'build'];
+export const PREP_ORDER: PrepStep[] = ['platform', 'token', 'repo', 'site', 'build', 'publish'];
+
+const STEP_TITLES: Record<PrepStep, string> = {
+  platform: '平台',
+  token: '令牌验证',
+  repo: '仓库',
+  site: '网站地址',
+  build: '构建准备',
+  publish: '首次发布',
+};
+
+export function stepTitle(step: PrepStep): string {
+  return STEP_TITLES[step];
+}
+
+export function stepPhase(current: PrepStep, step: PrepStep, done: PrepStep[]): 'current' | 'done' | 'later' {
+  if (step === current) return 'current';
+  if (done.includes(step)) return 'done';
+  return 'later';
+}
 
 export function blankPrep(): PrepDraft {
   return {
