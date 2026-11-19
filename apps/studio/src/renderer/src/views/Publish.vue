@@ -143,6 +143,7 @@ const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: 
 const newRepoName = ref('');
 const staticHost = ref('');
 const prepBusy = ref(false);
+const platformPick = ref<'' | 'github' | 'gitea'>('');
 const giteaSiteUrl = ref('');
 const pushing = ref(false);
 const pushError = ref('');
@@ -416,6 +417,11 @@ function capabilityText(state: 'ok' | 'missing' | 'unknown'): string {
 
 function continuePlatform(provider: 'github' | 'gitea'): void {
   prep.value = choosePlatform(prep.value, provider, instanceUrl.value);
+}
+
+function pickPlatform(provider: 'github' | 'gitea'): void {
+  platformPick.value = provider;
+  if (provider === 'github') continuePlatform('github');
 }
 
 async function verifyPasted(): Promise<void> {
@@ -863,6 +869,7 @@ watch(
 watch(
   () => prep.value.step,
   (step) => {
+    if (step === 'platform' && prep.value.provider === 'gitea') platformPick.value = 'gitea';
     if (step === 'repo' && prep.value.token) void loadRepos();
     if (step === 'site') void loadRememberedHost();
   },
@@ -911,13 +918,24 @@ watch(
               <div v-else-if="prep.step === step" class="prep-current">
                 <template v-if="step === 'platform'">
                   <h3>平台</h3>
-                  <div class="publish-row">
-                    <UiButton variant="primary" @click="continuePlatform('github')">GitHub</UiButton>
-                    <UiButton @click="continuePlatform('gitea')">Gitea</UiButton>
+                  <div class="platform-cards">
+                    <button type="button" class="platform-card" :class="{ on: platformPick === 'github' }" @click="pickPlatform('github')">
+                      <strong>GitHub</strong>
+                      <span>正式站点，用自带的 Pages。</span>
+                    </button>
+                    <button type="button" class="platform-card" :class="{ on: platformPick === 'gitea' }" @click="pickPlatform('gitea')">
+                      <strong>Gitea</strong>
+                      <span>局域网测试，用 pages 分支和静态服务。</span>
+                    </button>
                   </div>
-                  <UiField label="Gitea 实例地址">
-                    <UiInput v-model="instanceUrl" placeholder="http://192.168.1.10:3000" />
-                  </UiField>
+                  <template v-if="platformPick === 'gitea'">
+                    <UiField label="Gitea 实例地址">
+                      <UiInput v-model="instanceUrl" placeholder="http://192.168.1.10:3000" />
+                    </UiField>
+                    <div class="prep-actions">
+                      <UiButton variant="primary" @click="continuePlatform('gitea')">继续</UiButton>
+                    </div>
+                  </template>
                 </template>
                 <template v-else-if="step === 'token'">
                   <h3>令牌验证</h3>
@@ -1316,6 +1334,41 @@ watch(
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.platform-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ui-s2);
+}
+
+.platform-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.platform-card.on {
+  border-color: var(--ui-accent);
+}
+
+.platform-card strong {
+  font-weight: 400;
+}
+
+.platform-card span {
+  color: var(--ui-text-2);
+  font-size: var(--ui-fs-2);
 }
 
 .prep-actions {
