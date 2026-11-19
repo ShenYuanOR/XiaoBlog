@@ -47,6 +47,8 @@ interface DeployTarget {
   branch: string;
   login?: string;
   siteUrl?: string;
+  actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
+  actionsDetail?: string;
   persisted?: boolean;
 }
 
@@ -489,6 +491,9 @@ watch(
       </section>
 
       <template v-else-if="phase === 'ready'">
+        <p v-if="target.actionsState && target.actionsState !== 'ready'" class="alert">
+          {{ target.actionsDetail }}
+        </p>
         <section class="block">
           <h2>将发布什么</h2>
           <p class="summary">{{ summaryLine }}</p>

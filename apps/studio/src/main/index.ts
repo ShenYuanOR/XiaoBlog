@@ -97,6 +97,7 @@ import { lintSource, listSourceFiles, readSource, writeSource } from './develop.
 import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
 import { buildPreflight } from './publish-preflight.ts';
+import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -711,12 +712,20 @@ app.whenReady().then(() => {
       const probe = await probeRemote(url, login.trim(), token.trim(), publishHttp);
       if (!probe.ok) return fail('PUBLISH_PROBE', probe.message);
       const branch = await remoteDefaultBranch(url, login.trim(), token.trim(), publishHttp);
+      const actions =
+        provider === 'gitea'
+          ? await probeGiteaActions(url, token.trim())
+          : { state: 'unknown' as const, detail: 'GitHub 下一步再接。' };
+      const workflow = provider === 'gitea' ? writeDeployWorkflow(siteDir, branch) : 'kept';
       const target: DeployTarget = {
         provider,
         remoteUrl: url,
         branch,
         ...(login.trim() ? { login: login.trim() } : {}),
         ...(siteUrl?.trim() ? { siteUrl: siteUrl.trim() } : {}),
+        actionsState: actions.state,
+        actionsDetail:
+          workflow === 'written' ? `${actions.detail} 构建配置已写入站点。` : actions.detail,
       };
       secretStore().save(siteDir, token.trim(), '');
       const all = deployStore().read();

@@ -197,6 +197,8 @@ export interface XiaoApi {
         branch: string;
         login?: string;
         siteUrl?: string;
+        actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
+        actionsDetail?: string;
       } | null>
     >;
     connect: (
@@ -213,6 +215,8 @@ export interface XiaoApi {
         branch: string;
         login?: string;
         siteUrl?: string;
+        actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
+        actionsDetail?: string;
         persisted?: boolean;
       }>
     >;

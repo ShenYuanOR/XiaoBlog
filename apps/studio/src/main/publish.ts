@@ -30,6 +30,9 @@ export interface DeployTarget {
   login?: string;
   /** 发布后读者打开的站点网址。Gitea 由用户填写。 */
   siteUrl?: string;
+  /** 连接时探测到的 Actions / 构建机状态。 */
+  actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
+  actionsDetail?: string;
 }
 
 export interface PushSiteInput {

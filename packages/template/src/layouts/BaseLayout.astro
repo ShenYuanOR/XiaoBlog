@@ -47,6 +47,8 @@ function withAssetBase(url: string): string {
 
 const pageHref = pageAsset ? withAssetBase(pageAsset) : undefined;
 const forcedNoindex = pageSlug === '404' || pageSlug === 'search';
+/** 只有发布构建会设置。本地预览和普通构建不输出，避免把开发机的状态当成已上线。 */
+const buildSha = (process.env.XIAO_BUILD_SHA ?? '').trim();
 const resolvedHeads =
   heads.length > 0
     ? heads
@@ -69,6 +71,7 @@ const resolvedHeads =
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {buildSha ? <meta name="xiao-build" content={buildSha} /> : null}
     <title>{pageTitle}</title>
     <meta name="description" content={desc} />
     <link rel="icon" href={withBase(config.site.favicon)} />
