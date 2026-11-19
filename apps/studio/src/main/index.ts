@@ -1411,7 +1411,13 @@ app.whenReady().then(() => {
       const probed = await probeStaticHost(String(host || ''), String(owner || ''), String(repo || ''), apiFetch);
       if (!probed.ok) return fail('PUBLISH_HOST', probed.message);
       const root = String(origin || '').replace(/\/$/, '');
-      if (root) writePagesHost(root, String(host || '').trim().replace(/\/$/, ''));
+      if (root) {
+        try {
+          writePagesHost(root, String(host || '').trim().replace(/\/$/, ''));
+        } catch {
+          // 记不住也不打断这次准备，下次还可以再填。
+        }
+      }
       return ok(null);
     },
   );
