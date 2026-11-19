@@ -23,3 +23,6 @@ blog/
 *.env
 apps/studio/.shim/
 apps/studio/.tmp-*
+
+# 协作笔记只留在本地，不进公开仓库。
+.agents/
