@@ -250,13 +250,6 @@ function relativeTime(at: string): string {
   return `${Math.round(hours / 24)} 天前`;
 }
 
-function stepMark(step: StepRow): string {
-  if (step.state === 'ok') return '完成';
-  if (step.state === 'fail') return '失败';
-  if (step.state === 'run') return '进行中';
-  return phase.value === 'result' ? '未进行' : '等待';
-}
-
 function stepIcon(step: StepRow): string {
   if (step.state === 'ok') return icons.ok;
   if (step.state === 'fail') return icons.alert;
@@ -680,12 +673,17 @@ watch(
           <template v-else>
             <h2>{{ liveOk ? '已上线' : steps.some((step) => step.state === 'fail') ? '发布停住了' : '发布进度' }}</h2>
             <ol class="rail">
-              <li v-for="step in steps" :key="step.key" :class="step.state">
-                <UiIcon :path="stepIcon(step)" :size="18" />
-                <span>{{ step.label }}</span>
-                <span class="dim">{{ stepMark(step) }}</span>
-                <span v-if="step.state === 'ok' || step.state === 'fail' || step.state === 'run'" class="dim">
-                  {{ (stepMs(step) / 1000).toFixed(1) }} 秒
+              <li v-for="(step, index) in steps" :key="step.key" :class="step.state">
+                <span v-if="index > 0" class="join" :class="{ done: steps[index - 1]?.state === 'ok' }" />
+                <span class="node">
+                  <UiSpinner v-if="step.state === 'run'" :size="16" />
+                  <UiIcon v-else :path="stepIcon(step)" :size="18" />
+                </span>
+                <span class="caption">
+                  {{ step.label }}
+                  <template v-if="step.state === 'ok' || step.state === 'fail' || step.state === 'run'">
+                    {{ (stepMs(step) / 1000).toFixed(1) }} 秒
+                  </template>
                 </span>
               </li>
             </ol>
@@ -851,31 +849,61 @@ watch(
 }
 
 .titles,
-.recent,
-.rail {
+.recent {
   display: flex;
+  flex-direction: column;
   gap: var(--ui-s2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.titles,
-.recent {
-  flex-direction: column;
-}
-
 .rail {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .rail li {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  text-align: center;
+}
+
+.rail .join {
+  position: absolute;
+  top: 9px;
+  right: 50%;
+  left: -50%;
+  height: 2px;
+  background: var(--ui-line);
+}
+
+.rail .join.done {
+  background: var(--ui-ok);
+}
+
+.rail .node {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--ui-panel);
+}
+
+.rail .caption {
   font-size: var(--ui-fs-2);
+  font-weight: 400;
+  color: var(--ui-text-2);
 }
 
 .rail .ok {
