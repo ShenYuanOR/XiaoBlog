@@ -166,7 +166,7 @@ const failureView = computed(() => {
 const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
   const state = target.value?.actionsState;
   const detail = target.value?.actionsDetail ?? '';
-  if (state === 'ready') return { text: '就绪', tone: 'ok' };
+  if (state === 'ready') return { text: '构建机就绪', tone: 'ok' };
   if (detail.includes('xiao')) return { text: '缺少 xiao 标签', tone: 'warn' };
   if (state === 'no-runner' || state === 'disabled') return { text: '没有构建机', tone: 'warn' };
   return { text: '没有构建机', tone: 'neutral' };
@@ -791,7 +791,7 @@ watch(
 
       <UiDialog v-model="settingsOpen" title="发布设置" :width="440">
         <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
-        <p class="dim">分支 {{ target?.branch }}。令牌只存在本机。</p>
+        <p class="dim dialog-meta">分支 {{ target?.branch }}。令牌只存在本机。</p>
         <UiField label="站点网址">
           <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
         </UiField>
@@ -1289,5 +1289,8 @@ h2 {
 
 .next {
   margin-top: var(--ui-s2);
+}
+.dialog-meta {
+  margin-bottom: var(--ui-s3);
 }
 </style>
