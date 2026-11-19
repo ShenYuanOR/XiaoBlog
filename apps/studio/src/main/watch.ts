@@ -1,8 +1,20 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, watch, type FSWatcher } from 'node:fs';
+import { readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
 
-const ignored = ['node_modules', 'dist', '.astro', '.git', '.xiao'];
+const ignored = ['node_modules', 'dist', '.astro', '.git', '.xiao', '.pnpm-store'];
+
+/** 没见过、而且修改时间早于监视开始：只记基线，不当成刷新。 */
+export function watchDecision(input: {
+  seen: boolean;
+  sameHash: boolean;
+  mtimeMs: number;
+  startedAt: number;
+}): 'ignore' | 'baseline' | 'reload' {
+  if (input.seen && input.sameHash) return 'ignore';
+  if (!input.seen && input.mtimeMs < input.startedAt) return 'baseline';
+  return 'reload';
+}
 
 /** 体检报告、构建产物和 Astro 缓存不该触发「文件已按磁盘刷新」。 */
 export function watchIgnored(file: string): boolean {
@@ -26,6 +38,7 @@ function digest(text: string): string {
 
 export class SiteWatcher {
   private watcher: FSWatcher | undefined;
+  private startedAt = 0;
   private hashes = new Map<string, string>();
   private dirty = new Map<string, string>();
   private timers = new Map<string, NodeJS.Timeout>();
@@ -47,6 +60,7 @@ export class SiteWatcher {
   }
 
   start(): void {
+    this.startedAt = Date.now();
     this.watcher = watch(this.root, { recursive: true }, (_event, name) => {
       if (!name || watchIgnored(name)) return;
       const key = name.replaceAll('/', '\\');
@@ -104,7 +118,25 @@ export class SiteWatcher {
       return;
     }
     const next = digest(disk);
-    if (this.hashes.get(key) === next) return;
+    let mtimeMs = 0;
+    try {
+      mtimeMs = statSync(full).mtimeMs;
+    } catch {
+      return;
+    }
+    const seen = this.hashes.has(key);
+    const decision = watchDecision({
+      seen,
+      sameHash: seen && this.hashes.get(key) === next,
+      mtimeMs,
+      startedAt: this.startedAt,
+    });
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(`[watch] ${decision} ${key}`);
+    }
+    if (decision === 'ignore') return;
+    this.hashes.set(key, next);
+    if (decision === 'baseline') return;
     const mine = this.dirty.get(key);
     if (mine === undefined) {
       this.hashes.set(key, next);
