@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -99,6 +99,7 @@ import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
 import { buildPreflight, itemsForConfigReadError, type PreflightItem } from './publish-preflight.ts';
 import { createPublishJobs, quitKind, type PublishJobSnapshot } from './publish-job.ts';
+import { cachedCheck, checkFingerprint, type CheckCacheEntry } from './publish-check.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -338,6 +339,29 @@ function historyFile(): string {
 
 const historyMemory = new Map<string, DeployRecord[]>();
 let publishJobs: ReturnType<typeof createPublishJobs> | null = null;
+const checkCache = new Map<string, CheckCacheEntry<{ items: PreflightItem[]; blocked: boolean }>>();
+
+function readFingerprint(siteDir: string): string {
+  const git = (args: string[]): string => {
+    try {
+      return execFileSync('git', args, { cwd: siteDir, encoding: 'utf8' });
+    } catch {
+      return '';
+    }
+  };
+  return checkFingerprint({
+    head: git(['rev-parse', 'HEAD']).trim(),
+    porcelain: git(['status', '--porcelain', '-uall']),
+    stat(rel) {
+      try {
+        const info = statSync(join(siteDir, rel));
+        return { size: info.size, mtimeMs: info.mtimeMs };
+      } catch {
+        return null;
+      }
+    },
+  });
+}
 let allowQuit = false;
 let historyDiskOk = true;
 
@@ -1120,9 +1144,29 @@ app.whenReady().then(() => {
     }
   }
 
+  async function preflightCached(siteDir: string, force: boolean): Promise<
+    | { ok: true; items: PreflightItem[]; blocked: boolean; checkedAt: number; cached: boolean }
+    | { ok: false; message: string }
+  > {
+    const fingerprint = readFingerprint(siteDir);
+    const hit = cachedCheck(checkCache.get(siteDir), fingerprint);
+    if (!force && hit) {
+      return { ok: true, items: hit.value.items, blocked: hit.value.blocked, checkedAt: hit.at, cached: true };
+    }
+    const result = await executePreflight(siteDir);
+    if (!result.ok) return result;
+    const at = Date.now();
+    checkCache.set(siteDir, { fingerprint, at, value: { items: result.items, blocked: result.blocked } });
+    return { ok: true, items: result.items, blocked: result.blocked, checkedAt: at, cached: false };
+  }
+
   publishJobs = createPublishJobs({
     now: () => Date.now(),
-    preflight: (siteDir) => executePreflight(siteDir),
+    preflight: async (siteDir) => {
+      const result = await preflightCached(siteDir, false);
+      if (!result.ok) return result;
+      return { ok: true, items: result.items };
+    },
     async push(siteDir, force) {
       const target = deployStore().read()[siteDir];
       if (!target) return { ok: false, message: '还没有连接仓库。' };
@@ -1185,10 +1229,10 @@ app.whenReady().then(() => {
     emit: broadcastJob,
   });
 
-  ipcMain.handle('publish:preflight', async (_event, siteDir: string) => {
-    const result = await executePreflight(siteDir);
+  ipcMain.handle('publish:preflight', async (_event, siteDir: string, force?: boolean) => {
+    const result = await preflightCached(siteDir, Boolean(force));
     if (!result.ok) return fail('PUBLISH_CHECK', result.message);
-    return ok({ items: result.items, blocked: result.blocked });
+    return ok({ items: result.items, blocked: result.blocked, checkedAt: result.checkedAt, cached: result.cached });
   });
   ipcMain.handle('publish:start', (_event, siteDir: string, force?: boolean) => {
     if (!siteDir || !publishJobs) return fail('PUBLISH_JOB', '还没有选择站点');

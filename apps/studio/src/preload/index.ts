@@ -81,7 +81,7 @@ const api = {
     ) => ipcRenderer.invoke('publish:connect', siteDir, provider, remoteUrl, login, token, siteUrl),
     setSiteUrl: (siteDir: string, siteUrl: string) =>
       ipcRenderer.invoke('publish:setSiteUrl', siteDir, siteUrl),
-    preflight: (siteDir: string) => ipcRenderer.invoke('publish:preflight', siteDir),
+    preflight: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:preflight', siteDir, force),
     start: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:start', siteDir, force),
     job: (siteDir: string) => ipcRenderer.invoke('publish:job', siteDir),
     dismiss: (siteDir: string) => ipcRenderer.invoke('publish:dismiss', siteDir),

@@ -376,9 +376,11 @@ export interface XiaoApi {
         } | null;
       }) => void,
     ) => () => void;
-    preflight: (siteDir: string) => Promise<
+    preflight: (siteDir: string, force?: boolean) => Promise<
       IpcResult<{
         blocked: boolean;
+        checkedAt: number;
+        cached: boolean;
         items: {
           key: 'url' | 'workflow' | 'build' | 'seo';
           ok: boolean;

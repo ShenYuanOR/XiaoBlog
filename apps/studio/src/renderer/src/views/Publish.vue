@@ -105,6 +105,7 @@ const errorText = ref('');
 const changes = ref<ChangeSummary>(emptyChanges());
 const checks = ref<PreflightItem[]>([]);
 const checking = ref(false);
+const checkedAt = ref(0);
 const history = ref<DeployRecord[]>([]);
 const historyPersisted = ref(true);
 const target = ref<DeployTarget | null>(null);
@@ -136,6 +137,11 @@ const blocked = computed(
   () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
 );
 const historyRows = computed(() => [...history.value].slice(-20).reverse());
+const checkedLabel = computed(() => {
+  if (!checkedAt.value) return '';
+  const minutes = Math.floor(Math.max(0, publish.now - checkedAt.value) / 60000);
+  return minutes < 1 ? '刚刚检查' : `${minutes} 分钟前检查`;
+});
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 
 const resultEntries = computed(() => {
@@ -374,11 +380,11 @@ async function confirmDisconnect(): Promise<void> {
   notify('已断开远端连接，并删除这个站点在本机保存的令牌。', 'info', 'publish-connect');
 }
 
-async function runPreflight(): Promise<void> {
+async function runPreflight(force = false): Promise<void> {
   if (!session.siteDir) return;
   checking.value = true;
   try {
-    const result = await window.xiao.publish.preflight(session.siteDir);
+    const result = await window.xiao.publish.preflight(session.siteDir, force);
     if (!result.ok) {
       checks.value = [
         { key: 'build', ok: false, label: '站点能构建', detail: result.message, more: '', slug: '', action: '' },
@@ -386,6 +392,7 @@ async function runPreflight(): Promise<void> {
       return;
     }
     checks.value = result.data.items;
+    checkedAt.value = result.data.checkedAt;
   } finally {
     checking.value = false;
   }
@@ -580,6 +587,8 @@ watch(
 
         <section class="block">
           <h2>发布前检查</h2>
+          <p v-if="checkedLabel && !checking" class="dim">{{ checkedLabel }}</p>
+          <UiButton size="sm" variant="ghost" :disabled="checking" @click="runPreflight(true)">重新检查</UiButton>
           <p v-if="checking" class="dim">正在构建并检查…</p>
           <ul v-else class="checks">
             <li v-for="item in checks" :key="item.key">
