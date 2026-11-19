@@ -654,7 +654,14 @@ watch(
                   <div>
                     <p>{{ item.label }}</p>
                     <p class="dim">{{ item.detail }}</p>
-                    <button v-if="item.more" type="button" class="fold" @click="moreKey = moreKey === item.key ? '' : item.key">
+                    <button
+                      v-if="item.more"
+                      type="button"
+                      class="more-link"
+                      :class="{ open: moreKey === item.key }"
+                      @click="moreKey = moreKey === item.key ? '' : item.key"
+                    >
+                      <UiIcon :path="icons.chevronRight" :size="14" />
                       详细信息
                     </button>
                     <pre v-if="item.more && moreKey === item.key" class="log">{{ item.more }}</pre>
@@ -1141,6 +1148,26 @@ h2 {
 
 .summary {
   font-size: var(--ui-fs-3);
+}
+
+.more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.more-link :deep(svg) {
+  transition: transform var(--ui-dur) var(--ui-ease);
+}
+
+.more-link.open :deep(svg) {
+  transform: rotate(90deg);
 }
 
 .fold {
