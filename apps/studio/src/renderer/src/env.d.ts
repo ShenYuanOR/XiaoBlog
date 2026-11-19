@@ -272,6 +272,110 @@ export interface XiaoApi {
         siteUrl?: string;
       }>
     >;
+    start: (
+      siteDir: string,
+      force?: boolean,
+    ) => Promise<
+      IpcResult<{
+        id: string;
+        siteDir: string;
+        status: 'running' | 'ok' | 'fail';
+        steps: {
+          key: 'check' | 'push' | 'build' | 'live';
+          label: string;
+          state: 'wait' | 'run' | 'ok' | 'fail' | 'skip';
+          startedAt: number;
+          ms: number;
+          detail: string;
+          more: string;
+          url: string;
+          action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+          slug: string;
+        }[];
+        sha: string;
+        pushRejected: boolean;
+        startedAt: number;
+        finishedAt: number;
+        siteUrl: string;
+        code: string;
+        checks: {
+          key: 'url' | 'workflow' | 'build' | 'seo';
+          ok: boolean;
+          label: string;
+          detail: string;
+          more: string;
+          slug: string;
+          action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+        }[];
+      }>
+    >;
+    job: (siteDir: string) => Promise<
+      IpcResult<{
+        id: string;
+        siteDir: string;
+        status: 'running' | 'ok' | 'fail';
+        steps: {
+          key: 'check' | 'push' | 'build' | 'live';
+          label: string;
+          state: 'wait' | 'run' | 'ok' | 'fail' | 'skip';
+          startedAt: number;
+          ms: number;
+          detail: string;
+          more: string;
+          url: string;
+          action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+          slug: string;
+        }[];
+        sha: string;
+        pushRejected: boolean;
+        startedAt: number;
+        finishedAt: number;
+        siteUrl: string;
+        code: string;
+        checks: {
+          key: 'url' | 'workflow' | 'build' | 'seo';
+          ok: boolean;
+          label: string;
+          detail: string;
+          more: string;
+          slug: string;
+          action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+        }[];
+      } | null>
+    >;
+    dismiss: (siteDir: string) => Promise<IpcResult<null>>;
+    onJob: (
+      callback: (payload: {
+        siteDir: string;
+        job: {
+          id: string;
+          siteDir: string;
+          status: 'running' | 'ok' | 'fail';
+          steps: {
+            key: 'check' | 'push' | 'build' | 'live';
+            label: string;
+            state: 'wait' | 'run' | 'ok' | 'fail' | 'skip';
+            startedAt: number;
+            ms: number;
+            detail: string;
+            url: string;
+          }[];
+          sha: string;
+          pushRejected: boolean;
+          siteUrl: string;
+          code: string;
+          checks: {
+            key: 'url' | 'workflow' | 'build' | 'seo';
+            ok: boolean;
+            label: string;
+            detail: string;
+            more?: string;
+            slug?: string;
+            action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+          }[];
+        } | null;
+      }) => void,
+    ) => () => void;
     preflight: (siteDir: string) => Promise<
       IpcResult<{
         blocked: boolean;

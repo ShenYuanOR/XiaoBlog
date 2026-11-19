@@ -7,6 +7,7 @@ import type {
   RuntimeLogEvent,
   RuntimeStart,
 } from '@xiao/core/ipc';
+import type { PublishJobSnapshot } from '../main/publish-job.ts';
 import type { ConflictEvent, ReloadEvent } from '../main/watch.ts';
 import type {
   MediaDeleteResult,
@@ -81,6 +82,11 @@ const api = {
     setSiteUrl: (siteDir: string, siteUrl: string) =>
       ipcRenderer.invoke('publish:setSiteUrl', siteDir, siteUrl),
     preflight: (siteDir: string) => ipcRenderer.invoke('publish:preflight', siteDir),
+    start: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:start', siteDir, force),
+    job: (siteDir: string) => ipcRenderer.invoke('publish:job', siteDir),
+    dismiss: (siteDir: string) => ipcRenderer.invoke('publish:dismiss', siteDir),
+    onJob: (callback: (payload: { siteDir: string; job: PublishJobSnapshot | null }) => void): (() => void) =>
+      listen('publish:job-update', callback),
     push: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:push', siteDir, force),
     repair: (siteDir: string) => ipcRenderer.invoke('publish:repair', siteDir),
     disconnect: (siteDir: string) => ipcRenderer.invoke('publish:disconnect', siteDir),

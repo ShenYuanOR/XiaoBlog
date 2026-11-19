@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   net,
@@ -96,7 +97,8 @@ import { listSections, saveSection, usageCounts } from './sections.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
-import { buildPreflight, itemsForConfigReadError } from './publish-preflight.ts';
+import { buildPreflight, itemsForConfigReadError, type PreflightItem } from './publish-preflight.ts';
+import { createPublishJobs, quitKind, type PublishJobSnapshot } from './publish-job.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -335,6 +337,8 @@ function historyFile(): string {
 }
 
 const historyMemory = new Map<string, DeployRecord[]>();
+let publishJobs: ReturnType<typeof createPublishJobs> | null = null;
+let allowQuit = false;
 let historyDiskOk = true;
 
 function readDeployHistory(siteDir: string): DeployRecord[] {
@@ -1061,21 +1065,23 @@ app.whenReady().then(() => {
   }
 
   ipcMain.handle('seo:audit', (_event, siteDir: string) => auditSite(siteDir));
-  ipcMain.handle('publish:preflight', async (_event, siteDir: string) => {
-    if (!siteDir) return fail('PUBLISH_CHECK', '还没有选择站点');
+  async function executePreflight(siteDir: string): Promise<
+    { ok: true; items: PreflightItem[]; blocked: boolean } | { ok: false; message: string }
+  > {
+    if (!siteDir) return { ok: false, message: '还没有选择站点' };
     let config: ReturnType<typeof readConfig>;
     try {
       config = readConfig(siteDir);
     } catch (error) {
       const raw = error instanceof Error ? error.message : '读不到站点配置';
       const items = itemsForConfigReadError(raw);
-      if (items) return ok({ items, blocked: true });
-      return fail('PUBLISH_CHECK', '读不到站点配置 xiao.config.json');
+      if (items) return { ok: true, items, blocked: true };
+      return { ok: false, message: '读不到站点配置 xiao.config.json' };
     }
     try {
       const target = deployStore().read()[siteDir];
       const audit = await auditSite(siteDir);
-      if (!audit.ok) return fail('PUBLISH_CHECK', audit.message);
+      if (!audit.ok) return { ok: false, message: audit.message };
       const reportIssues: { level?: string; rule?: string; detail?: string }[] = Array.isArray(audit.data.report?.issues)
         ? audit.data.report.issues
         : [];
@@ -1102,10 +1108,99 @@ app.whenReady().then(() => {
         postCovers: Object.fromEntries(posts.filter((post) => post.cover).map((post) => [post.slug, post.cover])),
         errors,
       });
-      return ok({ items, blocked: items.some((item) => !item.ok) });
+      return { ok: true, items, blocked: items.some((item) => !item.ok) };
     } catch (error) {
-      return fail('PUBLISH_CHECK', error instanceof Error ? error.message : '发布前检查失败');
+      return { ok: false, message: error instanceof Error ? error.message : '发布前检查失败' };
     }
+  }
+
+  function broadcastJob(siteDir: string, job: PublishJobSnapshot | null): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('publish:job-update', { siteDir, job });
+    }
+  }
+
+  publishJobs = createPublishJobs({
+    now: () => Date.now(),
+    preflight: (siteDir) => executePreflight(siteDir),
+    async push(siteDir, force) {
+      const target = deployStore().read()[siteDir];
+      if (!target) return { ok: false, message: '还没有连接仓库。' };
+      const token = secretStore().load(siteDir);
+      if (!token) return { ok: false, message: '令牌丢了，重新填一次' };
+      try {
+        const result = await pushSite({
+          siteDir,
+          target,
+          token,
+          login: target.login,
+          http: publishHttp,
+          force,
+        });
+        return { ok: true, sha: result.sha };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '推送失败';
+        if (message.startsWith('REPO_BROKEN:')) {
+          return { ok: false, message: message.slice('REPO_BROKEN:'.length), code: 'REPO_BROKEN' };
+        }
+        return { ok: false, message: redactSecrets(message, [token]) };
+      }
+    },
+    async follow(siteDir, sha) {
+      const target = deployStore().read()[siteDir];
+      if (!target) return { ok: false, message: '还没有连接仓库', ms: 0 };
+      const token = secretStore().load(siteDir);
+      if (!token) return { ok: false, message: '令牌丢了，重新连接一次', ms: 0 };
+      const buildStarted = Date.now();
+      const build = await watchBuild({
+        remoteUrl: target.remoteUrl,
+        token,
+        sha,
+        actionsState: target.actionsState,
+        actionsDetail: target.actionsDetail,
+      });
+      const buildMs = Date.now() - buildStarted;
+      if (build.state !== 'ok') {
+        return {
+          ok: true,
+          build: { state: 'fail', detail: build.detail, log: build.log, url: build.url, ms: buildMs },
+          live: null,
+        };
+      }
+      const liveStarted = Date.now();
+      const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha });
+      return {
+        ok: true,
+        build: { state: 'ok', detail: build.detail, log: build.log, url: build.url, ms: buildMs },
+        live: { state: live.state === 'ok' ? 'ok' : 'fail', detail: live.detail, url: live.url, ms: Date.now() - liveStarted },
+      };
+    },
+    target: (siteDir) => {
+      const target = deployStore().read()[siteDir];
+      return target ? { remoteUrl: target.remoteUrl, siteUrl: target.siteUrl } : null;
+    },
+    record: (siteDir, row) => {
+      writeDeployHistory(siteDir, rememberDeploy(readDeployHistory(siteDir), row));
+    },
+    emit: broadcastJob,
+  });
+
+  ipcMain.handle('publish:preflight', async (_event, siteDir: string) => {
+    const result = await executePreflight(siteDir);
+    if (!result.ok) return fail('PUBLISH_CHECK', result.message);
+    return ok({ items: result.items, blocked: result.blocked });
+  });
+  ipcMain.handle('publish:start', (_event, siteDir: string, force?: boolean) => {
+    if (!siteDir || !publishJobs) return fail('PUBLISH_JOB', '还没有选择站点');
+    return ok(publishJobs.start(siteDir, Boolean(force)));
+  });
+  ipcMain.handle('publish:job', (_event, siteDir: string) => {
+    if (!publishJobs) return ok(null);
+    return ok(publishJobs.job(siteDir));
+  });
+  ipcMain.handle('publish:dismiss', (_event, siteDir: string) => {
+    publishJobs?.dismiss(siteDir);
+    return ok(null);
   });
   ipcMain.handle('seo:report', (_event, siteDir: string) => {
     if (!siteDir) return fail('SEO_REPORT', '还没有选择站点');
@@ -1235,7 +1330,37 @@ app.whenReady().then(() => {
   if (process.argv.includes('--probe')) probe(win);
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (!allowQuit && publishJobs) {
+    const kind = quitKind(publishJobs.list());
+    if (kind === 'confirm') {
+      event.preventDefault();
+      const choice = dialog.showMessageBoxSync({
+        type: 'warning',
+        buttons: ['仍要退出', '取消'],
+        defaultId: 1,
+        cancelId: 1,
+        message: '发布正在进行',
+        detail: '现在退出会中断这次检查或推送。',
+      });
+      if (choice === 0) {
+        allowQuit = true;
+        app.quit();
+      }
+      return;
+    }
+    if (kind === 'track') {
+      event.preventDefault();
+      dialog.showMessageBoxSync({
+        type: 'info',
+        buttons: ['退出'],
+        message: '远端构建不受影响，只是不再跟踪。',
+      });
+      allowQuit = true;
+      app.quit();
+      return;
+    }
+  }
   runtime.stopAll();
   destroyDock();
   watcher?.stop();

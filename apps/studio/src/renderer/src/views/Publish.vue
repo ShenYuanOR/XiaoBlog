@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -84,6 +84,7 @@ interface StepRow {
   state: StepState;
   detail: string;
   ms: number;
+  startedAt: number;
   url?: string;
 }
 
@@ -118,6 +119,7 @@ const disconnectOpen = ref(false);
 const repairOpen = ref(false);
 const phase = ref<'ready' | 'running' | 'result'>('ready');
 const steps = ref<StepRow[]>([]);
+const tick = ref(Date.now());
 const filesOpen = ref(false);
 const connectionOpen = ref(false);
 
@@ -204,13 +206,9 @@ function formatTime(at: string): string {
   return Number.isNaN(date.getTime()) ? at : date.toLocaleString('zh-CN', { hour12: false });
 }
 
-function freshSteps(): StepRow[] {
-  return [
-    { key: 'check', label: '检查', state: 'wait', detail: '确认站点能发布', ms: 0 },
-    { key: 'push', label: '推送', state: 'wait', detail: '提交并推到仓库', ms: 0 },
-    { key: 'build', label: '远端构建', state: 'wait', detail: '等这次提交触发的构建', ms: 0 },
-    { key: 'live', label: '上线', state: 'wait', detail: '打开站点，核对这次的版本号', ms: 0 },
-  ];
+function stepMs(step: StepRow): number {
+  if (step.state === 'run' && step.startedAt) return Math.max(0, tick.value - step.startedAt);
+  return step.ms;
 }
 
 function go(nav: 'seo' | 'settings'): void {
@@ -235,7 +233,7 @@ function openBuildLog(): void {
 }
 
 function finishPublish(): void {
-  phase.value = 'ready';
+  void dismissJob();
 }
 
 async function connectGitea(): Promise<void> {
@@ -294,114 +292,56 @@ async function connectGitea(): Promise<void> {
   }
 }
 
-async function push(force: boolean): Promise<boolean> {
-  if (!session.siteDir || !target.value) {
-    pushError.value = '还没有连接仓库。';
-    return false;
+function applyJob(job: {
+  status: 'running' | 'ok' | 'fail';
+  steps: {
+    key: 'check' | 'push' | 'build' | 'live';
+    label: string;
+    state: 'wait' | 'run' | 'ok' | 'fail' | 'skip';
+    startedAt: number;
+    ms: number;
+    detail: string;
+    url?: string;
+  }[];
+  pushRejected: boolean;
+  code: string;
+  checks: PreflightItem[];
+} | null): void {
+  if (!job) {
+    phase.value = 'ready';
+    steps.value = [];
+    return;
   }
-  pushing.value = true;
-  pushError.value = '';
-  try {
-    const result = await window.xiao.publish.push(session.siteDir, force);
-    if (!result.ok) {
-      pushError.value = result.message;
-      if (result.code === 'REPO_BROKEN') repairOpen.value = true;
-      return false;
-    }
-    pushResult.value = result.data;
-    return true;
-  } catch (error) {
-    pushError.value = error instanceof Error ? error.message : String(error);
-    return false;
-  } finally {
-    pushing.value = false;
-  }
+  phase.value = job.status === 'running' ? 'running' : 'result';
+  steps.value = job.steps.map((step) => ({
+    key: step.key,
+    label: step.label,
+    state: step.state === 'skip' ? 'wait' : step.state,
+    detail: step.detail,
+    ms: step.ms,
+    startedAt: step.startedAt,
+    url: step.url,
+  }));
+  if (job.checks.length) checks.value = job.checks;
+  const push = job.steps.find((step) => step.key === 'push');
+  pushError.value = job.pushRejected ? push?.detail || '' : '';
+  if (job.code === 'REPO_BROKEN') repairOpen.value = true;
 }
 
 async function startPublish(force = false): Promise<void> {
-  if (!target.value || pushing.value || checking.value) return;
-  phase.value = 'running';
-  const next = freshSteps();
-  const started = Date.now();
-  next[0] = { key: 'check', label: '检查', state: 'run', detail: '正在构建并检查', ms: 0 };
-  steps.value = next;
-  const checkStarted = Date.now();
-  await runPreflight();
-  const failed = checks.value.find((item) => !item.ok);
-  if (checks.value.length === 0 || failed) {
-    next[0] = {
-      key: 'check',
-      label: '检查',
-      state: 'fail',
-      detail: failed?.detail || '检查没有完成，不能发布',
-      ms: Date.now() - checkStarted,
-    };
-    steps.value = [...next];
-    phase.value = 'result';
+  if (!session.siteDir || !target.value || checking.value) return;
+  const result = await window.xiao.publish.start(session.siteDir, force);
+  if (!result.ok) {
+    notify(result.message, 'error', 'publish-job');
     return;
   }
-  next[0] = { key: 'check', label: '检查', state: 'ok', detail: '没有挡住发布的错误', ms: Date.now() - checkStarted };
-  next[1] = { key: 'push', label: '推送', state: 'run', detail: '正在提交并推送', ms: 0 };
-  steps.value = next;
-  const pushStarted = Date.now();
-  const ok = await push(force);
-  const pushMs = Date.now() - pushStarted;
-  if (!ok) {
-    next[1] = { key: 'push', label: '推送', state: 'fail', detail: pushError.value || '推送没有完成', ms: pushMs };
-    steps.value = [...next];
-    phase.value = 'result';
-    return;
-  }
-  const sha = pushResult.value?.sha ?? '';
-  next[1] = {
-    key: 'push',
-    label: '推送',
-    state: 'ok',
-    detail: sha ? `已推送 ${sha.slice(0, 7)}` : '已推送',
-    ms: pushMs,
-  };
-  next[2] = { key: 'build', label: '远端构建', state: 'run', detail: sha ? '正在查看这次提交的构建' : '没有提交号，没法对照构建', ms: 0 };
-  steps.value = [...next];
-  const buildStarted = Date.now();
-  const followed = sha && session.siteDir ? await window.xiao.publish.follow(session.siteDir, sha) : null;
-  const buildMs = followed && followed.ok ? followed.data.buildMs : Date.now() - buildStarted;
-  if (!followed || !followed.ok) {
-    next[2] = { key: 'build', label: '远端构建', state: 'fail', detail: followed && !followed.ok ? followed.message : '没有提交号', ms: buildMs };
-  } else {
-    const build = followed.data.build;
-    next[2] = {
-      key: 'build',
-      label: '远端构建',
-      state: build.state === 'ok' ? 'ok' : 'fail',
-      detail: build.log || build.detail,
-      ms: buildMs,
-      url: build.url,
-    };
-    if (followed.data.live) {
-      next[3] = {
-        key: 'live',
-        label: '上线',
-        state: followed.data.live.state === 'ok' ? 'ok' : 'fail',
-        detail: followed.data.live.detail,
-        ms: followed.data.liveMs,
-        url: followed.data.live.url,
-      };
-    }
-  }
-  steps.value = [...next];
-  phase.value = 'result';
-  if (session.siteDir && target.value) {
-    const resultText = next[3]?.state === 'ok' ? '已上线' : next[2]?.state === 'ok' ? '构建完成，还没确认上线' : next[1]?.state === 'ok' ? '已推送' : '未完成';
-    await window.xiao.publish.record(session.siteDir, {
-      at: new Date().toISOString(),
-      repo: target.value.remoteUrl,
-      sha,
-      result: resultText,
-      ms: Date.now() - started,
-      steps: next.map((step) => ({ key: step.key, label: step.label, state: step.state, ms: step.ms })),
-    });
-  }
-  await loadAll(false);
+  applyJob(result.data);
+}
+
+async function dismissJob(): Promise<void> {
+  if (session.siteDir) await window.xiao.publish.dismiss(session.siteDir);
+  phase.value = 'ready';
+  steps.value = [];
 }
 
 async function confirmRepair(): Promise<void> {
@@ -499,20 +439,23 @@ async function loadAll(check = true): Promise<void> {
   loading.value = true;
   errorText.value = '';
   try {
-    const [changesResult, historyResult, targetResult] = await Promise.all([
+    const [changesResult, historyResult, targetResult, jobResult] = await Promise.all([
       window.xiao.publish.changes(siteDir),
       window.xiao.publish.history(siteDir),
       window.xiao.publish.target(siteDir),
+      window.xiao.publish.job(siteDir),
     ]);
     changes.value = changesResult.ok ? changesResult.data : emptyChanges();
     history.value = historyResult.ok ? historyResult.data.rows : [];
     historyPersisted.value = historyResult.ok ? historyResult.data.persisted : true;
     target.value = targetResult.ok ? targetResult.data : null;
+    const currentJob = jobResult.ok ? jobResult.data : null;
+    if (currentJob) applyJob(currentJob);
     if (target.value) {
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
       if (!giteaLogin.value && target.value.login) giteaLogin.value = target.value.login;
       if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
-      if (check) await runPreflight();
+      if (check && !currentJob) await runPreflight();
     } else {
       checks.value = [];
     }
@@ -534,8 +477,31 @@ async function openSite(): Promise<void> {
   session.setNav('publish');
 }
 
+let stopJob = (): void => {};
+let clock = 0;
+
 onMounted(() => {
+  clock = window.setInterval(() => {
+    tick.value = Date.now();
+  }, 1000);
+  stopJob = window.xiao.publish.onJob((payload) => {
+    if (payload.siteDir !== session.siteDir) return;
+    const wasRunning = phase.value === 'running';
+    applyJob(payload.job);
+    if (wasRunning && payload.job && payload.job.status !== 'running' && session.siteDir) {
+      void window.xiao.publish.history(session.siteDir).then((historyResult) => {
+        if (!historyResult.ok) return;
+        history.value = historyResult.data.rows;
+        historyPersisted.value = historyResult.data.persisted;
+      });
+    }
+  });
   void loadAll();
+});
+
+onBeforeUnmount(() => {
+  stopJob();
+  window.clearInterval(clock);
 });
 
 watch(
@@ -677,7 +643,9 @@ watch(
                         : '等待'
               }}
             </span>
-            <span v-if="step.state === 'ok' || step.state === 'fail'" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
+            <span v-if="step.state === 'ok' || step.state === 'fail' || step.state === 'run'" class="dim">
+              {{ (stepMs(step) / 1000).toFixed(1) }} 秒
+            </span>
             <p class="dim step-detail">{{ step.detail }}</p>
             <details v-if="step.key === 'check' && step.state === 'fail' && failedCheck?.more" class="more">
               <summary>详细信息</summary>
@@ -693,7 +661,7 @@ watch(
         <div v-else-if="phase === 'result'" class="actions">
           <template v-if="needsForce">
             <UiButton size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
-            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
           </template>
           <template v-else-if="buildFailed">
             <UiButton
@@ -704,14 +672,14 @@ watch(
             >
               在 Gitea 查看
             </UiButton>
-            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
           </template>
           <template v-else>
             <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
             <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
               {{ entry.label }}
             </UiButton>
-            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+            <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
           </template>
         </div>
       </section>
