@@ -110,6 +110,12 @@ const checkedAt = ref(0);
 const history = ref<DeployRecord[]>([]);
 const historyPersisted = ref(true);
 const target = ref<DeployTarget | null>(null);
+const tokenReport = ref<{
+  status: 'valid' | 'invalid' | 'expired';
+  account: string;
+  message: string;
+  capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+} | null>(null);
 const giteaUrl = ref('');
 const giteaLogin = ref('');
 const giteaToken = ref('');
@@ -125,6 +131,9 @@ const phase = ref<'ready' | 'running' | 'result'>('ready');
 const steps = ref<StepRow[]>([]);
 const filesOpen = ref(false);
 const settingsOpen = ref(false);
+const reconnectOpen = ref(false);
+const reconnectToken = ref('');
+const reconnecting = ref(false);
 const historyAll = ref(false);
 const moreKey = ref('');
 
@@ -136,8 +145,9 @@ const deletedPosts = computed(() => changes.value.posts.filter((post) => post.st
 const failedCheck = computed(() => checks.value.find((item) => !item.ok));
 const liveOk = computed(() => steps.value.some((step) => step.key === 'live' && step.state === 'ok'));
 const buildFailed = computed(() => steps.value.some((step) => step.key === 'build' && step.state === 'fail'));
+const tokenBlocked = computed(() => tokenReport.value?.status === 'invalid' || tokenReport.value?.status === 'expired');
 const blocked = computed(
-  () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
+  () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok) || tokenBlocked.value,
 );
 const historyRows = computed(() => [...history.value].slice(-20).reverse());
 const checkedLabel = computed(() => {
@@ -193,7 +203,7 @@ const resultEntries = computed(() => {
       key: 'reconnect',
       label: '重新连接',
       run: () => {
-        settingsOpen.value = true;
+        reconnectOpen.value = true;
       },
     });
   } else if (failed.key === 'build' && failed.url) {
@@ -290,6 +300,34 @@ function openBuildLog(): void {
 
 function finishPublish(): void {
   void dismissJob();
+}
+
+async function submitReconnect(): Promise<void> {
+  if (!session.siteDir) return;
+  const token = reconnectToken.value.trim();
+  if (!token) {
+    notify('先粘贴访问令牌。', 'error', 'publish-token');
+    return;
+  }
+  reconnecting.value = true;
+  try {
+    const result = await window.xiao.publish.replaceToken(session.siteDir, token);
+    if (!result.ok) {
+      notify(result.message, 'error', 'publish-token');
+      return;
+    }
+    tokenReport.value = result.data;
+    if (result.data.status !== 'valid') {
+      notify(result.data.message || '令牌已失效', 'error', 'publish-token');
+      return;
+    }
+    reconnectToken.value = '';
+    reconnectOpen.value = false;
+    notify(`令牌验证通过：${result.data.account || '已连接'}`, 'info', 'publish-token');
+    await runPreflight();
+  } finally {
+    reconnecting.value = false;
+  }
 }
 
 async function connectGitea(): Promise<void> {
@@ -516,6 +554,8 @@ async function loadAll(check = true): Promise<void> {
     const currentJob = publish.jobOf(siteDir);
     if (currentJob) applyJob(currentJob);
     if (target.value) {
+      const verified = await window.xiao.publish.verify(siteDir);
+      tokenReport.value = verified.ok ? verified.data : null;
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
       if (!giteaLogin.value && target.value.login) giteaLogin.value = target.value.login;
       if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
@@ -625,6 +665,17 @@ watch(
       <div v-else class="frame">
         <section class="panel card">
           <template v-if="phase === 'ready'">
+            <p v-if="tokenReport?.status === 'invalid' || tokenReport?.status === 'expired'" class="alert">
+              {{ tokenReport.message }}
+            </p>
+            <section v-if="tokenReport?.status === 'valid'" class="token-box">
+              <p>令牌验证 · {{ tokenReport.account }}</p>
+              <ul class="titles">
+                <li v-for="item in tokenReport.capabilities" :key="item.key">
+                  {{ item.label }}：{{ item.state === 'ok' ? '可以' : item.state === 'missing' ? '缺少' : '还不确定' }}
+                </li>
+              </ul>
+            </section>
             <h2>将发布什么</h2>
             <p class="summary">{{ summaryLine }}</p>
             <ul v-if="previewPosts.length" class="titles">
@@ -688,8 +739,11 @@ watch(
               </ul>
             </template>
             <div class="publish-row">
-              <p v-if="blockReason" class="dim">{{ blockReason }}</p>
+              <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message }}</p>
+              <p v-else-if="blockReason" class="dim">{{ blockReason }}</p>
+              <UiButton v-if="tokenBlocked" variant="primary" @click="reconnectOpen = true">重新连接</UiButton>
               <UiButton
+                v-else
                 variant="primary"
                 :icon-left="icons.publish"
                 :disabled="blocked || checking"
@@ -788,6 +842,17 @@ watch(
           </section>
         </aside>
       </div>
+
+      <UiDialog v-model="reconnectOpen" title="重新连接" :width="440">
+        <p>粘贴新的访问令牌。令牌验证通过后才会换掉本机保存的旧令牌。</p>
+        <UiField label="访问令牌">
+          <UiInput v-model="reconnectToken" type="password" autocomplete="off" placeholder="粘贴令牌" />
+        </UiField>
+        <template #actions>
+          <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
+          <UiButton variant="primary" :loading="reconnecting" @click="submitReconnect">令牌验证</UiButton>
+        </template>
+      </UiDialog>
 
       <UiDialog v-model="settingsOpen" title="发布设置" :width="440">
         <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>

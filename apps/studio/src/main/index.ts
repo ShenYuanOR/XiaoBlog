@@ -100,6 +100,15 @@ import { collectChanges } from './publish-changes.ts';
 import { buildPreflight, itemsForConfigReadError, type PreflightItem } from './publish-preflight.ts';
 import { createPublishJobs, quitKind, type PublishJobSnapshot } from './publish-job.ts';
 import { cachedCheck, checkFingerprint, retargetCache, type CheckCacheEntry } from './publish-check.ts';
+import {
+  createVerifyCache,
+  mergeProbe,
+  probeTokenCapabilities,
+  verifyCacheKey,
+  verifyGiteaToken,
+  verifyGithubToken,
+  type TokenReport,
+} from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -297,6 +306,53 @@ const publishHttp = createNetHttpClient(async (url, init) => {
 });
 
 let deployStoreInstance: ReturnType<typeof createDeployStore> | undefined;
+
+const tokenCache = createVerifyCache(() => Date.now());
+const apiFetch: typeof fetch = (input, init) => net.fetch(input as string, init);
+
+async function verifyLooseToken(
+  provider: 'github' | 'gitea',
+  origin: string,
+  token: string,
+  remoteUrl?: string,
+  login?: string,
+): Promise<TokenReport> {
+  const report =
+    provider === 'github' ? await verifyGithubToken(token, apiFetch) : await verifyGiteaToken(origin, token, apiFetch);
+  if (report.status !== 'valid' || !remoteUrl) return report;
+  try {
+    const probe = await probeTokenCapabilities({
+      provider,
+      remoteUrl,
+      token,
+      login,
+      fetchImpl: apiFetch,
+    });
+    return mergeProbe(report, probe);
+  } catch {
+    return report;
+  }
+}
+
+async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
+  const target = deployStore().read()[siteDir];
+  const token = secretStore().load(siteDir);
+  if (!target || !token) return null;
+  let origin = 'https://github.com';
+  if (target.provider !== 'github') {
+    try {
+      origin = new URL(target.remoteUrl).origin;
+    } catch {
+      return null;
+    }
+  }
+  const key = verifyCacheKey(target.provider, origin, token);
+  const cached = tokenCache.get(key);
+  if (cached) return cached;
+  const report = await verifyLooseToken(target.provider, origin, token, target.remoteUrl, target.login);
+  tokenCache.put(key, report);
+  return report;
+}
 
 function deployStore(): ReturnType<typeof createDeployStore> {
   // 单例：用户目录不可写时会退化成内存存储，必须复用同一个实例。
@@ -1248,8 +1304,35 @@ app.whenReady().then(() => {
     if (!result.ok) return fail('PUBLISH_CHECK', result.message);
     return ok({ items: result.items, blocked: result.blocked, checkedAt: result.checkedAt, cached: result.cached });
   });
-  ipcMain.handle('publish:start', (_event, siteDir: string, force?: boolean) => {
+  ipcMain.handle('publish:verify', async (_event, siteDir: string) => {
+    if (!siteDir) return fail('PUBLISH_TOKEN', '还没有选择站点');
+    const report = await verifySavedToken(siteDir);
+    if (!report) return fail('PUBLISH_TOKEN', '还没有连接仓库');
+    return ok(report);
+  });
+  ipcMain.handle('publish:replaceToken', async (_event, siteDir: string, token: string) => {
+    const target = deployStore().read()[siteDir];
+    const trimmed = typeof token === 'string' ? token.trim() : '';
+    if (!siteDir || !target) return fail('PUBLISH_TOKEN', '还没有连接仓库');
+    if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
+    let origin = 'https://github.com';
+    if (target.provider !== 'github') {
+      try {
+        origin = new URL(target.remoteUrl).origin;
+      } catch {
+        return fail('PUBLISH_URL', '仓库地址解析不了');
+      }
+    }
+    const report = await verifyLooseToken(target.provider, origin, trimmed, target.remoteUrl, target.login);
+    if (report.status !== 'valid') return ok(report);
+    secretStore().save(siteDir, trimmed, report.expiresAt || '');
+    tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
+    return ok(report);
+  });
+  ipcMain.handle('publish:start', async (_event, siteDir: string, force?: boolean) => {
     if (!siteDir || !publishJobs) return fail('PUBLISH_JOB', '还没有选择站点');
+    const report = await verifySavedToken(siteDir);
+    if (report && report.status !== 'valid') return fail('PUBLISH_TOKEN', report.message || '令牌已失效');
     return ok(publishJobs.start(siteDir, Boolean(force)));
   });
   ipcMain.handle('publish:job', (_event, siteDir: string) => {

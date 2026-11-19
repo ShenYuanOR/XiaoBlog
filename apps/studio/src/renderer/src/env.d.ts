@@ -381,6 +381,29 @@ export interface XiaoApi {
         } | null;
       }) => void,
     ) => () => void;
+    verify: (siteDir: string) => Promise<
+      IpcResult<{
+        status: 'valid' | 'invalid' | 'expired';
+        account: string;
+        kind: 'github-classic' | 'github-fine' | 'gitea';
+        expiresAt: string;
+        message: string;
+        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+      }>
+    >;
+    replaceToken: (
+      siteDir: string,
+      token: string,
+    ) => Promise<
+      IpcResult<{
+        status: 'valid' | 'invalid' | 'expired';
+        account: string;
+        kind: 'github-classic' | 'github-fine' | 'gitea';
+        expiresAt: string;
+        message: string;
+        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+      }>
+    >;
     preflight: (siteDir: string, force?: boolean) => Promise<
       IpcResult<{
         blocked: boolean;

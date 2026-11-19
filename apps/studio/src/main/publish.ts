@@ -263,6 +263,9 @@ export function explainPushFailure(error: unknown, token = ''): string {
   const raw = error instanceof Error ? error.message : String(error);
   const text = token ? raw.split(token).join('[secret]') : raw;
   if (text.startsWith('REPO_BROKEN:')) return text;
+  if (/workflow/i.test(text) && /scope|permission|refusing/i.test(text)) {
+    return '令牌不能修改构建配置。GitHub 需要勾上 workflow（或细粒度令牌的 Workflows 写权限），然后重新连接。';
+  }
   if (/fast-forward|PushRejected/i.test(text)) {
     return '远端有你本地没有的提交。确认要覆盖远端内容后，点「覆盖并推送」重试。';
   }
