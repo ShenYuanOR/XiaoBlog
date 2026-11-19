@@ -20,7 +20,7 @@ import {
   suggestSite,
   tokenPage,
 } from '../../../main/publish-prep.ts';
-import { tokenStatusLine } from '../../../main/publish-token.ts';
+import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -411,6 +411,12 @@ function capabilityText(state: 'ok' | 'missing' | 'unknown'): string {
   if (state === 'ok') return '可以';
   if (state === 'missing') return '缺少';
   return '还不确定';
+}
+
+function capIcon(state: 'ok' | 'missing' | 'unknown'): string {
+  if (state === 'ok') return icons.ok;
+  if (state === 'missing') return icons.alert;
+  return icons.help;
 }
 
 function continuePlatform(provider: 'github' | 'gitea'): void {
@@ -941,15 +947,22 @@ watch(
                   <UiField label="访问令牌">
                     <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴令牌" />
                   </UiField>
-                  <div class="publish-row">
+                  <div class="prep-actions">
                     <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
                     <UiButton v-if="tokenGaps.length" variant="ghost" @click="openLink(tokenPage(prep))">去创建令牌</UiButton>
                     <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
                   </div>
-                  <p v-if="prep.report" class="summary">{{ prep.report.account || prep.report.message }}</p>
-                  <ul v-if="prep.report?.status === 'valid'" class="titles">
+                  <p v-if="prep.report" class="summary">
+                    {{ prep.report.account || prep.report.message }}
+                    <template v-if="prep.report.status === 'valid'">
+                      · {{ tokenKindLabel(prep.report.kind) }} · {{ tokenExpiryText(prep.report.expiresAt) }}
+                    </template>
+                  </p>
+                  <ul v-if="prep.report?.status === 'valid'" class="cap-list">
                     <li v-for="item in prep.report.capabilities" :key="item.key">
-                      {{ item.label }}：{{ capabilityText(item.state) }}
+                      <UiIcon :path="capIcon(item.state)" :size="16" />
+                      <span>{{ item.label }}</span>
+                      <span class="dim">{{ capabilityText(item.state) }}</span>
                     </li>
                   </ul>
                 </template>
@@ -1376,6 +1389,22 @@ watch(
 .later-step {
   margin: 0;
   color: var(--ui-text-3);
+}
+
+.cap-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cap-list li {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--ui-s2);
 }
 
 .prep-actions {

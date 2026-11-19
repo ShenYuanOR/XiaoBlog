@@ -11,6 +11,8 @@ import {
   readGiteaVerify,
   refineGiteaReport,
   requiredMissing,
+  tokenExpiryText,
+  tokenKindLabel,
   tokenStatusLine,
   verifyCacheKey,
 } from '../../../../apps/studio/src/main/publish-token.ts';
@@ -174,6 +176,16 @@ describe('已连接时的令牌短句', () => {
     expect(tokenStatusLine(readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' }))).toBe(
       '有效',
     );
+  });
+});
+
+describe('令牌类型和过期', () => {
+  it('写出类型，没有过期时间就是不过期', () => {
+    expect(tokenKindLabel('github-classic')).toBe('GitHub 经典');
+    expect(tokenKindLabel('github-fine')).toBe('GitHub 细粒度');
+    expect(tokenKindLabel('gitea')).toBe('Gitea');
+    expect(tokenExpiryText('')).toBe('不过期');
+    expect(tokenExpiryText('2026-12-01T00:00:00Z', Date.parse('2026-11-19T00:00:00Z'))).toBe('将在 12 天后过期');
   });
 });
 

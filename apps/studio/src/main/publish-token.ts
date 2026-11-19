@@ -109,6 +109,23 @@ export function tokenStatusLine(
   return '有效';
 }
 
+export function tokenKindLabel(kind: string): string {
+  if (kind === 'github-classic') return 'GitHub 经典';
+  if (kind === 'github-fine') return 'GitHub 细粒度';
+  if (kind === 'gitea') return 'Gitea';
+  return '令牌';
+}
+
+export function tokenExpiryText(expiresAt: string, now = Date.now()): string {
+  const text = expiresAt.trim();
+  if (!text) return '不过期';
+  const time = Date.parse(text);
+  if (!Number.isFinite(time)) return '不过期';
+  if (time <= now) return '已过期';
+  const days = Math.max(1, Math.ceil((time - now) / 86_400_000));
+  return `将在 ${days} 天后过期`;
+}
+
 export function requiredMissing(report: TokenReport): TokenCapability[] {
   return report.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing');
 }
