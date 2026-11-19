@@ -127,6 +127,7 @@ const editedPosts = computed(() =>
 const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
 const failedCheck = computed(() => checks.value.find((item) => !item.ok));
 const liveOk = computed(() => steps.value.some((step) => step.key === 'live' && step.state === 'ok'));
+const buildFailed = computed(() => steps.value.some((step) => step.key === 'build' && step.state === 'fail'));
 const blocked = computed(
   () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
 );
@@ -234,6 +235,11 @@ function openArticle(slug: string): void {
 
 function openPublishedSite(): void {
   const url = target.value?.siteUrl || steps.value.find((step) => step.key === 'live')?.url || '';
+  if (url) void window.xiao.app.openExternal(url);
+}
+
+function openBuildLog(): void {
+  const url = steps.value.find((step) => step.key === 'build')?.url ?? '';
   if (url) void window.xiao.app.openExternal(url);
 }
 
@@ -668,7 +674,17 @@ watch(
           <li v-for="step in steps" :key="step.key" :class="step.state">
             <span class="step-label">{{ step.label }}</span>
             <span class="step-state">
-              {{ step.state === 'ok' ? '完成' : step.state === 'fail' ? '失败' : step.state === 'run' ? '进行中' : '等待' }}
+              {{
+                step.state === 'ok'
+                  ? '完成'
+                  : step.state === 'fail'
+                    ? '失败'
+                    : step.state === 'run'
+                      ? '进行中'
+                      : phase === 'result'
+                        ? '未进行'
+                        : '等待'
+              }}
             </span>
             <span v-if="step.state === 'ok' || step.state === 'fail'" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
             <p class="dim step-detail">{{ step.detail }}</p>
@@ -676,7 +692,7 @@ watch(
               <summary>详细信息</summary>
               <pre>{{ failedCheck.more }}</pre>
             </details>
-            <a v-if="step.url && step.key !== 'live'" class="dim" :href="step.url">在 Gitea 查看</a>
+            <a v-if="step.url && step.key === 'build' && !buildFailed" class="dim" :href="step.url">在 Gitea 查看</a>
           </li>
         </ol>
         <div v-if="liveOk" class="actions">
@@ -686,6 +702,17 @@ watch(
         <div v-else-if="phase === 'result'" class="actions">
           <template v-if="needsForce">
             <UiButton size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
+            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+          </template>
+          <template v-else-if="buildFailed">
+            <UiButton
+              v-if="steps.find((step) => step.key === 'build')?.url"
+              size="sm"
+              variant="ghost"
+              @click="openBuildLog"
+            >
+              在 Gitea 查看
+            </UiButton>
             <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
           </template>
           <template v-else>
