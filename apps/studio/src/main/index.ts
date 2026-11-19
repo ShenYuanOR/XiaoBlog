@@ -1091,6 +1091,7 @@ app.whenReady().then(() => {
         buildMessage: audit.data.message,
         buildLog: audit.data.log,
         postTitles: Object.fromEntries(posts.map((post) => [post.slug, post.title])),
+        postCovers: Object.fromEntries(posts.filter((post) => post.cover).map((post) => [post.slug, post.cover])),
         errors,
       });
       return ok({ items, blocked: items.some((item) => !item.ok) });

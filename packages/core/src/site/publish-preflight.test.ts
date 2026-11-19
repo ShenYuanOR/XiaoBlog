@@ -75,7 +75,7 @@ describe('发布前检查', () => {
     expect(item).toMatchObject({ detail: explained.summary, action: 'open-post', slug: 'coffee' });
   });
 
-  it('封面图找不到时指出文章和图片路径', () => {
+  it('封面图找不到时按 cover 字段定位文章', () => {
     const log = [
       '[ImageNotFound] Could not find requested image `/media/nope-gate.png`. Does it exist?',
       '  Hint:',
@@ -83,12 +83,15 @@ describe('发布前检查', () => {
       '  Location:',
       '    F:\\XiaoBlog\\blog\\test\\node_modules\\astro\\dist\\assets\\utils\\node.js:108:10',
       '  Stack trace:',
-      '    at Object.load (F:\\XiaoBlog\\blog\\test\\src\\content\\posts\\coffee\\index.md:1:1)',
       '    at async (F:\\XiaoBlog\\blog\\test\\node_modules\\astro\\dist\\content\\vite-plugin-content-assets.js:36:1)',
     ].join('\n');
-    const explained = explainLocalBuild(log, titles);
+    const covers = { coffee: '/media/nope-gate.png' };
+    const explained = explainLocalBuild(log, titles, covers);
     expect(explained.summary).toBe('文章《咖啡》的封面图 /media/nope-gate.png 找不到');
     expect(explained.slug).toBe('coffee');
+    const missed = explainLocalBuild(log, titles, {});
+    expect(missed.summary).toBe('封面图 /media/nope-gate.png 找不到');
+    expect(missed.slug).toBe('');
     expect(explained.detail).toContain('typo in the image path');
     expect(explained.detail).toContain('node_modules/astro/dist/assets/utils/node.js:108:10');
     expect(explained.detail).not.toContain('Stack trace');
@@ -101,9 +104,11 @@ describe('发布前检查', () => {
       buildMessage: '',
       buildLog: log,
       postTitles: titles,
+      postCovers: covers,
       errors: [],
     }).find((row) => row.key === 'build');
     expect(item?.action).toBe('open-post');
+    expect(item?.slug).toBe('coffee');
   });
 
   it('站点配置校验失败时不给文章入口', () => {

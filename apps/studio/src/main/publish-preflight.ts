@@ -21,6 +21,8 @@ export interface PreflightInput {
   /** 构建日志。比截短后的 buildMessage 更全，用来认出文章和图片。 */
   buildLog?: string;
   postTitles?: Record<string, string>;
+  /** slug → frontmatter 里的 cover。日志没写文章路径时用来反查。 */
+  postCovers?: Record<string, string>;
   errors: { rule: string; detail: string }[];
 }
 
@@ -69,6 +71,17 @@ function postInLog(log: string): { slug: string; line: string } | null {
   return loose?.[1] ? { slug: loose[1], line: '' } : null;
 }
 
+function findCover(file: string, covers: Record<string, string>): string {
+  const target = file.replace(/\\/g, '/').trim();
+  if (!target) return '';
+  for (const [slug, cover] of Object.entries(covers)) {
+    const value = cover.trim().replace(/\\/g, '/');
+    if (!value) continue;
+    if (value === target || target.endsWith(value) || value.endsWith(target)) return slug;
+  }
+  return '';
+}
+
 function imageInLog(log: string): string {
   const raw =
     log.match(/Could not find requested image [`'"]([^`'"]+)[`'"]/i)?.[1] ??
@@ -85,14 +98,20 @@ function imageInLog(log: string): string {
 }
 
 /** 把本地构建失败说成中文。原文留在 detail，堆栈和本机绝对路径不留给界面。 */
-export function explainLocalBuild(log: string, titles: Record<string, string> = {}): LocalBuildExplanation {
+export function explainLocalBuild(
+  log: string,
+  titles: Record<string, string> = {},
+  covers: Record<string, string> = {},
+): LocalBuildExplanation {
   const detail = cleanBuildDetail(log);
   const post = postInLog(log);
-  const name = post ? `《${titles[post.slug] || post.slug}》` : '';
   if (/image not found|could not find requested image|typo in the image path/i.test(log)) {
     const file = imageInLog(log) || '图片';
-    const summary = post ? `文章${name}的封面图 ${file} 找不到` : `封面图 ${file} 找不到`;
-    return { kind: 'image', summary, detail, slug: post?.slug ?? '' };
+    const slug = post?.slug || findCover(file, covers);
+    const summary = slug
+      ? `文章《${titles[slug] || slug}》的封面图 ${file} 找不到`
+      : `封面图 ${file} 找不到`;
+    return { kind: 'image', summary, detail, slug };
   }
   if (/flow sequence|block mapping|implicit key|YAMLParseError|YAMLException|mapping values are not allowed/i.test(log)) {
     const where = post?.line ? `第 ${post.line} 行` : '';
@@ -169,7 +188,9 @@ export function buildPreflight(input: PreflightInput): PreflightItem[] {
     slug: '',
     action: '',
   };
-  const explained = input.buildFailed ? explainLocalBuild(input.buildLog || input.buildMessage, input.postTitles ?? {}) : null;
+  const explained = input.buildFailed
+    ? explainLocalBuild(input.buildLog || input.buildMessage, input.postTitles ?? {}, input.postCovers ?? {})
+    : null;
   const recognized = explained !== null && explained.kind !== 'other';
   const build: PreflightItem = {
     key: 'build',
