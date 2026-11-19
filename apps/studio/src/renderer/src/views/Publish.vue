@@ -113,7 +113,9 @@ const editedPosts = computed(() =>
   changes.value.posts.filter((post) => post.status === 'modified' || post.status === 'renamed'),
 );
 const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
-const blocked = computed(() => checks.value.some((item) => !item.ok));
+const blocked = computed(
+  () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
+);
 const historyRows = computed(() => [...history.value].slice(-20).reverse());
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 
@@ -214,6 +216,7 @@ async function connectGitea(): Promise<void> {
     if (result.data.persisted === false) {
       notify('令牌无法写入本机用户目录，只在本次运行有效。下次启动需要重新连接。', 'error', 'publish-persist');
     }
+    await runPreflight();
   } catch (error) {
     notify(
       `连接失败：${error instanceof Error ? error.message : String(error)}。检查地址、令牌和网络后重试。`,
@@ -250,23 +253,28 @@ async function push(force: boolean): Promise<boolean> {
 }
 
 async function startPublish(force = false): Promise<void> {
-  if (!target.value || pushing.value) return;
+  if (!target.value || pushing.value || checking.value) return;
   phase.value = 'running';
   const next = freshSteps();
   const started = Date.now();
-  if (blocked.value) {
+  next[0] = { key: 'check', label: '检查', state: 'run', detail: '正在构建并检查', ms: 0 };
+  steps.value = next;
+  const checkStarted = Date.now();
+  await runPreflight();
+  const failed = checks.value.find((item) => !item.ok);
+  if (checks.value.length === 0 || failed) {
     next[0] = {
       key: 'check',
       label: '检查',
       state: 'fail',
-      detail: checks.value.find((item) => !item.ok)?.detail || '还有项没通过',
-      ms: 0,
+      detail: failed?.detail || '检查没有完成，不能发布',
+      ms: Date.now() - checkStarted,
     };
-    steps.value = next;
+    steps.value = [...next];
     phase.value = 'result';
     return;
   }
-  next[0] = { key: 'check', label: '检查', state: 'ok', detail: '没有挡住发布的错误', ms: Date.now() - started };
+  next[0] = { key: 'check', label: '检查', state: 'ok', detail: '没有挡住发布的错误', ms: Date.now() - checkStarted };
   next[1] = { key: 'push', label: '推送', state: 'run', detail: '正在提交并推送', ms: 0 };
   steps.value = next;
   const pushStarted = Date.now();
@@ -565,7 +573,7 @@ watch(
           <UiButton
             variant="primary"
             :icon-left="icons.publish"
-            :disabled="blocked || pushing"
+            :disabled="blocked || pushing || checking"
             :loading="pushing"
             @click="startPublish(false)"
           >
