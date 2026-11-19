@@ -87,6 +87,7 @@ export function writeDeployWorkflow(siteDir: string, branch: string): 'written' 
 interface RunnerRow {
   status?: string;
   online?: boolean;
+  labels?: ({ name?: string } | string)[];
 }
 
 function runnerList(body: unknown): RunnerRow[] {
@@ -101,7 +102,16 @@ function runnerList(body: unknown): RunnerRow[] {
 
 function online(runner: RunnerRow): boolean {
   if (runner.online === true) return true;
-  return (runner.status ?? '').toLowerCase() === 'online' || (runner.status ?? '').toLowerCase() === 'idle';
+  const status = (runner.status ?? '').toLowerCase();
+  return status === 'online' || status === 'idle' || status === 'active';
+}
+
+function labelsOf(runner: RunnerRow): string[] {
+  return (runner.labels ?? []).map((label) => (typeof label === 'string' ? label : label.name ?? '')).map((label) => label.toLowerCase());
+}
+
+function hasXiao(runner: RunnerRow): boolean {
+  return labelsOf(runner).some((label) => label === 'xiao' || label.startsWith('xiao:'));
 }
 
 /** 连接后看 Actions 和构建机。不改远端，只读。 */
@@ -117,23 +127,28 @@ export async function probeGiteaActions(
     const repo = await fetchImpl(`${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`, { headers });
     if (repo.status === 404) return { state: 'unknown', detail: '仓库不存在，或令牌看不到这个仓库。' };
     if (!repo.ok) return { state: 'unknown', detail: `查仓库失败（HTTP ${repo.status}）。` };
-    const repoBody = (await repo.json()) as { has_actions?: boolean };
+    const repoBody = (await repo.json()) as { has_actions?: boolean; owner?: { type?: string } };
     if (repoBody.has_actions === false) {
       return { state: 'disabled', detail: '这个仓库没有开启 Actions。推送后不会构建。' };
     }
-    const runners = await fetchImpl(
-      `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runners`,
-      { headers },
+    const urls = [`${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runners`];
+    urls.push(
+      repoBody.owner?.type === 'Organization'
+        ? `${remote.origin}/api/v1/orgs/${remote.owner}/actions/runners`
+        : `${remote.origin}/api/v1/user/actions/runners`,
     );
-    if (runners.status === 404) {
-      return { state: 'disabled', detail: 'Gitea 没有提供构建机接口。多半是没开启 Actions。' };
+    const lists: RunnerRow[] = [];
+    for (const url of urls) {
+      const response = await fetchImpl(url, { headers });
+      if (response.status === 404) continue;
+      if (!response.ok) return { state: 'unknown', detail: `查构建机失败（HTTP ${response.status}）。` };
+      lists.push(...runnerList(await response.json()));
     }
-    if (!runners.ok) return { state: 'unknown', detail: `查构建机失败（HTTP ${runners.status}）。` };
-    const list = runnerList(await runners.json());
-    if (!list.some(online)) {
-      return { state: 'no-runner', detail: '没有在线的构建机。推送后不会开始构建，这次不能算上线。' };
-    }
-    return { state: 'ready', detail: '构建机在线。' };
+    const alive = lists.filter(online);
+    const matched = alive.filter(hasXiao);
+    if (matched.length > 0) return { state: 'ready', detail: '带 xiao 标签的构建机在线。' };
+    if (alive.length > 0) return { state: 'no-runner', detail: '构建机缺少 xiao 标签。' };
+    return { state: 'no-runner', detail: '没有在线的构建机。推送后不会开始构建，这次不能算上线。' };
   } catch (error) {
     return { state: 'unknown', detail: `连不上 Gitea：${error instanceof Error ? error.message : '网络失败'}` };
   }

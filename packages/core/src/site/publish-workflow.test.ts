@@ -153,10 +153,42 @@ describe('Gitea 构建配置', () => {
     }
   });
 
+  it('用户级带 xiao 标签的在线构建机算就绪', async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url.endsWith('/repos/owner/site')) return jsonResponse({ has_actions: true, owner: { type: 'User' } });
+      if (url.endsWith('/repos/owner/site/actions/runners')) return jsonResponse({ runners: [] });
+      if (url.endsWith('/user/actions/runners')) {
+        return jsonResponse({
+          runners: [
+            { status: 'online', labels: [{ name: 'ubuntu' }] },
+            { status: 'offline', labels: [{ name: 'xiao' }] },
+            { status: 'online', labels: [{ name: 'xiao' }] },
+          ],
+        });
+      }
+      return jsonResponse({}, 404);
+    }) as typeof fetch;
+    const ready = await probeGiteaActions('http://gitea.local/owner/site.git', 'token', fetchImpl);
+    expect(ready.state).toBe('ready');
+
+    const missing = await probeGiteaActions(
+      'http://gitea.local/owner/site.git',
+      'token',
+      (async (url: string) => {
+        if (String(url).includes('/user/')) return jsonResponse({ runners: [{ status: 'online', labels: ['ubuntu'] }] });
+        if (String(url).endsWith('/actions/runners')) return jsonResponse({ runners: [] });
+        return jsonResponse({ has_actions: true, owner: { type: 'User' } });
+      }) as typeof fetch,
+    );
+    expect(missing.state).toBe('no-runner');
+    expect(missing.detail).toContain('缺少 xiao 标签');
+  });
+
   it('没有在线构建机时说明缺什么', async () => {
     const fetchImpl = (async (url: string) => {
-      if (url.endsWith('/actions/runners')) return jsonResponse({ runners: [{ status: 'offline' }] });
-      return jsonResponse({ has_actions: true });
+      if (url.endsWith('/actions/runners')) return jsonResponse({ runners: [{ status: 'offline', labels: [{ name: 'xiao' }] }] });
+      if (url.includes('/user/')) return jsonResponse({ runners: [] });
+      return jsonResponse({ has_actions: true, owner: { type: 'User' } });
     }) as typeof fetch;
     const result = await probeGiteaActions('http://gitea.local/owner/site.git', 'token', fetchImpl);
     expect(result.state).toBe('no-runner');
