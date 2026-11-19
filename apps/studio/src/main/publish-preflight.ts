@@ -96,7 +96,8 @@ export function explainLocalBuild(log: string, titles: Record<string, string> = 
   }
   if (/flow sequence|block mapping|implicit key|YAMLParseError|YAMLException|mapping values are not allowed/i.test(log)) {
     const where = post?.line ? `第 ${post.line} 行` : '';
-    const summary = post ? `文章${name}开头信息${where}写法不对` : '文章开头信息写法不对';
+    // 开头信息已经坏了，读出来的标题不可信，用目录名。
+    const summary = post ? `文章 ${post.slug} 开头信息${where}写法不对` : '文章开头信息写法不对';
     return { kind: 'frontmatter', summary, detail, slug: post?.slug ?? '' };
   }
   if (/xiao\.config\.json/.test(log)) {

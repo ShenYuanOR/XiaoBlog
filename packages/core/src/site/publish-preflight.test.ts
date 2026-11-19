@@ -56,7 +56,7 @@ describe('发布前检查', () => {
       '    at Module.parse (F:\\XiaoBlog\\blog\\test\\node_modules\\yaml\\parse.js:1:1)',
     ].join('\n');
     const explained = explainLocalBuild(log, titles);
-    expect(explained.summary).toBe('文章《咖啡》开头信息第 2 行写法不对');
+    expect(explained.summary).toBe('文章 coffee 开头信息第 2 行写法不对');
     expect(explained.slug).toBe('coffee');
     expect(explained.detail).toContain('src/content/posts/coffee/index.md:2:0');
     expect(explained.detail).not.toContain('Stack trace');
