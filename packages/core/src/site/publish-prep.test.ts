@@ -10,7 +10,6 @@ import {
   applyTokenReport,
   blankPrep,
   canCreateRepo,
-  choosePlatform,
   newRepoPage,
   parseRepoUrl,
   stepPhase,
@@ -22,12 +21,10 @@ import {
   interpretPagesCreate,
   interpretPagesRead,
   readCreatedRepo,
-  probeStaticHost,
   readRemoteFacts,
   readRepoChoices,
-  staticHostMatches,
 } from '../../../../apps/studio/src/main/publish-remote.ts';
-import { readGithubVerify, readGiteaVerify } from '../../../../apps/studio/src/main/publish-token.ts';
+import { readGithubVerify } from '../../../../apps/studio/src/main/publish-token.ts';
 import { writeGithubWorkflow } from '../../../../apps/studio/src/main/publish-workflow.ts';
 
 const classic = readGithubVerify({
@@ -38,36 +35,21 @@ const classic = readGithubVerify({
 });
 
 function reachedRepo() {
-  let draft = choosePlatform(blankPrep(), 'github');
-  draft = { ...draft, token: 'secret-token' };
+  let draft = { ...blankPrep(), token: 'secret-token' };
   draft = applyTokenReport(draft, classic);
   return acceptToken(draft);
 }
 
 describe('发布准备状态机', () => {
   it('六步都在，后面的只是名称', () => {
-    const draft = choosePlatform(blankPrep(), 'github');
-    expect(stepPhase(draft.step, 'platform', draft.done)).toBe('done');
+    const draft = blankPrep();
     expect(stepPhase(draft.step, 'token', draft.done)).toBe('current');
     expect(stepPhase(draft.step, 'publish', draft.done)).toBe('later');
     expect(stepTitle('publish')).toBe('首次发布');
   });
 
-  it('平台：GitHub 进入令牌，Gitea 没填地址就停住且地址还在', () => {
-    const github = choosePlatform(blankPrep(), 'github');
-    expect(github.step).toBe('token');
-    expect(github.done).toEqual(['platform']);
-    const stuck = choosePlatform(blankPrep(), 'gitea', 'gitea.local');
-    expect(stuck.step).toBe('platform');
-    expect(stuck.origin).toBe('gitea.local');
-    expect(stuck.error).toContain('实例地址');
-    const gitea = choosePlatform(stuck, 'gitea', 'http://gitea.local:3000');
-    expect(gitea.step).toBe('token');
-    expect(gitea.origin).toBe('http://gitea.local:3000');
-  });
-
   it('令牌验证：先展示结果，失效和不能推送停住，缺建仓库权限仍可继续', () => {
-    let draft = choosePlatform(blankPrep(), 'github');
+    let draft = blankPrep();
     draft = { ...draft, token: 'secret-token' };
     const shown = applyTokenReport(draft, classic);
     expect(shown.step).toBe('token');
@@ -84,9 +66,12 @@ describe('发布准备状态机', () => {
     );
     expect(noPush.error).toContain('推送内容');
     expect(noPush.manualLink).toContain('github.com/settings/tokens/new');
-    const noCreate = acceptToken(
-      applyTokenReport(draft, readGiteaVerify({ status: 200, scopes: 'write:repository', login: 'ShenYuan', origin: 'http://gitea.local' })),
-    );
+    const base = readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' });
+    const noCreateReport = {
+      ...base,
+      capabilities: base.capabilities.map((item) => (item.key === 'create' ? { ...item, state: 'missing' as const } : item)),
+    };
+    const noCreate = acceptToken(applyTokenReport(draft, noCreateReport));
     expect(noCreate.step).toBe('repo');
     expect(canCreateRepo(noCreate.report)).toBe(false);
     expect(canCreateRepo(classic)).toBe(true);
@@ -162,19 +147,6 @@ describe('发布准备状态机', () => {
     const saved = applySite(draft, root.siteUrl ? suggestSite(draft) : { siteUrl: '', base: '' });
     expect(saved.step).toBe('build');
     expect(saved.token).toBe('secret-token');
-    const gitea = choosePlatform({ ...blankPrep(), token: 't' }, 'gitea', 'http://192.168.1.170:3000');
-    const need = applySite(
-      { ...gitea, step: 'site', owner: 'ShenYuan', repo: 'Xiao-Gate' },
-      { siteUrl: '', base: '', staticHost: 'not-a-url' },
-    );
-    expect(need.step).toBe('site');
-    expect(need.staticHost).toBe('not-a-url');
-    expect(need.token).toBe('t');
-    expect(suggestSite(need, 'http://192.168.1.170:8700')).toEqual({
-      siteUrl: 'http://192.168.1.170:8700/shenyuan/xiao-gate/',
-      base: '/shenyuan/xiao-gate/',
-      needHost: false,
-    });
   });
 
   it('构建准备：自动完成进入发布，做不到就停住且仓库还在', () => {
@@ -231,7 +203,7 @@ describe('发布准备状态机', () => {
 
 describe('准备用的远端判断', () => {
   it('仓库列表、Pages 状态、静态服务和建仓库失败', async () => {
-    const repos = readRepoChoices('github', 'https://github.com', [
+    const repos = readRepoChoices('https://github.com', [
       { full_name: 'ShenYuanOR/xiao-pages-test', private: false, size: 0, default_branch: 'main' },
       { full_name: 'ShenYuanOR/notes', private: true, size: 12, default_branch: 'main' },
     ]);
@@ -241,21 +213,12 @@ describe('准备用的远端判断', () => {
     expect(interpretPagesCreate(403)).toBe('manual');
     expect(interpretPagesRead(200, 'workflow')).toBe('ok');
     expect(interpretPagesRead(200, 'legacy')).toBe('update');
-    expect(staticHostMatches('xiao pages: /<owner>/<repo>/')).toBe(true);
-    expect(staticHostMatches('hello')).toBe(false);
-    const probed = await probeStaticHost(
-      'http://192.168.1.170:8700',
-      'ShenYuan',
-      'xiao-gate2',
-      (async () => new Response('xiao pages: /<owner>/<repo>/\n')) as typeof fetch,
-    );
-    expect(probed.ok).toBe(true);
     expect(readCreatedRepo(403, {}).message).toContain('不能新建仓库');
   });
 
   it('xiao-pages-test：公开、空、main，Pages 未开启', async () => {
     const remoteUrl = 'https://github.com/ShenYuanOR/xiao-pages-test';
-    const listed = readRepoChoices('github', 'https://github.com', [
+    const listed = readRepoChoices('https://github.com', [
       { full_name: 'ShenYuanOR/xiao-pages-test', private: false, size: 0, default_branch: 'main', clone_url: `${remoteUrl}.git` },
     ]);
     expect(listed[0]).toMatchObject({

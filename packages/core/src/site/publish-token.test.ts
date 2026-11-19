@@ -3,14 +3,10 @@ import {
   createVerifyCache,
   explainWorkflowScope,
   githubPagesUrl,
-  giteaPagesUrl,
   mergeProbe,
   probeTokenCapabilities,
-  readGiteaCreateProbe,
   reuseTokenOn,
   readGithubVerify,
-  readGiteaVerify,
-  refineGiteaReport,
   requiredMissing,
   tokenExpiryText,
   tokenKindLabel,
@@ -64,22 +60,6 @@ describe('令牌验证', () => {
     ).toBe('expired');
   });
 
-  it('Gitea 只有仓库写权限时不能建仓库', () => {
-    const report = readGiteaVerify({
-      status: 200,
-      scopes: 'write:repository',
-      login: 'ShenYuan',
-      origin: 'http://gitea.local:3000',
-    });
-    expect(report.capabilities.find((item) => item.key === 'hosting')?.label).toBe('打开 Actions');
-    expect(report.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
-    expect(report.capabilities.find((item) => item.key === 'create')?.state).toBe('missing');
-    expect(requiredMissing(report)).toEqual([]);
-    expect(readGiteaVerify({ status: 401, scopes: '', login: '', origin: 'http://gitea.local' }).message).toBe(
-      '令牌已失效',
-    );
-  });
-
   it('进发布页和点发布前不复用，准备流程里可以', () => {
     expect(reuseTokenOn('page')).toBe(false);
     expect(reuseTokenOn('publish')).toBe(false);
@@ -108,7 +88,6 @@ describe('令牌验证', () => {
       return new Response('', { status: 500 });
     }) as typeof fetch;
     const probe = await probeTokenCapabilities({
-      provider: 'github',
       remoteUrl: 'https://github.com/ShenYuanOR/xiao-pages-test',
       token: 't',
       fetchImpl,
@@ -121,35 +100,6 @@ describe('令牌验证', () => {
     expect(merged.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
     const classic = readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' });
     expect(mergeProbe(classic, { push: 'missing' }).capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
-  });
-
-  it('Gitea 选好仓库后把还不确定变成确定结果，建仓库探测不带名字', async () => {
-    expect(readGiteaCreateProbe(422)).toBe('ok');
-    expect(readGiteaCreateProbe(403)).toBe('missing');
-    const base = readGiteaVerify({ status: 200, scopes: '', login: 'ShenYuan', origin: 'http://gitea.local:3000' });
-    expect(base.capabilities.every((item) => item.state === 'unknown')).toBe(true);
-    const bodies: string[] = [];
-    const fetchImpl = (async (url: string, init?: RequestInit) => {
-      if (url.includes('/user/repos')) {
-        bodies.push(String(init?.body ?? ''));
-        return new Response(JSON.stringify({ message: 'name is empty' }), { status: 422 });
-      }
-      if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
-      if (url.includes('/actions/runs')) return new Response('{}', { status: 200 });
-      return new Response('', { status: 500 });
-    }) as typeof fetch;
-    const refined = await refineGiteaReport(base, {
-      origin: 'http://gitea.local:3000',
-      remoteUrl: 'http://gitea.local:3000/ShenYuan/xiao-gate2',
-      token: 't',
-      fetchImpl,
-    });
-    expect(bodies).toEqual(['{}']);
-    expect(refined.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
-    expect(refined.capabilities.find((item) => item.key === 'workflow')?.state).toBe('ok');
-    expect(refined.capabilities.find((item) => item.key === 'hosting')?.state).toBe('ok');
-    expect(refined.capabilities.find((item) => item.key === 'actions')?.state).toBe('ok');
-    expect(refined.capabilities.find((item) => item.key === 'create')?.state).toBe('ok');
   });
 
   it('缺 workflow 权限的推送失败写成中文', () => {
@@ -190,7 +140,6 @@ describe('令牌类型和过期', () => {
   it('写出类型，没有过期时间就是不过期', () => {
     expect(tokenKindLabel('github-classic')).toBe('GitHub 经典');
     expect(tokenKindLabel('github-fine')).toBe('GitHub 细粒度');
-    expect(tokenKindLabel('gitea')).toBe('Gitea');
     expect(tokenExpiryText('')).toBe('不过期');
     expect(tokenExpiryText('2026-12-01T00:00:00Z', Date.parse('2026-11-19T00:00:00Z'))).toBe('将在 12 天后过期');
   });
@@ -208,10 +157,4 @@ describe('网址推导', () => {
     });
   });
 
-  it('Gitea 静态服务按小写 owner/repo 拼路径', () => {
-    expect(giteaPagesUrl('http://192.168.1.170:8700/', 'ShenYuan', 'Xiao-Gate')).toEqual({
-      siteUrl: 'http://192.168.1.170:8700/shenyuan/xiao-gate/',
-      base: '/shenyuan/xiao-gate/',
-    });
-  });
 });

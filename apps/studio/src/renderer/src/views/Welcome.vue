@@ -260,7 +260,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="brand-foot">
         <span class="version">{{ versionText }}</span>
-        <span class="foot-note">离线可用 · 发布到 Gitea / GitHub</span>
+        <span class="foot-note">离线可用 · 发布到 GitHub</span>
       </div>
     </aside>
 
@@ -457,7 +457,7 @@ onBeforeUnmount(() => {
         </ul>
       </section>
 
-      <p class="page-note">当前版本先适配 Gitea；GitHub 稍后开放。</p>
+      <p class="page-note">发布到 GitHub Pages。</p>
     </section>
   </main>
 </template>

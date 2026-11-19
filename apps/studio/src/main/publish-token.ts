@@ -12,7 +12,7 @@ export interface TokenCapability {
 export interface TokenReport {
   status: 'valid' | 'invalid' | 'expired';
   account: string;
-  kind: 'github-classic' | 'github-fine' | 'gitea';
+  kind: 'github-classic' | 'github-fine';
   expiresAt: string;
   capabilities: TokenCapability[];
   message: string;
@@ -55,20 +55,8 @@ export function githubPagesUrl(owner: string, repo: string): { siteUrl: string; 
   return { siteUrl: `https://${host}.github.io/${name}/`, base: `/${name}/` };
 }
 
-export function giteaPagesUrl(staticOrigin: string, owner: string, repo: string): { siteUrl: string; base: string } {
-  const root = staticOrigin.trim().replace(/\/$/, '');
-  const ownerPath = owner.trim().toLowerCase();
-  const repoPath = repo.trim().replace(/\.git$/, '').toLowerCase();
-  const base = `/${ownerPath}/${repoPath}/`;
-  return { siteUrl: `${root}${base}`, base };
-}
-
 export function githubTokenLink(): string {
   return 'https://github.com/settings/tokens/new?scopes=repo,workflow&description=XiaoBlog';
-}
-
-export function giteaTokenLink(origin: string): string {
-  return `${origin.replace(/\/$/, '')}/user/settings/applications`;
 }
 
 export function githubNewRepoLink(owner: string, name: string): string {
@@ -76,10 +64,6 @@ export function githubNewRepoLink(owner: string, name: string): string {
   if (owner.trim()) params.set('owner', owner.trim());
   if (name.trim()) params.set('name', name.trim());
   return `https://github.com/new?${params.toString()}`;
-}
-
-export function giteaNewRepoLink(origin: string): string {
-  return `${origin.replace(/\/$/, '')}/repo/create`;
 }
 
 export function githubPagesSettingsLink(owner: string, repo: string): string {
@@ -112,7 +96,6 @@ export function tokenStatusLine(
 export function tokenKindLabel(kind: string): string {
   if (kind === 'github-classic') return 'GitHub 经典';
   if (kind === 'github-fine') return 'GitHub 细粒度';
-  if (kind === 'gitea') return 'Gitea';
   return '令牌';
 }
 
@@ -188,52 +171,6 @@ export function readGithubVerify(input: {
   };
 }
 
-export function readGiteaVerify(input: {
-  status: number;
-  scopes: string;
-  login: string;
-  origin: string;
-}): TokenReport {
-  if (input.status === 401 || input.status === 403) {
-    return {
-      status: 'invalid',
-      account: '',
-      kind: 'gitea',
-      expiresAt: '',
-      capabilities: [],
-      message: '令牌已失效',
-    };
-  }
-  const scopes = scopesOf(input.scopes);
-  const known = scopes.size > 0;
-  const writeRepo = scopes.has('write:repository') || scopes.has('all');
-  const writeUser = scopes.has('write:user') || scopes.has('write:organization') || scopes.has('all');
-  const how = `去创建令牌：${giteaTokenLink(input.origin)}`;
-  const capabilities = known
-    ? [
-        cap('push', writeRepo ? 'ok' : 'missing', how),
-        cap('workflow', writeRepo ? 'ok' : 'missing', how),
-        cap('hosting', writeRepo ? 'ok' : 'missing', '打开仓库 Actions 需要仓库写权限。', '打开 Actions'),
-        cap('actions', writeRepo ? 'ok' : 'missing', '读取构建记录需要仓库读权限。'),
-        cap('create', writeUser ? 'ok' : 'missing', '新建仓库需要 write:user（组织下要 write:organization）。没有的话用网页新建即可。'),
-      ]
-    : [
-        cap('push', 'unknown', ''),
-        cap('workflow', 'unknown', ''),
-        cap('hosting', 'unknown', '', '打开 Actions'),
-        cap('actions', 'unknown', ''),
-        cap('create', 'unknown', '不确定能不能建仓库。建不了就用网页新建。'),
-      ];
-  return {
-    status: 'valid',
-    account: input.login,
-    kind: 'gitea',
-    expiresAt: '',
-    capabilities,
-    message: '',
-  };
-}
-
 /** 只有准备流程里同一步可以复用。进发布页和点发布前都要重新问。 */
 export function reuseTokenOn(surface: 'prep' | 'page' | 'publish'): boolean {
   return surface === 'prep';
@@ -281,28 +218,6 @@ export async function verifyGithubToken(token: string, fetchImpl: typeof fetch, 
   });
 }
 
-export async function verifyGiteaToken(
-  origin: string,
-  token: string,
-  fetchImpl: typeof fetch,
-): Promise<TokenReport> {
-  const root = origin.replace(/\/$/, '');
-  const response = await fetchImpl(`${root}/api/v1/user`, {
-    headers: { Authorization: `token ${token}`, 'User-Agent': 'XiaoBlog' },
-  });
-  let login = '';
-  if (response.ok) {
-    const body = (await response.json()) as { login?: string };
-    login = body.login ?? '';
-  }
-  return readGiteaVerify({
-    status: response.status,
-    scopes: response.headers.get('x-oauth-scopes') ?? '',
-    login,
-    origin: root,
-  });
-}
-
 /** 只把还不确定的项改成探测结果。scopes 已经标明的不改。 */
 export function mergeProbe(
   report: TokenReport,
@@ -340,7 +255,6 @@ function parseRemote(remoteUrl: string): { origin: string; owner: string; repo: 
 
 /** 仓库已知时，用 receive-pack 测推送，用构建记录接口测读取。测不了就保持未知。 */
 export async function probeTokenCapabilities(input: {
-  provider: 'github' | 'gitea';
   remoteUrl: string;
   token: string;
   login?: string;
@@ -360,69 +274,18 @@ export async function probeTokenCapabilities(input: {
     out.push = 'unknown';
   }
   try {
-    const actionsUrl =
-      input.provider === 'github'
-        ? `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?per_page=1`
-        : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runs?limit=1`;
-    const headers =
-      input.provider === 'github'
-        ? {
-            Authorization: `Bearer ${input.token}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'XiaoBlog',
-          }
-        : { Authorization: `token ${input.token}`, 'User-Agent': 'XiaoBlog' };
+    const actionsUrl = `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?per_page=1`;
+    const headers = {
+      Authorization: `Bearer ${input.token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'XiaoBlog',
+    };
     const actions = await input.fetchImpl(actionsUrl, { headers });
     out.actions = readProbeStatus(actions.status);
   } catch {
     out.actions = 'unknown';
   }
   return out;
-}
-
-/** 故意不带 name。422 表示有权建仓库但参数不够，不会真的建出来。403 是没权限。 */
-export function readGiteaCreateProbe(status: number): CapabilityState {
-  if (status === 422) return 'ok';
-  if (status === 401 || status === 403) return 'missing';
-  return 'unknown';
-}
-
-/**
- * 选好仓库后再测。推送和读构建记录走现成探测。
- * Gitea 的仓库写权限同时覆盖推送、构建配置和打开 Actions。
- */
-export async function refineGiteaReport(
-  report: TokenReport,
-  input: { origin: string; remoteUrl: string; token: string; login?: string; fetchImpl: typeof fetch },
-): Promise<TokenReport> {
-  const probe = await probeTokenCapabilities({
-    provider: 'gitea',
-    remoteUrl: input.remoteUrl,
-    token: input.token,
-    login: input.login,
-    fetchImpl: input.fetchImpl,
-  });
-  let create: CapabilityState = 'unknown';
-  try {
-    const response = await input.fetchImpl(`${input.origin.replace(/\/$/, '')}/api/v1/user/repos`, {
-      method: 'POST',
-      headers: {
-        Authorization: `token ${input.token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'XiaoBlog',
-      },
-      body: '{}',
-    });
-    create = readGiteaCreateProbe(response.status);
-  } catch {
-    create = 'unknown';
-  }
-  const filled: Partial<Record<CapabilityKey, CapabilityState>> = { ...probe, create };
-  if (probe.push === 'ok' || probe.push === 'missing') {
-    filled.workflow = probe.push;
-    filled.hosting = probe.push;
-  }
-  return mergeProbe(report, filled);
 }
 
 export function verifyCacheKey(provider: string, origin: string, token: string): string {

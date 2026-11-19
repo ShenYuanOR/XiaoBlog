@@ -11,7 +11,7 @@ import {
 import path from 'node:path';
 import git from 'isomorphic-git';
 import { createHttpClient, checkPush, type HttpFetch } from './git.ts';
-import { parseGiteaRemote } from './publish-workflow.ts';
+import { parseGitRemote } from './publish-workflow.ts';
 
 /**
  * 发布远端：先用 Electron 的 net.fetch 走系统代理，再交给 isomorphic-git。
@@ -275,7 +275,7 @@ export function explainPushFailure(error: unknown, token = ''): string {
     return '认证失败：检查用户名和访问令牌是否属于这个仓库、是否过期或有写权限。';
   }
   if (/HttpError.*403|Forbidden/i.test(text)) {
-    return '令牌没有写入权限。GitHub 需要 repo 或 Contents 写；Gitea 需要仓库写权限。';
+    return '令牌没有写入权限。细粒度令牌需要这个仓库的 Contents 写权限。';
   }
   if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|fetch failed/i.test(text)) {
     return '连不上远端：检查地址、网络，或这台电脑是否需要代理。';
@@ -415,7 +415,7 @@ export function pushRefs(local: string, remote: string): { ref: string; remoteRe
   return { ref: local };
 }
 
-/** 读远端的默认分支。空仓库改问 Gitea 的 default_branch。 */
+/** 读远端的默认分支。空仓库改问 GitHub 的 default_branch。 */
 export async function remoteDefaultBranch(
   remoteUrl: string,
   login: string,
@@ -437,19 +437,11 @@ export async function remoteDefaultBranch(
   }
   let apiBranch = '';
   try {
-    const remote = parseGiteaRemote(remoteUrl);
-    if (remote) {
-      const github = /(^|\.)github\.com$/i.test(new URL(remote.origin).hostname);
-      const response = await fetchImpl(
-        github
-          ? `https://api.github.com/repos/${remote.owner}/${remote.repo}`
-          : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`,
-        {
-          headers: github
-            ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
-            : { Authorization: `token ${token}` },
-        },
-      );
+    const remote = parseGitRemote(remoteUrl);
+    if (remote && /(^|\.)github\.com$/i.test(new URL(remote.origin).hostname)) {
+      const response = await fetchImpl(`https://api.github.com/repos/${remote.owner}/${remote.repo}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' },
+      });
       if (response.ok) {
         const body = (await response.json()) as { default_branch?: string };
         apiBranch = body.default_branch ?? '';

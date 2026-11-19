@@ -1,5 +1,5 @@
 import { githubPagesSettingsLink } from './publish-token.ts';
-import { parseGiteaRemote, probeGiteaActions, type ActionsProbe } from './publish-workflow.ts';
+import { parseGitRemote } from './publish-workflow.ts';
 
 export interface RepoChoice {
   owner: string;
@@ -10,7 +10,7 @@ export interface RepoChoice {
   branch: string;
 }
 
-export function readRepoChoices(provider: 'github' | 'gitea', origin: string, body: unknown): RepoChoice[] {
+export function readRepoChoices(origin: string, body: unknown): RepoChoice[] {
   if (!Array.isArray(body)) return [];
   const root = origin.replace(/\/$/, '');
   const out: RepoChoice[] = [];
@@ -32,7 +32,7 @@ export function readRepoChoices(provider: 'github' | 'gitea', origin: string, bo
     const owner = item.owner?.login || ownerFromFull || '';
     const name = item.name || nameFromFull || '';
     if (!owner || !name) continue;
-    const empty = provider === 'gitea' ? item.empty === true : (item.size ?? 0) === 0;
+    const empty = (item.size ?? 0) === 0;
     const url = (item.clone_url || item.html_url || `${root}/${owner}/${name}`).replace(/\.git$/, '');
     out.push({
       owner,
@@ -70,10 +70,6 @@ export function interpretPagesRead(status: number, buildType: string): 'ok' | 'u
 }
 
 /** 首页是固定前缀。`/<owner>/<repo>/` 原样返回，不会换成仓库名。 */
-export function staticHostMatches(text: string): boolean {
-  return text.trim().toLowerCase().startsWith('xiao pages:');
-}
-
 export function readCreatedRepo(
   status: number,
   body: unknown,
@@ -107,40 +103,32 @@ function githubHeaders(token: string): Record<string, string> {
 }
 
 export async function listRemoteRepos(input: {
-  provider: 'github' | 'gitea';
   origin: string;
   token: string;
   fetchImpl: typeof fetch;
 }): Promise<{ ok: true; repos: RepoChoice[] } | { ok: false; message: string }> {
-  const root = input.origin.replace(/\/$/, '') || 'https://github.com';
-  const url =
-    input.provider === 'github'
-      ? 'https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member'
-      : `${root}/api/v1/user/repos?limit=50`;
-  const headers = input.provider === 'github' ? githubHeaders(input.token) : { Authorization: `token ${input.token}` };
+  const root = 'https://github.com';
+  const url = 'https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member';
+  const headers = githubHeaders(input.token);
   try {
     const response = await input.fetchImpl(url, { headers });
     if (response.status === 401 || response.status === 403) return { ok: false, message: '令牌已失效' };
     if (!response.ok) return { ok: false, message: `列不出仓库（HTTP ${response.status}）。可以直接粘贴地址。` };
-    return { ok: true, repos: readRepoChoices(input.provider, root, await response.json()) };
+    return { ok: true, repos: readRepoChoices(root, await response.json()) };
   } catch (error) {
     return { ok: false, message: `连不上：${error instanceof Error ? error.message : '网络失败'}` };
   }
 }
 
 export async function readRemoteFacts(input: {
-  provider: 'github' | 'gitea';
   remoteUrl: string;
   token: string;
   fetchImpl: typeof fetch;
 }): Promise<{ ok: true; owner: string; repo: string; branch: string; empty: boolean; xiao: boolean; isPrivate: boolean } | { ok: false; message: string }> {
-  const remote = parseGiteaRemote(input.remoteUrl);
+  const remote = parseGitRemote(input.remoteUrl);
   if (!remote) return { ok: false, message: '仓库地址解析不了。' };
-  const headers = input.provider === 'github' ? githubHeaders(input.token) : { Authorization: `token ${input.token}` };
-  const repoUrl =
-    input.provider === 'github'
-      ? `https://api.github.com/repos/${remote.owner}/${remote.repo}`
-      : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`;
+  const headers = githubHeaders(input.token);
+  const repoUrl = `https://api.github.com/repos/${remote.owner}/${remote.repo}`;
   const configUrl = `${repoUrl}/contents/xiao.config.json`;
   try {
     const response = await input.fetchImpl(repoUrl, { headers });
@@ -164,8 +152,6 @@ export async function readRemoteFacts(input: {
 }
 
 export async function createRemoteRepo(input: {
-  provider: 'github' | 'gitea';
-  origin: string;
   token: string;
   name: string;
   fetchImpl: typeof fetch;
@@ -174,12 +160,8 @@ export async function createRemoteRepo(input: {
   if (!/^[A-Za-z0-9._-]+$/.test(name)) {
     return { ok: false, remoteUrl: '', owner: '', repo: '', branch: '', message: '仓库名只能用字母、数字、点、下划线和横线。' };
   }
-  const root = input.origin.replace(/\/$/, '');
-  const url = input.provider === 'github' ? 'https://api.github.com/user/repos' : `${root}/api/v1/user/repos`;
-  const headers =
-    input.provider === 'github'
-      ? { ...githubHeaders(input.token), 'Content-Type': 'application/json' }
-      : { Authorization: `token ${input.token}`, 'Content-Type': 'application/json' };
+  const url = 'https://api.github.com/user/repos';
+  const headers = { ...githubHeaders(input.token), 'Content-Type': 'application/json' };
   try {
     const response = await input.fetchImpl(url, {
       method: 'POST',
@@ -249,61 +231,4 @@ export async function enableGithubPages(
   return manual;
 }
 
-export async function enableGiteaActions(
-  remoteUrl: string,
-  token: string,
-  fetchImpl: typeof fetch,
-): Promise<{ state: 'ok' | 'manual' | 'warn'; detail: string; link: string; actionsState: ActionsProbe['state'] }> {
-  const remote = parseGiteaRemote(remoteUrl);
-  if (!remote) return { state: 'manual', detail: '仓库地址解析不了。', link: '', actionsState: 'unknown' };
-  const link = `${remote.origin}/${remote.owner}/${remote.repo}/settings`;
-  const headers = { Authorization: `token ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'XiaoBlog' };
-  try {
-    const patched = await fetchImpl(`${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ has_actions: true }),
-    });
-    if (patched.status === 403 || patched.status === 404) {
-      return { state: 'manual', detail: '这个令牌打不开仓库 Actions。到仓库设置里打开 Actions。', link, actionsState: 'disabled' };
-    }
-  } catch (error) {
-    return {
-      state: 'manual',
-      detail: `连不上 Gitea：${error instanceof Error ? error.message : '网络失败'}`,
-      link,
-      actionsState: 'unknown',
-    };
-  }
-  const probe = await probeGiteaActions(remoteUrl, token, fetchImpl);
-  if (probe.state === 'no-runner' || probe.state === 'disabled') {
-    return {
-      state: 'warn',
-      detail: probe.detail,
-      link: `${remote.origin}/${remote.owner}/${remote.repo}/actions`,
-      actionsState: probe.state,
-    };
-  }
-  return { state: 'ok', detail: probe.detail, link: '', actionsState: probe.state };
-}
 
-export async function probeStaticHost(
-  host: string,
-  _owner: string,
-  _repo: string,
-  fetchImpl: typeof fetch,
-): Promise<{ ok: boolean; message: string }> {
-  const root = host.trim().replace(/\/$/, '');
-  if (!/^https?:\/\//i.test(root)) return { ok: false, message: '静态服务地址要以 http:// 或 https:// 开头。' };
-  try {
-    const response = await fetchImpl(root);
-    if (!response.ok) return { ok: false, message: `静态服务没有响应（HTTP ${response.status}）。` };
-    const text = await response.text();
-    if (!staticHostMatches(text)) {
-      return { ok: false, message: '首页没有以 xiao pages: 开头。确认这是晓的静态服务。' };
-    }
-    return { ok: true, message: '' };
-  } catch (error) {
-    return { ok: false, message: `连不上静态服务：${error instanceof Error ? error.message : '网络失败'}` };
-  }
-}

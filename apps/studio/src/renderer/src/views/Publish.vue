@@ -9,7 +9,6 @@ import {
   applyTokenReport,
   blankPrep,
   canCreateRepo,
-  choosePlatform,
   newRepoPage,
   parseRepoUrl,
   PREP_ORDER,
@@ -82,6 +81,7 @@ interface DeployRecord {
 
 interface DeployTarget {
   provider: 'gitea' | 'github';
+  /** 旧的 Gitea 目标只用来提示改连 GitHub。 */
   remoteUrl: string;
   branch: string;
   login?: string;
@@ -142,16 +142,15 @@ const tokenReport = ref<{
   capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
 } | null>(null);
 const prep = ref(blankPrep());
-const instanceUrl = ref('');
+
 const repoQuery = ref('');
 const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>([]);
 const newRepoName = ref('');
 const createOpen = ref(false);
 const heldTarget = ref<DeployTarget | null>(null);
-const staticHost = ref('');
+
 const prepBusy = ref(false);
-const platformPick = ref<'' | 'github' | 'gitea'>('');
-const giteaSiteUrl = ref('');
+const siteUrlDraft = ref('');
 const pushing = ref(false);
 const pushError = ref('');
 const pushResult = ref<PushResult | null>(null);
@@ -228,10 +227,6 @@ const pagesLabel = computed(() => {
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 const prepHelp: Record<PrepStep, { title: string; body: string }> = {
-  platform: {
-    title: '选平台',
-    body: 'GitHub 是正式站点，用自带的 Pages。Gitea 是局域网测试，要填实例地址。',
-  },
   token: {
     title: '令牌验证',
     body: '粘贴后会看账号和每一项能力。缺了推送权限就先去创建令牌。建仓库的权限不是必需的，没有也可以用网页新建。',
@@ -242,7 +237,7 @@ const prepHelp: Record<PrepStep, { title: string; body: string }> = {
   },
   site: {
     title: '网站地址',
-    body: 'GitHub 按仓库名计算。仓库名是 owner.github.io 时用根路径，否则挂在 /仓库名/。Gitea 要填静态服务地址，第一次会探测。',
+    body: 'GitHub 按仓库名计算。仓库名是 owner.github.io 时用根路径，否则挂在 /仓库名/。',
   },
   build: {
     title: '构建准备',
@@ -275,7 +270,7 @@ const tokenCanContinue = computed(
 const tokenGaps = computed(
   () => prep.value.report?.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing') ?? [],
 );
-const suggestedSite = computed(() => suggestSite(prep.value, staticHost.value));
+const suggestedSite = computed(() => suggestSite(prep.value));
 const offerCreate = computed(() => canCreateRepo(prep.value.report));
 
 const resultEntries = computed(() => {
@@ -304,7 +299,7 @@ const resultEntries = computed(() => {
   } else if (failed.key === 'build' && failed.url) {
     entries.push({
       key: 'gitea',
-      label: target.value?.provider === 'github' ? '在 GitHub 查看' : '在 Gitea 查看',
+      label: '在 GitHub 查看',
       run: () => void window.xiao.app.openExternal(failed.url ?? ''),
     });
   }
@@ -429,12 +424,6 @@ async function submitReconnect(): Promise<void> {
   }
 }
 
-function readyProvider(): 'github' | 'gitea' | null {
-  const provider = prep.value.provider;
-  if (provider === 'github' || provider === 'gitea') return provider;
-  return null;
-}
-
 function openLink(url: string): void {
   if (url) void window.xiao.app.openExternal(url);
 }
@@ -451,26 +440,15 @@ function capIcon(state: 'ok' | 'missing' | 'unknown'): string {
   return icons.help;
 }
 
-function continuePlatform(provider: 'github' | 'gitea'): void {
-  prep.value = choosePlatform(prep.value, provider, instanceUrl.value);
-}
-
-function pickPlatform(provider: 'github' | 'gitea'): void {
-  platformPick.value = provider;
-  if (provider === 'github') continuePlatform('github');
-}
-
 async function verifyPasted(): Promise<void> {
   const token = prep.value.token.trim();
   if (!token) {
     notify('先粘贴访问令牌。', 'error', 'publish-prep');
     return;
   }
-  const provider = readyProvider();
-  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.checkToken(provider, prep.value.origin, token);
+    const result = await window.xiao.publish.checkToken('github', 'https://github.com', token);
     if (!result.ok) {
       notify(result.message, 'error', 'publish-prep');
       return;
@@ -482,11 +460,9 @@ async function verifyPasted(): Promise<void> {
 }
 
 async function loadRepos(): Promise<void> {
-  const provider = readyProvider();
-  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.repos(provider, prep.value.origin, prep.value.token);
+    const result = await window.xiao.publish.repos('github', 'https://github.com', prep.value.token);
     if (!result.ok) {
       prep.value = { ...prep.value, error: result.message, next: '也可以直接粘贴仓库地址。', manualLink: '' };
       return;
@@ -501,11 +477,9 @@ async function loadRepos(): Promise<void> {
 }
 
 async function useRemote(remoteUrl: string): Promise<void> {
-  const provider = readyProvider();
-  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.repoFacts(provider, remoteUrl, prep.value.token);
+    const result = await window.xiao.publish.repoFacts('github', remoteUrl, prep.value.token);
     if (!result.ok) {
       prep.value = { ...prep.value, remoteUrl, error: result.message, next: '检查地址后再试。已填的地址还留着。' };
       return;
@@ -519,16 +493,6 @@ async function useRemote(remoteUrl: string): Promise<void> {
       xiao: result.data.xiao,
       isPrivate: result.data.isPrivate,
     });
-    if (prep.value.provider === 'gitea') {
-      const refined = await window.xiao.publish.refineToken(
-        'gitea',
-        prep.value.origin,
-        remoteUrl,
-        prep.value.token,
-        prep.value.report?.account || '',
-      );
-      if (refined.ok) prep.value = { ...prep.value, report: asTokenReport(refined.data) };
-    }
   } finally {
     prepBusy.value = false;
   }
@@ -579,11 +543,9 @@ async function createRepoNow(): Promise<void> {
     notify('先填仓库名。', 'error', 'publish-prep');
     return;
   }
-  const provider = readyProvider();
-  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.createRepo(provider, prep.value.origin, prep.value.token, name);
+    const result = await window.xiao.publish.createRepo('github', 'https://github.com', prep.value.token, name);
     if (!result.ok) {
       notify(result.message, 'error', 'publish-prep');
       return;
@@ -603,53 +565,17 @@ async function createRepoNow(): Promise<void> {
   }
 }
 
-async function loadRememberedHost(): Promise<void> {
-  if (prep.value.provider !== 'gitea') return;
-  const result = await window.xiao.publish.rememberedHost(prep.value.origin);
-  if (result.ok && result.data && !staticHost.value) staticHost.value = result.data;
-}
-
 async function acceptSite(): Promise<void> {
-  if (prep.value.provider === 'gitea') {
-    const suggested = suggestSite(prep.value, staticHost.value);
-    if (suggested.needHost) {
-      prep.value = applySite(prep.value, { siteUrl: '', base: '', staticHost: staticHost.value });
-      return;
-    }
-    prepBusy.value = true;
-    try {
-      const probed = await window.xiao.publish.probeHost(
-        prep.value.origin,
-        staticHost.value,
-        prep.value.owner,
-        prep.value.repo,
-      );
-      if (!probed.ok) {
-        prep.value = {
-          ...prep.value,
-          staticHost: staticHost.value,
-          error: probed.message,
-          next: '上线核对可能等不到这次的版本。可以改地址再探测，或仍然使用这个地址。',
-        };
-        return;
-      }
-      prep.value = applySite(prep.value, { siteUrl: suggested.siteUrl, base: suggested.base, staticHost: staticHost.value });
-    } finally {
-      prepBusy.value = false;
-    }
-    return;
-  }
-  const suggested = suggestSite(prep.value, '');
+  const suggested = suggestSite(prep.value);
   prep.value = applySite(prep.value, { siteUrl: suggested.siteUrl, base: suggested.base });
 }
 
-function useHostAnyway(): void {
-  const suggested = suggestSite(prep.value, staticHost.value);
-  prep.value = applySite(prep.value, {
-    siteUrl: suggested.siteUrl,
-    base: suggested.base,
-    staticHost: staticHost.value,
-  });
+async function reconnectGithub(): Promise<void> {
+  if (!session.siteDir) return;
+  await window.xiao.publish.disconnect(session.siteDir);
+  target.value = null;
+  tokenReport.value = null;
+  prep.value = blankPrep();
 }
 
 async function runPrepare(): Promise<void> {
@@ -657,7 +583,7 @@ async function runPrepare(): Promise<void> {
   prepBusy.value = true;
   try {
     const result = await window.xiao.publish.prepare(session.siteDir, {
-      provider: prep.value.provider === 'gitea' ? 'gitea' : 'github',
+      provider: 'github',
       origin: prep.value.origin,
       remoteUrl: prep.value.remoteUrl,
       token: prep.value.token,
@@ -844,7 +770,7 @@ async function applyTargetUrl(): Promise<void> {
 
 async function saveSiteUrl(): Promise<void> {
   if (!session.siteDir) return;
-  const result = await window.xiao.publish.setSiteUrl(session.siteDir, giteaSiteUrl.value.trim());
+  const result = await window.xiao.publish.setSiteUrl(session.siteDir, siteUrlDraft.value.trim());
   if (!result.ok) {
     notify(result.message, 'error', 'publish-url');
     return;
@@ -884,7 +810,7 @@ async function loadAll(check = true): Promise<void> {
     if (target.value) {
       const verified = await window.xiao.publish.verify(siteDir);
       tokenReport.value = verified.ok ? verified.data : null;
-      if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
+      if (!siteUrlDraft.value && target.value.siteUrl) siteUrlDraft.value = target.value.siteUrl;
       if (check && !currentJob) await runPreflight();
     } else {
       checks.value = [];
@@ -939,7 +865,6 @@ watch(
     heldTarget.value = null;
     repoChoices.value = [];
     repoQuery.value = '';
-    staticHost.value = '';
     void loadAll();
   },
 );
@@ -947,9 +872,7 @@ watch(
 watch(
   () => prep.value.step,
   (step) => {
-    if (step === 'platform' && prep.value.provider === 'gitea') platformPick.value = 'gitea';
     if (step === 'repo' && prep.value.token) void loadRepos();
-    if (step === 'site') void loadRememberedHost();
   },
 );
 </script>
@@ -980,7 +903,16 @@ watch(
 
       <p v-if="errorText" class="alert">{{ errorText }}</p>
 
-      <div v-if="!target" class="frame">
+      <div v-if="target?.provider === 'gitea'" class="frame">
+        <section class="panel card">
+          <h2>Gitea 已不再作为发布目标，请连接 GitHub 仓库</h2>
+          <div class="prep-actions">
+            <UiButton variant="primary" @click="reconnectGithub">重新连接</UiButton>
+          </div>
+        </section>
+      </div>
+
+      <div v-else-if="!target" class="frame">
         <section class="panel card">
           <h2>发布准备</h2>
           <ol class="prep-steps">
@@ -996,28 +928,7 @@ watch(
               </button>
               <p v-else-if="stepPhase(prep.step, step, prep.done) === 'later'" class="later-step">{{ stepTitle(step) }}</p>
               <div v-else class="prep-current">
-                <template v-if="step === 'platform'">
-                  <h3>平台</h3>
-                  <div class="platform-cards">
-                    <button type="button" class="platform-card" :class="{ on: platformPick === 'github' }" @click="pickPlatform('github')">
-                      <strong>GitHub</strong>
-                      <span>正式站点，用自带的 Pages。</span>
-                    </button>
-                    <button type="button" class="platform-card" :class="{ on: platformPick === 'gitea' }" @click="pickPlatform('gitea')">
-                      <strong>Gitea</strong>
-                      <span>局域网测试，用 pages 分支和静态服务。</span>
-                    </button>
-                  </div>
-                  <template v-if="platformPick === 'gitea'">
-                    <UiField label="Gitea 实例地址">
-                      <UiInput v-model="instanceUrl" placeholder="http://192.168.1.10:3000" />
-                    </UiField>
-                    <div class="prep-actions">
-                      <UiButton variant="primary" @click="continuePlatform('gitea')">继续</UiButton>
-                    </div>
-                  </template>
-                </template>
-                <template v-else-if="step === 'token'">
+                <template v-if="step === 'token'">
                   <h3>令牌验证</h3>
                   <UiField label="访问令牌">
                     <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴令牌" />
@@ -1085,21 +996,11 @@ watch(
                 </template>
                 <template v-else-if="step === 'site'">
                   <h3>网站地址</h3>
-                  <template v-if="prep.provider === 'github'">
-                    <p class="summary">{{ suggestedSite.siteUrl }}</p>
-                    <p class="dim">路径 {{ suggestedSite.base }}</p>
+                  <p class="summary">{{ suggestedSite.siteUrl }}</p>
+                  <p class="dim">路径 {{ suggestedSite.base }}</p>
+                  <div class="prep-actions">
                     <UiButton variant="primary" @click="acceptSite">写入并继续</UiButton>
-                  </template>
-                  <template v-else>
-                    <UiField label="静态服务地址">
-                      <UiInput v-model="staticHost" placeholder="http://192.168.1.10:8700" />
-                    </UiField>
-                    <p v-if="suggestedSite.siteUrl" class="dim">探测通过后会是 {{ suggestedSite.siteUrl }}</p>
-                    <div class="prep-actions">
-                      <UiButton variant="primary" :loading="prepBusy" @click="acceptSite">探测并继续</UiButton>
-                      <UiButton v-if="prep.error" @click="useHostAnyway">仍然使用这个地址</UiButton>
-                    </div>
-                  </template>
+                  </div>
                 </template>
                 <template v-else-if="step === 'build'">
                   <h3>构建准备</h3>
@@ -1137,7 +1038,7 @@ watch(
           <div class="target-line" :class="{ warn: tokenBlocked }">
             <UiIcon :path="target?.provider === 'github' ? icons.github : icons.repo" :size="18" />
             <p>
-              发布到 {{ target?.provider === 'github' ? 'GitHub' : 'Gitea' }} · {{ repoName(target?.remoteUrl ?? '') }}（{{ target?.branch }}）→
+              发布到 GitHub · {{ repoName(target?.remoteUrl ?? '') }}（{{ target?.branch }}）→
               <button v-if="target?.siteUrl" type="button" class="link" @click="openPublishedSite">{{ target?.siteUrl }}</button>
               <span v-else class="dim">还没有网址</span>
             </p>
@@ -1263,7 +1164,7 @@ watch(
               </template>
               <template v-else-if="buildFailed">
                 <UiButton v-if="steps.find((step) => step.key === 'build')?.url" size="sm" variant="ghost" @click="openBuildLog">
-                  {{ target?.provider === 'github' ? '在 GitHub 查看' : '在 Gitea 查看' }}
+                  在 GitHub 查看
                 </UiButton>
                 <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
               </template>
@@ -1334,7 +1235,7 @@ watch(
         <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
         <p class="dim dialog-meta">分支 {{ target?.branch }}。令牌只存在本机。</p>
         <UiField label="站点网址">
-          <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
+          <UiInput v-model="siteUrlDraft" placeholder="https://blog.example.com" />
         </UiField>
         <template #actions="{ close }">
           <div class="dialog-actions">

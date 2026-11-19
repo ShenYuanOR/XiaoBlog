@@ -106,21 +106,12 @@ import {
   reuseTokenOn,
   probeTokenCapabilities,
   verifyCacheKey,
-  refineGiteaReport,
-  verifyGiteaToken,
   verifyGithubToken,
   type TokenReport,
 } from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
-import { probeGiteaActions, writeDeployWorkflow, writeGithubWorkflow } from './publish-workflow.ts';
-import {
-  createRemoteRepo,
-  enableGiteaActions,
-  enableGithubPages,
-  listRemoteRepos,
-  probeStaticHost,
-  readRemoteFacts,
-} from './publish-remote.ts';
+import { writeGithubWorkflow } from './publish-workflow.ts';
+import { createRemoteRepo, enableGithubPages, listRemoteRepos, readRemoteFacts } from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -320,19 +311,11 @@ let deployStoreInstance: ReturnType<typeof createDeployStore> | undefined;
 const tokenCache = createVerifyCache(() => Date.now());
 const apiFetch: typeof fetch = (input, init) => net.fetch(input as string, init);
 
-async function verifyLooseToken(
-  provider: 'github' | 'gitea',
-  origin: string,
-  token: string,
-  remoteUrl?: string,
-  login?: string,
-): Promise<TokenReport> {
-  const report =
-    provider === 'github' ? await verifyGithubToken(token, apiFetch) : await verifyGiteaToken(origin, token, apiFetch);
+async function verifyLooseToken(token: string, remoteUrl?: string, login?: string): Promise<TokenReport> {
+  const report = await verifyGithubToken(token, apiFetch);
   if (report.status !== 'valid' || !remoteUrl) return report;
   try {
     const probe = await probeTokenCapabilities({
-      provider,
       remoteUrl,
       token,
       login,
@@ -347,42 +330,8 @@ async function verifyLooseToken(
 async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
   const target = deployStore().read()[siteDir];
   const token = secretStore().load(siteDir);
-  if (!target || !token) return null;
-  let origin = 'https://github.com';
-  if (target.provider !== 'github') {
-    try {
-      origin = new URL(target.remoteUrl).origin;
-    } catch {
-      return null;
-    }
-  }
-  if (target.provider === 'github') return verifyGithubToken(token, apiFetch);
-  return verifyGiteaToken(origin, token, apiFetch);
-}
-
-function pagesHostFile(): string {
-  return join(app.getPath('userData'), 'pages-hosts.json');
-}
-
-function readPagesHost(origin: string): string {
-  try {
-    const all = JSON.parse(readFileSync(pagesHostFile(), 'utf8')) as Record<string, string>;
-    return all[origin] ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function writePagesHost(origin: string, host: string): void {
-  let all: Record<string, string> = {};
-  try {
-    all = JSON.parse(readFileSync(pagesHostFile(), 'utf8')) as Record<string, string>;
-  } catch {
-    all = {};
-  }
-  all[origin] = host;
-  mkdirSync(dirname(pagesHostFile()), { recursive: true });
-  writeFileSync(pagesHostFile(), `${JSON.stringify(all, null, 2)}\n`);
+  if (!target || !token || target.provider !== 'github') return null;
+  return verifyGithubToken(token, apiFetch);
 }
 
 function deployStore(): ReturnType<typeof createDeployStore> {
@@ -837,13 +786,10 @@ app.whenReady().then(() => {
       const probe = await probeRemote(url, login.trim(), token.trim(), publishHttp);
       if (!probe.ok) return fail('PUBLISH_PROBE', probe.message);
       const branch = await remoteDefaultBranch(url, login.trim(), token.trim(), publishHttp);
-      const actions =
-        provider === 'gitea'
-          ? await probeGiteaActions(url, token.trim())
-          : { state: 'unknown' as const, detail: 'GitHub 下一步再接。' };
-      const workflow = provider === 'gitea' ? writeDeployWorkflow(siteDir, branch) : 'kept';
+      if (provider !== 'github') return fail('PUBLISH_PROVIDER', 'Gitea 已不再作为发布目标，请连接 GitHub 仓库');
+      const workflow = writeGithubWorkflow(siteDir, branch);
       if (workflow === 'written') {
-        const workflowFile = join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml');
+        const workflowFile = join(siteDir, '.github', 'workflows', 'xiao-deploy.yml');
         try {
           watcher?.noteWrite(workflowFile, readFileSync(workflowFile, 'utf8'));
         } catch {
@@ -851,14 +797,13 @@ app.whenReady().then(() => {
         }
       }
       const target: DeployTarget = {
-        provider,
+        provider: 'github',
         remoteUrl: url,
         branch,
         ...(login.trim() ? { login: login.trim() } : {}),
         ...(siteUrl?.trim() ? { siteUrl: siteUrl.trim() } : {}),
-        actionsState: actions.state,
-        actionsDetail:
-          workflow === 'written' ? `${actions.detail} 构建配置已写入站点。` : actions.detail,
+        actionsState: 'unknown',
+        actionsDetail: workflow === 'written' ? '构建配置已写入站点。' : '',
       };
       secretStore().save(siteDir, token.trim(), '');
       const all = deployStore().read();
@@ -1211,7 +1156,7 @@ app.whenReady().then(() => {
       const items = buildPreflight({
         siteUrl: config.site.url ?? '',
         targetUrl: target?.siteUrl ?? '',
-        workflowReady: existsSync(join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml')),
+        workflowReady: existsSync(join(siteDir, '.github', 'workflows', 'xiao-deploy.yml')),
         buildFailed: audit.data.buildFailed,
         buildMessage: audit.data.message,
         buildLog: audit.data.log,
@@ -1362,66 +1307,37 @@ app.whenReady().then(() => {
         return fail('PUBLISH_URL', '仓库地址解析不了');
       }
     }
-    const report = await verifyLooseToken(target.provider, origin, trimmed, target.remoteUrl, target.login);
+    if (target.provider !== 'github') return fail('PUBLISH_PROVIDER', 'Gitea 已不再作为发布目标，请连接 GitHub 仓库');
+    const report = await verifyLooseToken(trimmed, target.remoteUrl, target.login);
     if (report.status !== 'valid') return ok(report);
     secretStore().save(siteDir, trimmed, report.expiresAt || '');
     tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
     return ok(report);
   });
-  ipcMain.handle(
-    'publish:refineToken',
-    async (
-      _event,
-      provider: 'github' | 'gitea',
-      origin: string,
-      remoteUrl: string,
-      token: string,
-      login?: string,
-    ) => {
-      const trimmed = typeof token === 'string' ? token.trim() : '';
-      if (!trimmed || !remoteUrl) return fail('PUBLISH_TOKEN', '还没有仓库或令牌');
-      if (provider !== 'gitea') return fail('PUBLISH_TOKEN', '这一步只补 Gitea 令牌');
-      const root = String(origin || '').replace(/\/$/, '');
-      const report = await verifyGiteaToken(root, trimmed, apiFetch);
-      if (report.status !== 'valid') return ok(report);
-      const refined = await refineGiteaReport(report, {
-        origin: root,
-        remoteUrl: String(remoteUrl),
-        token: trimmed,
-        login,
-        fetchImpl: apiFetch,
-      });
-      return ok(refined);
-    },
-  );
-  ipcMain.handle('publish:checkToken', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {
+  ipcMain.handle('publish:checkToken', async (_event, _provider: string, _origin: string, token: string) => {
     const trimmed = typeof token === 'string' ? token.trim() : '';
-    if (provider !== 'github' && provider !== 'gitea') return fail('PUBLISH_TOKEN', '先选平台');
     if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
-    const root = provider === 'github' ? 'https://github.com' : String(origin || '').replace(/\/$/, '');
-    if (provider === 'gitea' && !/^https?:\/\//i.test(root)) return fail('PUBLISH_URL', '先填 Gitea 实例地址');
-    const key = verifyCacheKey(provider, root, trimmed);
+    const root = 'https://github.com';
+    const key = verifyCacheKey('github', root, trimmed);
     if (reuseTokenOn('prep')) {
       const cached = tokenCache.get(key);
       if (cached) return ok(cached);
     }
-    const report = await verifyLooseToken(provider, root, trimmed);
+    const report = await verifyLooseToken(trimmed);
     if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);
   });
-  ipcMain.handle('publish:repos', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {
+  ipcMain.handle('publish:repos', async (_event, _provider: string, _origin: string, token: string) => {
     const listed = await listRemoteRepos({
-      provider,
-      origin: provider === 'github' ? 'https://github.com' : String(origin || ''),
+      origin: 'https://github.com',
       token: String(token || ''),
       fetchImpl: apiFetch,
     });
     if (!listed.ok) return fail('PUBLISH_REPOS', listed.message);
     return ok(listed.repos);
   });
-  ipcMain.handle('publish:repoFacts', async (_event, provider: 'github' | 'gitea', remoteUrl: string, token: string) => {
+  ipcMain.handle('publish:repoFacts', async (_event, _provider: string, remoteUrl: string, token: string) => {
     const facts = await readRemoteFacts({
-      provider,
       remoteUrl: String(remoteUrl || ''),
       token: String(token || ''),
       fetchImpl: apiFetch,
@@ -1431,32 +1347,13 @@ app.whenReady().then(() => {
   });
   ipcMain.handle(
     'publish:createRepo',
-    async (_event, provider: 'github' | 'gitea', origin: string, token: string, name: string) => {
+    async (_event, _provider: string, _origin: string, token: string, name: string) => {
       const created = await createRemoteRepo({
-        provider,
-        origin: provider === 'github' ? 'https://github.com' : String(origin || ''),
         token: String(token || ''),
         name: String(name || ''),
         fetchImpl: apiFetch,
       });
       return ok(created);
-    },
-  );
-  ipcMain.handle('publish:rememberedHost', (_event, origin: string) => ok(readPagesHost(String(origin || '').replace(/\/$/, ''))));
-  ipcMain.handle(
-    'publish:probeHost',
-    async (_event, origin: string, host: string, owner: string, repo: string) => {
-      const probed = await probeStaticHost(String(host || ''), String(owner || ''), String(repo || ''), apiFetch);
-      if (!probed.ok) return fail('PUBLISH_HOST', probed.message);
-      const root = String(origin || '').replace(/\/$/, '');
-      if (root) {
-        try {
-          writePagesHost(root, String(host || '').trim().replace(/\/$/, ''));
-        } catch {
-          // 记不住也不打断这次准备，下次还可以再填。
-        }
-      }
-      return ok(null);
     },
   );
   ipcMain.handle(
@@ -1507,23 +1404,15 @@ app.whenReady().then(() => {
       let actionsState: DeployTarget['actionsState'] = 'unknown';
       let actionsDetail = '';
       try {
-        if (input.provider === 'github') {
-          writeGithubWorkflow(siteDir, branch);
-          noteSiteFile('.github/workflows/xiao-deploy.yml');
-        } else {
-          writeDeployWorkflow(siteDir, branch);
-          noteSiteFile('.gitea/workflows/xiao-deploy.yml');
-        }
+        writeGithubWorkflow(siteDir, branch);
+        noteSiteFile('.github/workflows/xiao-deploy.yml');
       } catch {
         workflow = 'manual';
         error = '构建配置写不进站点目录。可以在网页上新建这份文件。';
         next = '写好后点「我已完成，重新检查」。';
-        link =
-          input.provider === 'github'
-            ? `https://github.com/${input.owner}/${input.repo}/new/${branch}?filename=.github/workflows/xiao-deploy.yml`
-            : `${String(input.origin || '').replace(/\/$/, '')}/${input.owner}/${input.repo}`;
+        link = `https://github.com/${input.owner}/${input.repo}/new/${branch}?filename=.github/workflows/xiao-deploy.yml`;
       }
-      if (workflow === 'ok' && input.provider === 'github') {
+      if (workflow === 'ok') {
         const pages = await enableGithubPages(input.owner, input.repo, input.token, apiFetch);
         if (pages.state === 'ok') {
           actionsState = 'ready';
@@ -1536,29 +1425,11 @@ app.whenReady().then(() => {
           link = pages.link;
         }
       }
-      if (workflow === 'ok' && input.provider === 'gitea') {
-        const actions = await enableGiteaActions(input.remoteUrl, input.token, apiFetch);
-        actionsState = actions.actionsState;
-        actionsDetail = actions.detail;
-        if (actions.state === 'manual') {
-          hosting = 'manual';
-          error = actions.detail;
-          next = '做完后点「我已完成，重新检查」。';
-          link = actions.link;
-        } else if (actions.state === 'warn') {
-          runner = 'warn';
-          error = actions.detail;
-          next = '准备好构建机后点「我已完成，重新检查」。';
-          link = actions.link;
-        } else {
-          runner = 'ok';
-        }
-      }
-      if (workflow === 'manual' || hosting === 'manual' || runner === 'warn') {
+      if (workflow === 'manual' || hosting === 'manual') {
         return ok({ workflow, hosting, runner, error, next, link, target: null });
       }
       const target: DeployTarget = {
-        provider: input.provider,
+        provider: 'github',
         remoteUrl: input.remoteUrl.replace(/\/$/, ''),
         branch,
         ...(input.login ? { login: input.login } : {}),

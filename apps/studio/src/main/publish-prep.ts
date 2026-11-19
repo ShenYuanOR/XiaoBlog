@@ -1,7 +1,4 @@
 import {
-  giteaNewRepoLink,
-  giteaPagesUrl,
-  giteaTokenLink,
   githubNewRepoLink,
   githubPagesUrl,
   githubTokenLink,
@@ -9,13 +6,13 @@ import {
   type TokenReport,
 } from './publish-token.ts';
 
-export type PrepStep = 'platform' | 'token' | 'repo' | 'site' | 'build' | 'publish';
+export type PrepStep = 'token' | 'repo' | 'site' | 'build' | 'publish';
 export type PrepFlag = 'idle' | 'ok' | 'manual' | 'warn';
 
 export interface PrepDraft {
   step: PrepStep;
   done: PrepStep[];
-  provider: '' | 'github' | 'gitea';
+  provider: 'github';
   origin: string;
   token: string;
   report: TokenReport | null;
@@ -38,10 +35,9 @@ export interface PrepDraft {
   manualLink: string;
 }
 
-export const PREP_ORDER: PrepStep[] = ['platform', 'token', 'repo', 'site', 'build', 'publish'];
+export const PREP_ORDER: PrepStep[] = ['token', 'repo', 'site', 'build', 'publish'];
 
 const STEP_TITLES: Record<PrepStep, string> = {
-  platform: '平台',
   token: '令牌验证',
   repo: '仓库',
   site: '网站地址',
@@ -61,10 +57,10 @@ export function stepPhase(current: PrepStep, step: PrepStep, done: PrepStep[]): 
 
 export function blankPrep(): PrepDraft {
   return {
-    step: 'platform',
+    step: 'token',
     done: [],
-    provider: '',
-    origin: '',
+    provider: 'github',
+    origin: 'https://github.com',
     token: '',
     report: null,
     remoteUrl: '',
@@ -100,13 +96,12 @@ function advance(draft: PrepDraft, step: PrepStep): PrepDraft {
   return clearHint({ ...draft, step, done });
 }
 
-export function tokenPage(draft: PrepDraft): string {
-  return draft.provider === 'gitea' ? giteaTokenLink(draft.origin) : githubTokenLink();
+export function tokenPage(_draft: PrepDraft): string {
+  return githubTokenLink();
 }
 
 export function newRepoPage(draft: PrepDraft, name = ''): string {
-  if (draft.provider === 'gitea') return giteaNewRepoLink(draft.origin);
-  return githubNewRepoLink(draft.report?.account || '', name);
+  return githubNewRepoLink(draft.report?.account || draft.owner, name);
 }
 
 export function canCreateRepo(report: TokenReport | null): boolean {
@@ -115,21 +110,6 @@ export function canCreateRepo(report: TokenReport | null): boolean {
 
 export function pushBlocks(report: TokenReport): boolean {
   return report.capabilities.some((item) => item.key === 'push' && item.state === 'missing');
-}
-
-/** 换平台会清掉后面的选择，已粘贴的令牌留下。失败时不清。 */
-export function choosePlatform(draft: PrepDraft, provider: 'github' | 'gitea', origin = ''): PrepDraft {
-  const nextOrigin = provider === 'github' ? 'https://github.com' : origin.trim().replace(/\/$/, '');
-  if (provider === 'gitea' && !/^https?:\/\//i.test(nextOrigin)) {
-    return stay(
-      { ...draft, provider: 'gitea', origin: origin.trim() },
-      '先填 Gitea 实例地址。',
-      '例如 http://192.168.1.10:3000，填好后点继续。',
-    );
-  }
-  const changed = draft.provider !== provider || (provider === 'gitea' && draft.origin !== nextOrigin);
-  const base = changed ? { ...blankPrep(), token: draft.token } : draft;
-  return advance({ ...base, provider, origin: nextOrigin }, 'token');
 }
 
 /** 验证结果先留在这一步，让人看完能力再继续。失效和不能推送则停住。 */
@@ -185,13 +165,9 @@ export function applyRepo(draft: PrepDraft, info: RepoPick): PrepDraft {
   return advance(next, 'site');
 }
 
-export function suggestSite(draft: PrepDraft, staticHost = ''): { siteUrl: string; base: string; needHost: boolean } {
-  if (draft.provider === 'github' && draft.owner && draft.repo) {
-    return { ...githubPagesUrl(draft.owner, draft.repo), needHost: false };
-  }
-  const host = (staticHost || draft.staticHost).trim();
-  if (!host || !draft.owner || !draft.repo) return { siteUrl: '', base: '', needHost: true };
-  return { ...giteaPagesUrl(host, draft.owner, draft.repo), needHost: false };
+export function suggestSite(draft: PrepDraft): { siteUrl: string; base: string; needHost: boolean } {
+  if (draft.owner && draft.repo) return { ...githubPagesUrl(draft.owner, draft.repo), needHost: false };
+  return { siteUrl: '', base: '', needHost: true };
 }
 
 export function applySite(draft: PrepDraft, input: { siteUrl: string; base: string; staticHost?: string }): PrepDraft {
@@ -202,7 +178,7 @@ export function applySite(draft: PrepDraft, input: { siteUrl: string; base: stri
     staticHost: (input.staticHost ?? draft.staticHost).trim(),
   };
   if (!input.siteUrl.trim() || !input.base.trim()) {
-    return stay(next, '还没有网站地址。', draft.provider === 'gitea' ? '先填静态服务地址并探测。' : '先选好仓库，地址会自动算出来。');
+    return stay(next, '还没有网站地址。', '先选好仓库，地址会自动算出来。');
   }
   return advance(next, 'build');
 }
@@ -273,7 +249,6 @@ export function tokenResultLine(report: TokenReport | null): string {
 }
 
 export function stepLine(draft: PrepDraft, step: PrepStep): string {
-  if (step === 'platform') return draft.provider === 'github' ? '平台：GitHub' : `平台：Gitea ${draft.origin}`;
   if (step === 'token') return tokenResultLine(draft.report);
   if (step === 'repo') return `仓库：${draft.owner}/${draft.repo}`;
   if (step === 'site') return `网站：${draft.siteUrl}`;

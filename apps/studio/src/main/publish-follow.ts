@@ -1,4 +1,4 @@
-import { parseGiteaRemote } from './publish-workflow.ts';
+import { parseGitRemote } from './publish-workflow.ts';
 
 export interface FollowUpdate {
   phase: 'build' | 'live';
@@ -53,61 +53,6 @@ function phaseOf(run: RunRow): 'queued' | 'running' | 'success' | 'failure' {
   return 'queued';
 }
 
-const stampOnly = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*$/;
-
-function stripLogLine(line: string): string {
-  const plain = line.replace(/\u001b\[[0-9;]*m/g, '');
-  const stamped = plain.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)([\s\S]*)$/);
-  if (!stamped) return plain;
-  const rest = stamped[2] ?? '';
-  return rest.startsWith(' ') ? rest.slice(1) : rest;
-}
-
-/**
- * 真实构建日志只有第一步带「⭐ Run Main」。
- * 步骤名取「❌  Failure - Main <步骤名>」；正文从它前面最后一个 ::group::Run 的 ::endgroup:: 之后，到失败行为止。
- */
-export function extractFailureLog(raw: string): string {
-  const lines = raw.split(/\r?\n/).map(stripLogLine);
-  let failAt = -1;
-  for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index]?.includes('Failure - Main')) failAt = index;
-  }
-  const stepName =
-    failAt >= 0 ? (lines[failAt]?.split('Failure - Main').pop() ?? '').trim() : '';
-  let groupAt = -1;
-  const limit = failAt >= 0 ? failAt : lines.length;
-  for (let index = 0; index < limit; index += 1) {
-    if (lines[index]?.includes('::group::Run')) groupAt = index;
-  }
-  let bodyStart = 0;
-  if (groupAt >= 0) {
-    let endGroup = -1;
-    for (let index = groupAt + 1; index < limit; index += 1) {
-      if (lines[index]?.includes('::endgroup::')) {
-        endGroup = index;
-        break;
-      }
-    }
-    bodyStart = endGroup >= 0 ? endGroup + 1 : groupAt + 1;
-  }
-  const kept: string[] = [];
-  let skippingStack = false;
-  for (const line of lines.slice(bodyStart, failAt >= 0 ? failAt : lines.length)) {
-    const text = line.trim();
-    if (!text || stampOnly.test(text)) continue;
-    if (text.includes('[ELIFECYCLE]')) continue;
-    if (/stack trace:?$/i.test(text)) {
-      skippingStack = true;
-      continue;
-    }
-    if (skippingStack && /^at\s/i.test(text)) continue;
-    skippingStack = false;
-    kept.push(line.replace(/\/workspace\/[^/]+\/[^/]+\/site\//g, '').trimEnd());
-  }
-  return [`${stepName || '构建'}失败`, ...kept].join('\n');
-}
-
 /**
  * GitHub Actions 文本日志。步骤名取最后一个 ##[group]Run，正文到 ##[error] 为止。
  * 目前用的是按公开格式写的合成样例，还没有真实失败日志。
@@ -158,20 +103,14 @@ function githubHost(origin: string): boolean {
 }
 
 async function failureLog(
-  origin: string,
   owner: string,
   repo: string,
   runId: number,
   token: string,
   fetchImpl: typeof fetch,
-  github: boolean,
 ): Promise<string> {
-  const headers = github
-    ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
-    : { Authorization: `token ${token}` };
-  const jobsUrl = github
-    ? `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs`
-    : `${origin}/api/v1/repos/${owner}/${repo}/actions/runs/${runId}/jobs`;
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' };
+  const jobsUrl = `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs`;
   try {
     const jobs = await fetchImpl(jobsUrl, { headers });
     if (!jobs.ok) return '';
@@ -182,14 +121,11 @@ async function failureLog(
       (body.jobs ?? []).find((job) => job.conclusion === 'failure' || job.status === 'failure') ?? body.jobs?.[0];
     if (!failed?.id) return '';
     const failedStep = (failed.steps ?? []).find((step) => step.conclusion === 'failure')?.name ?? '';
-    const logUrl = github
-      ? `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`
-      : `${origin}/api/v1/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`;
+    const logUrl = `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`;
     const log = await fetchImpl(logUrl, { headers });
     if (!log.ok) return failedStep ? `${failedStep}失败` : '';
     const text = await log.text();
     if (text.startsWith('PK')) return failedStep ? `${failedStep}失败\n日志是压缩包，打开构建页面看完整记录。` : '';
-    if (!github) return extractFailureLog(text);
     const extracted = extractGithubFailureLog(text);
     if (!failedStep) return extracted;
     const logBody = extracted.replace(/^[^\n]*失败\n?/, '');
@@ -210,35 +146,21 @@ export async function watchBuild(options: {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
 }): Promise<FollowUpdate> {
-  const remote = parseGiteaRemote(options.remoteUrl);
-  const github = remote ? githubHost(remote.origin) : false;
-  const page = remote
-    ? github
-      ? `https://github.com/${remote.owner}/${remote.repo}/actions`
-      : `${remote.origin}/${remote.owner}/${remote.repo}/actions`
-    : '';
-  if (!github && (options.actionsState === 'disabled' || options.actionsState === 'no-runner')) {
-    return { phase: 'build', state: 'fail', detail: options.actionsDetail || '没有可用的构建机。', url: page };
+  const remote = parseGitRemote(options.remoteUrl);
+  const page = remote ? `https://github.com/${remote.owner}/${remote.repo}/actions` : '';
+  if (!remote || !githubHost(remote.origin)) {
+    return { phase: 'build', state: 'fail', detail: '只发布到 GitHub。', url: page };
   }
-  if (!remote) return { phase: 'build', state: 'fail', detail: '仓库地址解析不了，没法查构建。', url: page };
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const headers = github
-    ? { Authorization: `Bearer ${options.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
-    : { Authorization: `token ${options.token}` };
-  const listUrl = github
-    ? `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`
-    : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`;
+  const headers = { Authorization: `Bearer ${options.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' };
+  const listUrl = `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`;
   const started = now();
   let queuedAt: number | null = null;
   let runningAt: number | null = null;
-  const missing = github
-    ? 'GitHub 没有为这次提交启动构建。确认 Actions 已开启，并且构建配置已经在默认分支上。'
-    : 'Gitea 没有为这次提交启动构建：构建配置可能写错（Gitea 不报错），或已被更新的提交取代';
-  const noRunner = github
-    ? '构建还在排队，GitHub 暂时没有分到机器。'
-    : '没有构建机接这次任务（需要带 xiao 标签的在线构建机）。';
+  const missing = 'GitHub 没有为这次提交启动构建。确认 Actions 已开启，并且构建配置已经在默认分支上。';
+  const noRunner = '构建还在排队，GitHub 暂时没有分到机器。';
   while (now() - started <= 15 * 60 * 1000) {
     let response: Response;
     try {
@@ -255,9 +177,7 @@ export async function watchBuild(options: {
       return {
         phase: 'build',
         state: 'fail',
-        detail: github
-          ? 'GitHub 没有这次提交的构建记录。确认仓库已开启 Actions。'
-          : 'Gitea 没有这次提交的构建接口。确认仓库已开启 Actions。',
+        detail: 'GitHub 没有这次提交的构建记录。确认仓库已开启 Actions。',
         url: page,
       };
     }
@@ -280,7 +200,7 @@ export async function watchBuild(options: {
         }
         if (kind === 'failure') {
           const log = run.id
-            ? await failureLog(remote.origin, remote.owner, remote.repo, run.id, options.token, fetchImpl, github)
+            ? await failureLog(remote.owner, remote.repo, run.id, options.token, fetchImpl)
             : '';
           return {
             phase: 'build',
