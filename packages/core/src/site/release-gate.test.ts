@@ -12,10 +12,18 @@ import {
   historyStepDetail,
   rememberDeploy,
   renewalDue,
+  changeSummary,
   summarizeChanges,
 } from '../../../../apps/studio/src/main/release-gate.ts';
 
 describe('发布门禁', () => {
+  it('空仓库首次发布不把整个站点说成几处设置变化', () => {
+    expect(changeSummary({ remoteEmpty: true, postCount: 3, parts: ['站点设置有变化', '还有其他文件变化'] })).toBe(
+      '首次发布：3 篇文章和整个站点',
+    );
+    expect(changeSummary({ remoteEmpty: false, postCount: 3, parts: ['修改 1 篇'] })).toBe('修改 1 篇');
+  });
+
   it('改动带状态，文章按目录归并，设置样式模板归成一组', () => {
     const files = parseStatus(
       [

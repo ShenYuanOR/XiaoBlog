@@ -239,6 +239,7 @@ export interface XiaoApi {
         siteUrl?: string;
         actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
         actionsDetail?: string;
+        remoteEmpty?: boolean;
       } | null>
     >;
     connect: (
@@ -257,6 +258,7 @@ export interface XiaoApi {
         siteUrl?: string;
         actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
         actionsDetail?: string;
+        remoteEmpty?: boolean;
         persisted?: boolean;
       }>
     >;
@@ -478,6 +480,7 @@ export interface XiaoApi {
         repo: string;
         siteUrl: string;
         base: string;
+        empty?: boolean;
       },
     ) => Promise<
       IpcResult<{
@@ -495,6 +498,7 @@ export interface XiaoApi {
           siteUrl?: string;
           actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
           actionsDetail?: string;
+        remoteEmpty?: boolean;
           persisted?: boolean;
         } | null;
       }>

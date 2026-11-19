@@ -21,7 +21,7 @@ import {
   tokenPage,
 } from '../../../main/publish-prep.ts';
 import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
-import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
+import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { usePublish } from '../stores/publish.ts';
@@ -86,6 +86,7 @@ interface DeployTarget {
   siteUrl?: string;
   actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
   actionsDetail?: string;
+  remoteEmpty?: boolean;
   persisted?: boolean;
 }
 
@@ -129,6 +130,7 @@ const checks = ref<PreflightItem[]>([]);
 const checking = ref(false);
 const checkedAt = ref(0);
 const history = ref<DeployRecord[]>([]);
+const sitePostCount = ref(0);
 const historyPersisted = ref(true);
 const target = ref<DeployTarget | null>(null);
 const tokenReport = ref<{
@@ -309,7 +311,11 @@ const summaryLine = computed(() => {
   if (changes.value.settings.length) parts.push('站点设置有变化');
   if (changes.value.pages.length) parts.push('页面有变化');
   if (changes.value.other.length) parts.push('还有其他文件变化');
-  return parts.length ? parts.join('、') : '没有待发布的改动';
+  return changeSummary({
+    remoteEmpty: Boolean(target.value?.remoteEmpty),
+    postCount: sitePostCount.value,
+    parts,
+  });
 });
 
 const fileLines = computed(() => {
@@ -639,6 +645,7 @@ async function runPrepare(): Promise<void> {
       repo: prep.value.repo,
       siteUrl: prep.value.siteUrl,
       base: prep.value.base,
+      empty: prep.value.empty === true,
     });
     if (!result.ok) {
       prep.value = applyBuild(prep.value, {
@@ -846,6 +853,8 @@ async function loadAll(check = true): Promise<void> {
     history.value = historyResult.ok ? historyResult.data.rows : [];
     historyPersisted.value = historyResult.ok ? historyResult.data.persisted : true;
     target.value = targetResult.ok ? targetResult.data : null;
+    const listed = await window.xiao.content.list(siteDir);
+    sitePostCount.value = listed.ok ? listed.data.length : changes.value.posts.length;
     await publish.hydrate(siteDir);
     const currentJob = publish.jobOf(siteDir);
     if (currentJob) applyJob(currentJob);
@@ -884,6 +893,9 @@ watch(
   (job) => {
     const wasRunning = phase.value === 'running';
     applyJob(job);
+    if (wasRunning && job?.status === 'ok' && target.value?.remoteEmpty) {
+      target.value = { ...target.value, remoteEmpty: false };
+    }
     if (wasRunning && job && job.status !== 'running' && session.siteDir) {
       void refreshChanges();
       void window.xiao.publish.history(session.siteDir).then((historyResult) => {

@@ -135,6 +135,12 @@ export function summarizeChanges(files: FileChange[], titleOf: (slug: string) =>
   return summary;
 }
 
+/** 远端还是空的时候，本地零碎改动不能代表这次会推上去的内容。 */
+export function changeSummary(input: { remoteEmpty: boolean; postCount: number; parts: string[] }): string {
+  if (input.remoteEmpty) return `首次发布：${input.postCount} 篇文章和整个站点`;
+  return input.parts.length ? input.parts.join('、') : '没有待发布的改动';
+}
+
 export function blockedBy(rows: { level: string }[]): boolean {
   return rows.some((row) => row.level === 'error');
 }

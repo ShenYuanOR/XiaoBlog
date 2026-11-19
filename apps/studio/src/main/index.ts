@@ -1315,6 +1315,14 @@ app.whenReady().then(() => {
     },
     record: (siteDir, row) => {
       writeDeployHistory(siteDir, rememberDeploy(readDeployHistory(siteDir), row));
+      if (row.result === '已上线') {
+        const all = deployStore().read();
+        const saved = all[siteDir];
+        if (saved?.remoteEmpty) {
+          all[siteDir] = { ...saved, remoteEmpty: false };
+          deployStore().write(all);
+        }
+      }
       const current = checkCache.get(siteDir);
       if (!current) return;
       let porcelain = '';
@@ -1464,6 +1472,7 @@ app.whenReady().then(() => {
         repo: string;
         siteUrl: string;
         base: string;
+        empty?: boolean;
       },
     ) => {
       if (!siteDir || !input?.token || !input.remoteUrl || !input.siteUrl) {
@@ -1556,6 +1565,7 @@ app.whenReady().then(() => {
         siteUrl: input.siteUrl,
         actionsState,
         actionsDetail,
+        remoteEmpty: input.empty === true,
       };
       secretStore().save(siteDir, input.token, '');
       const all = deployStore().read();

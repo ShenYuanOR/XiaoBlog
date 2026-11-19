@@ -110,6 +110,7 @@ const api = {
         repo: string;
         siteUrl: string;
         base: string;
+        empty?: boolean;
       },
     ) => ipcRenderer.invoke('publish:prepare', siteDir, input),
     start: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:start', siteDir, force),

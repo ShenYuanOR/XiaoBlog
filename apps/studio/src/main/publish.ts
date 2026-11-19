@@ -34,6 +34,8 @@ export interface DeployTarget {
   /** 连接时探测到的 Actions / 构建机状态。 */
   actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
   actionsDetail?: string;
+  /** 连接时远端还没有提交。首次发布要说明推上去的是整个站点。 */
+  remoteEmpty?: boolean;
 }
 
 export interface PushSiteInput {
