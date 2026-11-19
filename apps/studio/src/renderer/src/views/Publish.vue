@@ -639,7 +639,8 @@ watch(
             <p v-if="checking" class="dim">正在构建并检查…</p>
             <p v-else-if="checksClear" class="pass-line">
               <UiIcon :path="icons.ok" :size="16" class="good" />
-              检查通过 {{ checks.length }} 项<span v-if="checkedLabel">，{{ checkedLabel }}</span>
+              <span>检查通过 {{ checks.length }} 项</span>
+              <span v-if="checkedLabel" class="dim">{{ checkedLabel }}</span>
             </p>
             <template v-else>
               <ul class="checks">
@@ -962,6 +963,7 @@ watch(
   align-items: center;
   gap: var(--ui-s2);
   margin: 0;
+  font-weight: 400;
 }
 
 .link {
