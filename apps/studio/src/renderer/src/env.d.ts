@@ -196,6 +196,7 @@ export interface XiaoApi {
         remoteUrl: string;
         branch: string;
         login?: string;
+        siteUrl?: string;
       } | null>
     >;
     connect: (
@@ -204,13 +205,39 @@ export interface XiaoApi {
       remoteUrl: string,
       login: string,
       token: string,
+      siteUrl?: string,
     ) => Promise<
       IpcResult<{
         provider: 'gitea' | 'github';
         remoteUrl: string;
         branch: string;
         login?: string;
+        siteUrl?: string;
         persisted?: boolean;
+      }>
+    >;
+    setSiteUrl: (
+      siteDir: string,
+      siteUrl: string,
+    ) => Promise<
+      IpcResult<{
+        provider: 'gitea' | 'github';
+        remoteUrl: string;
+        branch: string;
+        login?: string;
+        siteUrl?: string;
+      }>
+    >;
+    preflight: (siteDir: string) => Promise<
+      IpcResult<{
+        blocked: boolean;
+        items: {
+          key: 'url' | 'workflow' | 'build' | 'seo';
+          ok: boolean;
+          label: string;
+          detail: string;
+          action: '' | 'seo' | 'settings' | 'apply-url';
+        }[];
       }>
     >;
     push: (

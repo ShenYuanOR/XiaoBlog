@@ -28,6 +28,8 @@ export interface DeployTarget {
   branch: string;
   /** 远端登录名（Gitea 用登录名或邮箱；GitHub 可留空走 x-access-token）。 */
   login?: string;
+  /** 发布后读者打开的站点网址。Gitea 由用户填写。 */
+  siteUrl?: string;
 }
 
 export interface PushSiteInput {

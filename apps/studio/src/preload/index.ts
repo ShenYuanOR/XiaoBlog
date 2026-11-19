@@ -74,7 +74,11 @@ const api = {
       remoteUrl: string,
       login: string,
       token: string,
-    ) => ipcRenderer.invoke('publish:connect', siteDir, provider, remoteUrl, login, token),
+      siteUrl?: string,
+    ) => ipcRenderer.invoke('publish:connect', siteDir, provider, remoteUrl, login, token, siteUrl),
+    setSiteUrl: (siteDir: string, siteUrl: string) =>
+      ipcRenderer.invoke('publish:setSiteUrl', siteDir, siteUrl),
+    preflight: (siteDir: string) => ipcRenderer.invoke('publish:preflight', siteDir),
     push: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:push', siteDir, force),
     repair: (siteDir: string) => ipcRenderer.invoke('publish:repair', siteDir),
     disconnect: (siteDir: string) => ipcRenderer.invoke('publish:disconnect', siteDir),

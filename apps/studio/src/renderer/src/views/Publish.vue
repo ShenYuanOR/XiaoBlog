@@ -28,10 +28,12 @@ interface ChangeSummary {
   other: FileChange[];
 }
 
-interface SeoRow {
-  level: string;
-  rule: string;
+interface PreflightItem {
+  key: 'url' | 'workflow' | 'build' | 'seo';
+  ok: boolean;
+  label: string;
   detail: string;
+  action: '' | 'seo' | 'settings' | 'apply-url';
 }
 
 interface DeployRecord {
@@ -44,6 +46,7 @@ interface DeployTarget {
   remoteUrl: string;
   branch: string;
   login?: string;
+  siteUrl?: string;
   persisted?: boolean;
 }
 
@@ -66,19 +69,6 @@ interface StepRow {
   ms: number;
 }
 
-const RULE_TEXT: Record<string, string> = {
-  'site-url-missing': '还没填站点地址',
-  'site-url-placeholder': '站点地址还是占位，不能发布',
-  'slug-invalid': '文章地址不合法',
-  'slug-duplicate': '文章地址重复',
-  'title-too-long': '标题太长',
-  'description-missing': '没写摘要',
-  'description-too-short': '摘要太短',
-  'description-too-long': '摘要太长',
-  'title-duplicate': '标题重复',
-  'og-image-missing': '没有默认分享图',
-};
-
 const session = useSession();
 
 const emptyChanges = (): ChangeSummary => ({
@@ -92,13 +82,14 @@ const emptyChanges = (): ChangeSummary => ({
 const loading = ref(false);
 const errorText = ref('');
 const changes = ref<ChangeSummary>(emptyChanges());
-const seoRows = ref<SeoRow[]>([]);
-const seoFailed = ref(false);
+const checks = ref<PreflightItem[]>([]);
+const checking = ref(false);
 const history = ref<DeployRecord[]>([]);
 const target = ref<DeployTarget | null>(null);
 const giteaUrl = ref('');
 const giteaLogin = ref('');
 const giteaToken = ref('');
+const giteaSiteUrl = ref('');
 const connecting = ref(false);
 const pushing = ref(false);
 const pushError = ref('');
@@ -115,8 +106,7 @@ const editedPosts = computed(() =>
   changes.value.posts.filter((post) => post.status === 'modified' || post.status === 'renamed'),
 );
 const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
-const seoErrors = computed(() => seoRows.value.filter((row) => row.level === 'error'));
-const blocked = computed(() => seoFailed.value || seoErrors.value.length > 0);
+const blocked = computed(() => checks.value.some((item) => !item.ok));
 const historyRows = computed(() => [...history.value].slice(-20).reverse());
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 
@@ -150,11 +140,6 @@ const fileLines = computed(() => {
   }
   return lines;
 });
-
-function reasonOf(row: SeoRow): string {
-  const name = RULE_TEXT[row.rule] ?? '需要处理';
-  return row.detail ? `${name}：${row.detail}` : name;
-}
 
 function formatTime(at: string): string {
   const date = new Date(at);
@@ -208,6 +193,7 @@ async function connectGitea(): Promise<void> {
       url,
       giteaLogin.value.trim(),
       giteaToken.value.trim(),
+      giteaSiteUrl.value.trim(),
     );
     if (!result.ok) {
       notify(`连接失败：${result.message}`, 'error', 'publish-connect');
@@ -267,7 +253,7 @@ async function startPublish(force = false): Promise<void> {
       key: 'check',
       label: '检查',
       state: 'fail',
-      detail: seoFailed.value ? '检查没有跑完' : reasonOf(seoErrors.value[0] ?? { level: 'error', rule: '', detail: '' }),
+      detail: checks.value.find((item) => !item.ok)?.detail || '还有项没通过',
       ms: 0,
     };
     steps.value = next;
@@ -334,12 +320,64 @@ async function confirmDisconnect(): Promise<void> {
   notify('已断开远端连接，并删除这个站点在本机保存的令牌。', 'info', 'publish-connect');
 }
 
+async function runPreflight(): Promise<void> {
+  if (!session.siteDir) return;
+  checking.value = true;
+  try {
+    const result = await window.xiao.publish.preflight(session.siteDir);
+    if (!result.ok) {
+      checks.value = [
+        { key: 'build', ok: false, label: '站点能构建', detail: result.message, action: 'seo' },
+      ];
+      return;
+    }
+    checks.value = result.data.items;
+  } finally {
+    checking.value = false;
+  }
+}
+
+async function applyTargetUrl(): Promise<void> {
+  if (!session.siteDir || !target.value?.siteUrl) {
+    notify('先在发布目标里填站点网址。', 'error', 'publish-url');
+    return;
+  }
+  let base = '/';
+  try {
+    const path = new URL(target.value.siteUrl).pathname;
+    base = !path || path === '/' ? '/' : path.endsWith('/') ? path : `${path}/`;
+  } catch {
+    notify('站点网址不是合法地址。', 'error', 'publish-url');
+    return;
+  }
+  const result = await window.xiao.settings.patch(session.siteDir, {
+    set: { 'site.url': target.value.siteUrl, 'site.base': base },
+  });
+  if (!result.ok) {
+    notify(`没有改成目标网址：${result.message}`, 'error', 'publish-url');
+    return;
+  }
+  notify('站点地址已改成发布目标的网址。', 'info', 'publish-url');
+  await runPreflight();
+}
+
+async function saveSiteUrl(): Promise<void> {
+  if (!session.siteDir) return;
+  const result = await window.xiao.publish.setSiteUrl(session.siteDir, giteaSiteUrl.value.trim());
+  if (!result.ok) {
+    notify(result.message, 'error', 'publish-url');
+    return;
+  }
+  target.value = { ...target.value, ...result.data };
+  notify('站点网址已保存。', 'info', 'publish-url');
+  await runPreflight();
+}
+
 async function loadAll(): Promise<void> {
   const siteDir = session.siteDir;
   if (!siteDir) {
     changes.value = emptyChanges();
-    seoRows.value = [];
-    seoFailed.value = false;
+    checks.value = [];
     history.value = [];
     target.value = null;
     return;
@@ -347,26 +385,21 @@ async function loadAll(): Promise<void> {
   loading.value = true;
   errorText.value = '';
   try {
-    const [changesResult, seoResult, historyResult, targetResult] = await Promise.all([
+    const [changesResult, historyResult, targetResult] = await Promise.all([
       window.xiao.publish.changes(siteDir),
-      window.xiao.seo.check(siteDir),
       window.xiao.publish.history(siteDir),
       window.xiao.publish.target(siteDir),
     ]);
     changes.value = changesResult.ok ? changesResult.data : emptyChanges();
-    if (seoResult.ok) {
-      seoRows.value = seoResult.data;
-      seoFailed.value = false;
-    } else {
-      seoRows.value = [];
-      seoFailed.value = true;
-      errorText.value = '发布前检查没有跑完。可以到 SEO 页再看一次。';
-    }
     history.value = historyResult.ok ? historyResult.data : [];
     target.value = targetResult.ok ? targetResult.data : null;
     if (target.value) {
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
       if (!giteaLogin.value && target.value.login) giteaLogin.value = target.value.login;
+      if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
+      await runPreflight();
+    } else {
+      checks.value = [];
     }
   } catch (error) {
     errorText.value = `读取发布信息失败：${error instanceof Error ? error.message : String(error)}。点「刷新」重试。`;
@@ -443,6 +476,9 @@ watch(
           <UiField label="访问令牌">
             <UiInput v-model="giteaToken" type="password" autocomplete="off" placeholder="粘贴令牌" />
           </UiField>
+          <UiField label="站点网址">
+            <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
+          </UiField>
         </div>
         <div class="actions">
           <UiButton variant="primary" :icon-left="icons.shield" :loading="connecting" @click="connectGitea">
@@ -467,18 +503,19 @@ watch(
 
         <section class="block">
           <h2>发布前检查</h2>
-          <ul class="checks">
-            <li>
-              <UiIcon :path="blocked ? icons.alert : icons.ok" :size="16" :class="blocked ? 'bad' : 'good'" />
+          <p v-if="checking" class="dim">正在构建并检查…</p>
+          <ul v-else class="checks">
+            <li v-for="item in checks" :key="item.key">
+              <UiIcon :path="item.ok ? icons.ok : icons.alert" :size="16" :class="item.ok ? 'good' : 'bad'" />
               <div>
-                <p>{{ blocked ? '还不能发布' : '可以发布' }}</p>
-                <p v-if="seoFailed" class="dim">检查没有跑完。</p>
-                <p v-for="row in seoErrors.slice(0, 5)" :key="`${row.rule}-${row.detail}`" class="dim">
-                  {{ reasonOf(row) }}
-                </p>
-                <p v-if="seoErrors.length > 5" class="dim">还有 {{ seoErrors.length - 5 }} 条。</p>
+                <p>{{ item.label }}</p>
+                <p class="dim">{{ item.detail }}</p>
               </div>
-              <UiButton v-if="blocked" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
+              <UiButton v-if="item.action === 'seo'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
+              <UiButton v-else-if="item.action === 'settings'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
+              <UiButton v-else-if="item.action === 'apply-url'" size="sm" variant="ghost" @click="applyTargetUrl">
+                一键改成目标网址
+              </UiButton>
             </li>
           </ul>
         </section>
@@ -510,6 +547,9 @@ watch(
         </ol>
         <div class="actions">
           <UiButton v-if="needsForce" size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
+          <UiButton v-if="checks.some((item) => !item.ok && item.action === 'apply-url')" size="sm" variant="ghost" @click="applyTargetUrl">
+            一键改成目标网址
+          </UiButton>
           <UiButton v-if="steps[0]?.state === 'fail'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
           <UiButton v-if="steps[1]?.state === 'fail'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
           <UiButton size="sm" variant="ghost" :disabled="pushing" @click="startPublish(false)">重试</UiButton>
@@ -522,7 +562,11 @@ watch(
         <p v-if="target" class="dim">
           {{ target.remoteUrl }} · 分支 {{ target.branch }}。令牌只存在本机。
         </p>
+        <UiField v-if="target" label="站点网址">
+          <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
+        </UiField>
         <div v-if="target" class="actions">
+          <UiButton size="sm" @click="saveSiteUrl">保存网址</UiButton>
           <UiButton size="sm" variant="danger" @click="disconnectOpen = true">断开连接</UiButton>
         </div>
       </details>

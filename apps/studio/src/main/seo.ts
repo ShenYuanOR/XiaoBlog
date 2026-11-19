@@ -45,7 +45,7 @@ export const SEO_RULE_LABELS: Record<string, string> = {
   'post-category-missing': '文章没有分类',
 };
 
-function placeholderUrl(url: string): boolean {
+export function placeholderUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
     return (

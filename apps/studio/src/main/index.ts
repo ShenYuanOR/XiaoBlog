@@ -96,6 +96,7 @@ import { listSections, saveSection, usageCounts } from './sections.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
+import { buildPreflight } from './publish-preflight.ts';
 import { rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -700,6 +701,7 @@ app.whenReady().then(() => {
       remoteUrl: string,
       login: string,
       token: string,
+      siteUrl?: string,
     ) => {
       const url = remoteUrl.trim().replace(/\/$/, '');
       if (!/^https?:\/\//.test(url)) {
@@ -714,6 +716,7 @@ app.whenReady().then(() => {
         remoteUrl: url,
         branch,
         ...(login.trim() ? { login: login.trim() } : {}),
+        ...(siteUrl?.trim() ? { siteUrl: siteUrl.trim() } : {}),
       };
       secretStore().save(siteDir, token.trim(), '');
       const all = deployStore().read();
@@ -755,6 +758,17 @@ app.whenReady().then(() => {
     } catch (error) {
       return fail('PUBLISH_REPAIR', error instanceof Error ? error.message : '修复仓库失败');
     }
+  });
+  ipcMain.handle('publish:setSiteUrl', (_event, siteDir: string, siteUrl: string) => {
+    const all = deployStore().read();
+    const current = all[siteDir];
+    if (!current) return fail('PUBLISH_TARGET', '还没有连接仓库');
+    const next = siteUrl.trim();
+    if (next && !/^https?:\/\//i.test(next)) return fail('PUBLISH_URL', '站点网址要以 http:// 或 https:// 开头');
+    current.siteUrl = next;
+    all[siteDir] = current;
+    deployStore().write(all);
+    return ok(current);
   });
   ipcMain.handle('publish:disconnect', (_event, siteDir: string) => {
     const all = deployStore().read();
@@ -964,7 +978,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('seo:audit', async (_event, siteDir: string) => {
+  async function auditSite(siteDir: string) {
     if (!siteDir) return fail('SEO_AUDIT', '还没有选择站点');
     const reportPath = join(siteDir, '.xiao', 'seo-report.json');
     const resumePreview = runtime.devRunning(siteDir);
@@ -993,6 +1007,40 @@ app.whenReady().then(() => {
       });
     } catch (error) {
       return fail('SEO_AUDIT', error instanceof Error ? error.message : '体检失败');
+    }
+  }
+
+  ipcMain.handle('seo:audit', (_event, siteDir: string) => auditSite(siteDir));
+  ipcMain.handle('publish:preflight', async (_event, siteDir: string) => {
+    if (!siteDir) return fail('PUBLISH_CHECK', '还没有选择站点');
+    try {
+      const config = readConfig(siteDir);
+      const target = deployStore().read()[siteDir];
+      const audit = await auditSite(siteDir);
+      if (!audit.ok) return fail('PUBLISH_CHECK', audit.message);
+      const reportIssues = Array.isArray(audit.data.report?.issues) ? audit.data.report.issues : [];
+      const prebuild = seoRows(config, listPosts(siteDir)).filter((row) => row.level === 'error');
+      const errors: { rule: string; detail: string }[] = [];
+      const seen = new Set<string>();
+      for (const issue of [...prebuild, ...reportIssues.filter((row) => row.level === 'error')]) {
+        const rule = String(issue.rule ?? '');
+        const detail = String(issue.detail ?? '');
+        const key = `${rule}|${detail}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        errors.push({ rule, detail });
+      }
+      const items = buildPreflight({
+        siteUrl: config.site.url ?? '',
+        targetUrl: target?.siteUrl ?? '',
+        workflowReady: existsSync(join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml')),
+        buildFailed: audit.data.buildFailed,
+        buildMessage: audit.data.message,
+        errors,
+      });
+      return ok({ items, blocked: items.some((item) => !item.ok) });
+    } catch (error) {
+      return fail('PUBLISH_CHECK', error instanceof Error ? error.message : '发布前检查失败');
     }
   });
   ipcMain.handle('seo:report', (_event, siteDir: string) => {
