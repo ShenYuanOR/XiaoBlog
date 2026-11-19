@@ -177,7 +177,7 @@ export function applyRepo(draft: PrepDraft, info: RepoPick): PrepDraft {
   if (!info.empty && !info.xiao && !info.confirmed) {
     return stay(
       next,
-      '这个仓库不是空的，也没有 xiao.config.json。继续会把站点文件推上去。',
+      '这个仓库已有别的内容，发布会被拒绝；选择覆盖会丢掉它现有的内容。',
       '确认这就是要发布的仓库后再继续。',
     );
   }

@@ -142,6 +142,7 @@ const instanceUrl = ref('');
 const repoQuery = ref('');
 const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>([]);
 const newRepoName = ref('');
+const createOpen = ref(false);
 const staticHost = ref('');
 const prepBusy = ref(false);
 const platformPick = ref<'' | 'github' | 'gitea'>('');
@@ -243,10 +244,20 @@ const prepHelp: Record<string, { title: string; body: string }> = {
 };
 const shownPrep = computed(() => PREP_ORDER);
 const filteredRepos = computed(() => {
-  const query = repoQuery.value.trim().toLowerCase();
-  if (!query || query.includes('/')) return repoChoices.value;
-  return repoChoices.value.filter((item) => `${item.owner}/${item.name}`.toLowerCase().includes(query));
+  const raw = repoQuery.value.trim().toLowerCase().replace(/\.git$/, '');
+  const needle = raw.replace(/^https?:\/\/[^/]+\//, '');
+  const rows = repoChoices.value.filter((item) => {
+    if (!needle) return true;
+    return `${item.owner}/${item.name}`.toLowerCase().includes(needle);
+  });
+  return [...rows].sort(
+    (a, b) => Number(b.empty) - Number(a.empty) || `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`),
+  );
 });
+const repoChosen = computed(() => Boolean(prep.value.remoteUrl && prep.value.owner && prep.value.repo));
+const foreignWarn = computed(
+  () => repoChosen.value && prep.value.empty === false && prep.value.xiao === false && !prep.value.foreignConfirmed && !prep.value.isPrivate,
+);
 const tokenCanContinue = computed(
   () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
 );
@@ -456,7 +467,7 @@ async function loadRepos(): Promise<void> {
       return;
     }
     repoChoices.value = result.data;
-    if (!prep.value.error.includes('xiao.config.json') && !prep.value.error.includes('私有')) {
+    if (!prep.value.error.includes('已有别的内容') && !prep.value.error.includes('私有')) {
       prep.value = { ...prep.value, error: '', next: '', manualLink: '' };
     }
   } finally {
@@ -494,6 +505,23 @@ async function useRemote(remoteUrl: string): Promise<void> {
   } finally {
     prepBusy.value = false;
   }
+}
+
+function clearRepoPick(): void {
+  createOpen.value = false;
+  prep.value = {
+    ...prep.value,
+    remoteUrl: '',
+    owner: '',
+    repo: '',
+    empty: null,
+    xiao: null,
+    isPrivate: false,
+    foreignConfirmed: false,
+    error: '',
+    next: '',
+    manualLink: '',
+  };
 }
 
 function confirmForeign(): void {
@@ -969,35 +997,44 @@ watch(
                 <template v-else-if="step === 'repo'">
                   <h3>仓库</h3>
                   <p class="dim">默认用已有仓库，可以是空的。</p>
-                  <UiField label="搜索或粘贴地址">
-                    <UiInput v-model="repoQuery" placeholder="名字，或 https://github.com/owner/repo" />
-                  </UiField>
-                  <ul v-if="filteredRepos.length" class="titles">
-                    <li v-for="item in filteredRepos" :key="item.url">
-                      <button type="button" class="link" @click="useRemote(item.url)">{{ item.owner }}/{{ item.name }}</button>
-                      <span v-if="item.empty" class="dim">空</span>
-                      <span v-if="item.private" class="dim">私有</span>
-                    </li>
-                  </ul>
-                  <p v-else class="dim">列表里还没有仓库。可以粘贴地址，或去网页新建。</p>
-                  <div class="publish-row">
-                    <UiButton :loading="prepBusy" @click="useTypedRepo">使用这个地址</UiButton>
-                    <UiButton variant="ghost" :loading="prepBusy" @click="loadRepos">我已建好，重新检查</UiButton>
-                    <UiButton variant="ghost" @click="openLink(newRepoPage(prep, newRepoName))">去新建仓库</UiButton>
-                  </div>
-                  <template v-if="offerCreate">
-                    <UiField label="直接新建">
-                      <UiInput v-model="newRepoName" placeholder="仓库名，建在当前账号下" />
-                    </UiField>
-                    <UiButton :loading="prepBusy" @click="createRepoNow">直接新建</UiButton>
+                  <template v-if="repoChosen">
+                    <div class="repo-card">
+                      <p>{{ prep.owner }}/{{ prep.repo }}</p>
+                      <p class="dim">分支 {{ prep.branch }}</p>
+                      <button type="button" class="fold" @click="clearRepoPick">换一个</button>
+                    </div>
+                    <p v-if="foreignWarn" class="alert">{{ prep.error }}</p>
+                    <div v-if="foreignWarn" class="prep-actions">
+                      <UiButton variant="primary" @click="confirmForeign">确认继续</UiButton>
+                    </div>
                   </template>
-                  <UiButton
-                    v-if="prep.error.includes('xiao.config.json')"
-                    variant="primary"
-                    @click="confirmForeign"
-                  >
-                    确认继续
-                  </UiButton>
+                  <template v-else>
+                    <UiField label="搜索或粘贴地址">
+                      <UiInput v-model="repoQuery" placeholder="名字，或 owner/repo" />
+                    </UiField>
+                    <ul v-if="filteredRepos.length" class="repo-list">
+                      <li v-for="item in filteredRepos" :key="item.url">
+                        <button type="button" class="link" @click="useRemote(item.url)">{{ item.owner }}/{{ item.name }}</button>
+                        <span v-if="item.empty" class="dim mark">空</span>
+                        <span v-if="item.private" class="dim mark">私有</span>
+                      </li>
+                    </ul>
+                    <p v-else class="dim">列表里还没有仓库。可以粘贴地址，或去网页新建。</p>
+                    <div class="prep-actions">
+                      <UiButton :loading="prepBusy" @click="useTypedRepo">使用这个地址</UiButton>
+                      <UiButton variant="ghost" :loading="prepBusy" @click="loadRepos">我已建好，重新检查</UiButton>
+                      <UiButton variant="ghost" @click="openLink(newRepoPage(prep, newRepoName))">去新建仓库</UiButton>
+                    </div>
+                    <button v-if="offerCreate && !createOpen" type="button" class="fold" @click="createOpen = true">直接新建</button>
+                    <template v-if="offerCreate && createOpen">
+                      <UiField label="直接新建">
+                        <UiInput v-model="newRepoName" placeholder="仓库名，建在当前账号下" />
+                      </UiField>
+                      <div class="prep-actions">
+                        <UiButton :loading="prepBusy" @click="createRepoNow">创建</UiButton>
+                      </div>
+                    </template>
+                  </template>
                 </template>
                 <template v-else-if="step === 'site'">
                   <h3>网站地址</h3>
@@ -1030,7 +1067,7 @@ watch(
                 <template v-else-if="step === 'publish'">
                   <h3>首次发布</h3>
                 </template>
-                <p v-if="prep.error" class="alert">{{ prep.error }}</p>
+                <p v-if="prep.error && !foreignWarn" class="alert">{{ prep.error }}</p>
                 <p v-if="prep.next" class="dim">{{ prep.next }}</p>
               </div>
             </li>
@@ -1389,6 +1426,37 @@ watch(
 .later-step {
   margin: 0;
   color: var(--ui-text-3);
+}
+
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.repo-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s3);
+}
+
+.repo-card {
+  padding: var(--ui-s3);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r);
+}
+
+.repo-card p {
+  margin: 0;
+}
+
+.mark {
+  margin-left: var(--ui-s2);
 }
 
 .cap-list {

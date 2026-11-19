@@ -114,7 +114,8 @@ describe('发布准备状态机', () => {
       isPrivate: false,
     });
     expect(foreign.step).toBe('repo');
-    expect(foreign.error).toContain('xiao.config.json');
+    expect(foreign.error).toContain('已有别的内容');
+    expect(foreign.error).toContain('覆盖会丢掉');
     expect(foreign.token).toBe('secret-token');
     const confirmed = applyRepo(foreign, {
       remoteUrl: foreign.remoteUrl,
