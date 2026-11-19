@@ -389,10 +389,17 @@ async function startPublish(force = false): Promise<void> {
   applyJob(result.data);
 }
 
+async function refreshChanges(): Promise<void> {
+  if (!session.siteDir) return;
+  const result = await window.xiao.publish.changes(session.siteDir);
+  if (result.ok) changes.value = result.data;
+}
+
 async function dismissJob(): Promise<void> {
   if (session.siteDir) await window.xiao.publish.dismiss(session.siteDir);
   phase.value = 'ready';
   steps.value = [];
+  await refreshChanges();
 }
 
 async function confirmRepair(): Promise<void> {
@@ -539,6 +546,7 @@ watch(
     const wasRunning = phase.value === 'running';
     applyJob(job);
     if (wasRunning && job && job.status !== 'running' && session.siteDir) {
+      void refreshChanges();
       void window.xiao.publish.history(session.siteDir).then((historyResult) => {
         if (!historyResult.ok) return;
         history.value = historyResult.data.rows;
