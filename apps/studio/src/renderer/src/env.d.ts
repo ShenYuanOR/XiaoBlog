@@ -358,10 +358,15 @@ export interface XiaoApi {
             startedAt: number;
             ms: number;
             detail: string;
+            more: string;
             url: string;
+            action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
+            slug: string;
           }[];
           sha: string;
           pushRejected: boolean;
+          startedAt: number;
+          finishedAt: number;
           siteUrl: string;
           code: string;
           checks: {
@@ -369,8 +374,8 @@ export interface XiaoApi {
             ok: boolean;
             label: string;
             detail: string;
-            more?: string;
-            slug?: string;
+            more: string;
+            slug: string;
             action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
           }[];
         } | null;
