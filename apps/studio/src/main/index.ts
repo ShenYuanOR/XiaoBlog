@@ -96,7 +96,7 @@ import { listSections, saveSection, usageCounts } from './sections.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
-import { buildPreflight } from './publish-preflight.ts';
+import { buildPreflight, itemsForConfigReadError } from './publish-preflight.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -1063,8 +1063,16 @@ app.whenReady().then(() => {
   ipcMain.handle('seo:audit', (_event, siteDir: string) => auditSite(siteDir));
   ipcMain.handle('publish:preflight', async (_event, siteDir: string) => {
     if (!siteDir) return fail('PUBLISH_CHECK', '还没有选择站点');
+    let config: ReturnType<typeof readConfig>;
     try {
-      const config = readConfig(siteDir);
+      config = readConfig(siteDir);
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : '读不到站点配置';
+      const items = itemsForConfigReadError(raw);
+      if (items) return ok({ items, blocked: true });
+      return fail('PUBLISH_CHECK', '读不到站点配置 xiao.config.json');
+    }
+    try {
       const target = deployStore().read()[siteDir];
       const audit = await auditSite(siteDir);
       if (!audit.ok) return fail('PUBLISH_CHECK', audit.message);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildPreflight, explainLocalBuild, siteBaseFromUrl } from '../../../../apps/studio/src/main/publish-preflight.ts';
+import {
+  buildPreflight,
+  explainLocalBuild,
+  itemsForConfigReadError,
+  siteBaseFromUrl,
+} from '../../../../apps/studio/src/main/publish-preflight.ts';
 
 const titles = { coffee: '咖啡' };
 
@@ -136,6 +141,13 @@ describe('发布前检查', () => {
     expect(item?.action).toBe('');
     expect(item?.detail).toContain('第 3 行第 16 列');
     expect(item?.more).toContain('Expected double-quoted property name');
+    const readError = itemsForConfigReadError(
+      'Expected double-quoted property name in JSON at position 61 (line 3 column 16)',
+    );
+    expect(readError?.[0]?.detail).toBe(explained.summary);
+    expect(readError?.[0]?.more).toContain('Expected double-quoted property name');
+    expect(readError?.[0]?.action).toBe('');
+    expect(itemsForConfigReadError('ENOENT: no such file')).toBeNull();
   });
 
   it('站点配置校验失败时不给文章入口', () => {

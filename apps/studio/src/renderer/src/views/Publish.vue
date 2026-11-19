@@ -147,7 +147,7 @@ const resultEntries = computed(() => {
       entries.push({ key: 'settings', label: '去设置', run: () => go('settings') });
     } else if (item?.action === 'open-post' && item.slug) {
       entries.push({ key: 'post', label: '打开这篇文章', run: () => openArticle(item.slug ?? '') });
-    } else if (item?.key === 'seo' || item?.key === 'build') {
+    } else if (item?.action === 'seo') {
       entries.push({ key: 'seo', label: '去 SEO', run: () => go('seo') });
     }
   } else if (failed.key === 'push' && /令牌|认证|权限/.test(failed.detail)) {
@@ -440,7 +440,7 @@ async function runPreflight(): Promise<void> {
     const result = await window.xiao.publish.preflight(session.siteDir);
     if (!result.ok) {
       checks.value = [
-        { key: 'build', ok: false, label: '站点能构建', detail: result.message, action: 'seo' },
+        { key: 'build', ok: false, label: '站点能构建', detail: result.message, more: '', slug: '', action: '' },
       ];
       return;
     }

@@ -140,6 +140,23 @@ export function explainLocalBuild(
   return { kind: 'other', summary: detail || '构建没有通过', detail, slug: '' };
 }
 
+/** 配置文件读不出来时，检查结果直接用中文，不把 JSON 原文交给界面。 */
+export function itemsForConfigReadError(message: string): PreflightItem[] | null {
+  const explained = explainLocalBuild(message);
+  if (explained.kind !== 'config') return null;
+  return [
+    {
+      key: 'build',
+      ok: false,
+      label: '站点能构建',
+      detail: explained.summary,
+      more: explained.detail || message,
+      slug: '',
+      action: '',
+    },
+  ];
+}
+
 const REPORT_LABELS: Record<string, string> = {
   'html-lang-missing': '页面缺少语言',
   'title-missing': '页面没有标题',
