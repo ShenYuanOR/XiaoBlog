@@ -103,6 +103,7 @@ import { cachedCheck, checkFingerprint, retargetCache, type CheckCacheEntry } fr
 import {
   createVerifyCache,
   mergeProbe,
+  reuseTokenOn,
   probeTokenCapabilities,
   verifyCacheKey,
   refineGiteaReport,
@@ -355,12 +356,8 @@ async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
       return null;
     }
   }
-  const key = verifyCacheKey(target.provider, origin, token);
-  const cached = tokenCache.get(key);
-  if (cached) return cached;
-  const report = await verifyLooseToken(target.provider, origin, token, target.remoteUrl, target.login);
-  tokenCache.put(key, report);
-  return report;
+  if (target.provider === 'github') return verifyGithubToken(token, apiFetch);
+  return verifyGiteaToken(origin, token, apiFetch);
 }
 
 function pagesHostFile(): string {
@@ -1403,7 +1400,13 @@ app.whenReady().then(() => {
     if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
     const root = provider === 'github' ? 'https://github.com' : String(origin || '').replace(/\/$/, '');
     if (provider === 'gitea' && !/^https?:\/\//i.test(root)) return fail('PUBLISH_URL', '先填 Gitea 实例地址');
+    const key = verifyCacheKey(provider, root, trimmed);
+    if (reuseTokenOn('prep')) {
+      const cached = tokenCache.get(key);
+      if (cached) return ok(cached);
+    }
     const report = await verifyLooseToken(provider, root, trimmed);
+    if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);
   });
   ipcMain.handle('publish:repos', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {

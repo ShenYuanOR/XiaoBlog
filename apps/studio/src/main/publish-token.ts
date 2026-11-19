@@ -234,7 +234,12 @@ export function readGiteaVerify(input: {
   };
 }
 
-/** 同一令牌 60 秒内复用。键里不放令牌原文。 */
+/** 只有准备流程里同一步可以复用。进发布页和点发布前都要重新问。 */
+export function reuseTokenOn(surface: 'prep' | 'page' | 'publish'): boolean {
+  return surface === 'prep';
+}
+
+/** 准备流程内部 60 秒内复用。键里不放令牌原文。 */
 export function createVerifyCache(now: () => number): {
   get: (key: string) => TokenReport | null;
   put: (key: string, value: TokenReport) => void;

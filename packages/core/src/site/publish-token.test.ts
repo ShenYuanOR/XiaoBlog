@@ -7,6 +7,7 @@ import {
   mergeProbe,
   probeTokenCapabilities,
   readGiteaCreateProbe,
+  reuseTokenOn,
   readGithubVerify,
   readGiteaVerify,
   refineGiteaReport,
@@ -79,7 +80,13 @@ describe('令牌验证', () => {
     );
   });
 
-  it('同一令牌 60 秒内复用，过期后重查', () => {
+  it('进发布页和点发布前不复用，准备流程里可以', () => {
+    expect(reuseTokenOn('page')).toBe(false);
+    expect(reuseTokenOn('publish')).toBe(false);
+    expect(reuseTokenOn('prep')).toBe(true);
+  });
+
+  it('准备流程里同一令牌 60 秒内复用，过期后重查', () => {
     let now = 1_000;
     const cache = createVerifyCache(() => now);
     const key = verifyCacheKey('github', 'https://github.com', 'secret-token');
