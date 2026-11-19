@@ -65,7 +65,7 @@ const publishLabel = computed(() => {
 const navOptions = computed(() =>
   navItems.map((item) => ({
     key: item.key,
-    label: item.key === 'publish' && publishing.value ? `${item.label} ●` : item.label,
+    label: item.label,
     icon: icons[item.icon],
   })),
 );
@@ -345,7 +345,9 @@ const modeKey = computed({
         </UiTooltip>
       </div>
 
-      <UiSegmented v-model="navKey" :items="navOptions" class="nav-switch" />
+      <div class="nav-mark" :class="{ live: publishing }">
+        <UiSegmented v-model="navKey" :items="navOptions" class="nav-switch" />
+      </div>
 
       <div class="grow" />
 
@@ -857,6 +859,16 @@ const modeKey = computed({
   color: var(--ui-accent);
   font: inherit;
   cursor: pointer;
+}
+
+/* 发布是导航第 6 项，顺序见 copy.ts 的 navItems。 */
+.nav-mark.live :deep(.ui-segmented__item:nth-child(6))::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--ui-accent);
 }
 
 .on {
