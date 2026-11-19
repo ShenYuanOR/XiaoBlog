@@ -107,6 +107,7 @@ const repairOpen = ref(false);
 const phase = ref<'ready' | 'running' | 'result'>('ready');
 const steps = ref<StepRow[]>([]);
 const filesOpen = ref(false);
+const connectionOpen = ref(false);
 
 const addedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'added'));
 const editedPosts = computed(() =>
@@ -118,6 +119,37 @@ const blocked = computed(
 );
 const historyRows = computed(() => [...history.value].slice(-20).reverse());
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
+
+const resultEntries = computed(() => {
+  const failed = steps.value.find((step) => step.state === 'fail');
+  const entries: { key: string; label: string; run: () => void }[] = [];
+  if (!failed) return entries;
+  if (failed.key === 'check') {
+    const item = checks.value.find((row) => !row.ok);
+    if (item?.action === 'apply-url') {
+      entries.push({ key: 'url', label: '一键改成目标网址', run: () => void applyTargetUrl() });
+    } else if (item?.key === 'url') {
+      entries.push({ key: 'settings', label: '去设置', run: () => go('settings') });
+    } else if (item?.key === 'seo' || item?.key === 'build') {
+      entries.push({ key: 'seo', label: '去 SEO', run: () => go('seo') });
+    }
+  } else if (failed.key === 'push' && /令牌|认证|权限/.test(failed.detail)) {
+    entries.push({
+      key: 'reconnect',
+      label: '重新连接',
+      run: () => {
+        connectionOpen.value = true;
+      },
+    });
+  } else if (failed.key === 'build' && failed.url) {
+    entries.push({
+      key: 'gitea',
+      label: '在 Gitea 查看',
+      run: () => void window.xiao.app.openExternal(failed.url ?? ''),
+    });
+  }
+  return entries;
+});
 
 const summaryLine = computed(() => {
   const parts: string[] = [];
@@ -597,17 +629,20 @@ watch(
         </ol>
         <div class="actions">
           <UiButton v-if="needsForce" size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
-          <UiButton v-if="checks.some((item) => !item.ok && item.action === 'apply-url')" size="sm" variant="ghost" @click="applyTargetUrl">
-            一键改成目标网址
+          <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
+          <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
+            {{ entry.label }}
           </UiButton>
-          <UiButton v-if="steps[0]?.state === 'fail'" size="sm" variant="ghost" @click="go('seo')">去 SEO</UiButton>
-          <UiButton v-if="steps[1]?.state === 'fail'" size="sm" variant="ghost" @click="go('settings')">去设置</UiButton>
-          <UiButton size="sm" variant="ghost" :disabled="pushing" @click="startPublish(false)">重试</UiButton>
           <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
         </div>
       </section>
 
-      <details v-if="target" class="drawer">
+      <details
+        v-if="target"
+        class="drawer"
+        :open="connectionOpen"
+        @toggle="connectionOpen = ($event.target as HTMLDetailsElement).open"
+      >
         <summary>发布目标与连接</summary>
         <p v-if="target" class="dim">
           {{ target.remoteUrl }} · 分支 {{ target.branch }}。令牌只存在本机。
@@ -702,12 +737,19 @@ watch(
   text-align: center;
 }
 
-.head,
-.actions {
+.head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-s3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--ui-s2);
 }
 
 .head-main {
