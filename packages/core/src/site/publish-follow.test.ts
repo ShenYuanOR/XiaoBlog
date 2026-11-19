@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { waitForLive, watchBuild } from '../../../../apps/studio/src/main/publish-follow.ts';
+import { extractFailureLog, waitForLive, watchBuild } from '../../../../apps/studio/src/main/publish-follow.ts';
 
 const sleep = async (): Promise<void> => {};
 
@@ -21,7 +21,18 @@ describe('跟踪发布', () => {
   it('构建失败时带上日志末尾和查看链接', async () => {
     const fetchImpl = (async (url: string) => {
       if (url.includes('/jobs/') && url.endsWith('/logs')) {
-        return new Response('第一行\n构建失败：依赖没装上\n');
+        const stamp = '2026-11-19T12:00:00.0000000Z ';
+        return new Response(
+          [
+            `${stamp}\u001b[31m⭐ Run Main 构建\u001b[0m`,
+            `${stamp}can not read a block mapping entry; a multiline key may not be an implicit key`,
+            `${stamp}src/content/posts/coffee/index.md:2:0`,
+            `${stamp}Stack trace:`,
+            `${stamp}    at Module.parse (/workspace/shenyuan/xiao-gate/site/node_modules/yaml/parse.js:1:1)`,
+            `${stamp}❌  Failure - Main 构建`,
+            `${stamp}Cleaning up container`,
+          ].join('\n'),
+        );
       }
       if (url.includes('/jobs')) {
         return new Response(JSON.stringify({ jobs: [{ id: 7, conclusion: 'failure' }] }));
@@ -42,8 +53,31 @@ describe('跟踪发布', () => {
       attempts: 1,
     });
     expect(result.state).toBe('fail');
-    expect(result.log).toContain('依赖没装上');
+    expect(result.log?.startsWith('构建失败')).toBe(true);
+    expect(result.log).toContain('src/content/posts/coffee/index.md:2:0');
+    expect(result.log).toContain('multiline key');
+    expect(result.log).not.toContain('Stack trace');
+    expect(result.log).not.toContain('/workspace/');
+    expect(result.log).not.toContain('at Module.parse');
     expect(result.url).toContain('/actions/runs/3');
+  });
+
+  it('同一提交取最新运行，90 秒没有运行就停', async () => {
+    let time = 0;
+    const result = await watchBuild({
+      remoteUrl: 'http://gitea.local/owner/site.git',
+      token: 'token',
+      sha: 'abc',
+      actionsState: 'ready',
+      fetchImpl: (async () => new Response(JSON.stringify({ workflow_runs: [] }))) as typeof fetch,
+      now: () => time,
+      sleep: async (ms: number) => {
+        time += ms;
+      },
+    });
+    expect(result.detail).toContain('没有为这次提交启动构建');
+    const sample = extractFailureLog('2026-11-19T12:00:00.0000000Z ⭐ Run Main 构建\n');
+    expect(sample.startsWith('构建失败')).toBe(true);
   });
 
   it('读到 xiao-build 才算上线', async () => {

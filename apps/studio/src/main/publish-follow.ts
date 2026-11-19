@@ -36,14 +36,27 @@ function phaseOf(run: RunRow): 'queued' | 'running' | 'success' | 'failure' {
   return 'queued';
 }
 
-function tail(text: string): string {
-  return text
-    .replace(/\u001b\[[0-9;]*m/g, '')
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim())
-    .slice(-40)
-    .join('\n');
+/** 只留失败步骤正文：去掉时间戳、颜色、堆栈，并把容器里的站点目录换成相对路径。 */
+export function extractFailureLog(raw: string): string {
+  const plain = raw.replace(/\u001b\[[0-9;]*m/g, '');
+  const lines = plain.split(/\r?\n/).map((line) => {
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(line) && line.length > 29) return line.slice(29);
+    return line;
+  });
+  const start = lines.findIndex((line) => line.includes('⭐ Run Main '));
+  const stepName = start >= 0 ? (lines[start]?.split('⭐ Run Main ')[1] ?? '').trim() : '';
+  const end = lines.findIndex((line, index) => index > start && line.includes('❌') && line.includes('Failure - Main'));
+  const slice = start >= 0 ? lines.slice(start + 1, end > start ? end : undefined) : lines;
+  const body = slice
+    .map((line) => line.replace(/\/workspace\/[^/]+\/[^/]+\/site\//g, ''))
+    .filter((line) => {
+      const text = line.trim();
+      if (!text) return false;
+      if (text === 'Stack trace:' || text.startsWith('Stack trace')) return false;
+      if (/^at\s/.test(text)) return false;
+      return true;
+    });
+  return [`${stepName || '构建'}失败`, ...body].join('\n');
 }
 
 async function failureLog(
@@ -66,7 +79,7 @@ async function failureLog(
     if (!log.ok) return '';
     const text = await log.text();
     if (text.startsWith('PK')) return '';
-    return tail(text);
+    return extractFailureLog(text);
   } catch {
     return '';
   }
@@ -81,7 +94,7 @@ export async function watchBuild(options: {
   actionsDetail?: string;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-  attempts?: number;
+  now?: () => number;
 }): Promise<FollowUpdate> {
   const remote = parseGiteaRemote(options.remoteUrl);
   const page = remote ? `${remote.origin}/${remote.owner}/${remote.repo}/actions` : '';
@@ -90,11 +103,16 @@ export async function watchBuild(options: {
   }
   if (!remote) return { phase: 'build', state: 'fail', detail: '仓库地址解析不了，没法查构建。', url: page };
   const fetchImpl = options.fetchImpl ?? fetch;
+  const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const attempts = options.attempts ?? 40;
   const headers = { Authorization: `token ${options.token}` };
   const listUrl = `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`;
-  for (let index = 0; index < attempts; index += 1) {
+  const started = now();
+  let queuedAt: number | null = null;
+  let runningAt: number | null = null;
+  const missing = 'Gitea 没有为这次提交启动构建：构建配置可能写错（Gitea 不报错），或已被更新的提交取代';
+  const noRunner = '没有构建机接这次任务（需要带 xiao 标签的在线构建机）。';
+  while (now() - started <= 15 * 60 * 1000) {
     let response: Response;
     try {
       response = await fetchImpl(listUrl, { headers });
@@ -110,25 +128,32 @@ export async function watchBuild(options: {
       return { phase: 'build', state: 'fail', detail: 'Gitea 没有这次提交的构建接口。确认仓库已开启 Actions。', url: page };
     }
     if (response.ok) {
-      const runs = runsOf(await response.json());
-      const run = runs.find((item) => !item.head_sha || item.head_sha === options.sha);
-      if (run) {
-        const phase = phaseOf(run);
+      const runs = runsOf(await response.json()).filter((item) => !item.head_sha || item.head_sha === options.sha);
+      const run = runs.reduce<RunRow | undefined>((best, item) => ((item.id ?? 0) >= (best?.id ?? -1) ? item : best), undefined);
+      if (!run) {
+        if (now() - started >= 90_000) return { phase: 'build', state: 'fail', detail: missing, url: page };
+      } else {
+        const kind = phaseOf(run);
         const runUrl = run.html_url || page;
-        if (phase === 'success') return { phase: 'build', state: 'ok', detail: '远端构建成功。', url: runUrl };
-        if (phase === 'failure') {
+        if (kind === 'success') return { phase: 'build', state: 'ok', detail: '远端构建成功。', url: runUrl };
+        if (kind === 'failure') {
           const log = run.id ? await failureLog(remote.origin, remote.owner, remote.repo, run.id, options.token, fetchImpl) : '';
           return { phase: 'build', state: 'fail', detail: '远端构建失败。', log, url: runUrl };
         }
-        const detail = phase === 'queued' ? '构建在排队。' : '正在构建。';
-        if (index === attempts - 1) return { phase: 'build', state: 'fail', detail: `${detail}等了太久还没结束。`, url: runUrl };
-      } else if (index === attempts - 1) {
-        return { phase: 'build', state: 'fail', detail: '这次提交还没有出现在 Actions 里。', url: page };
+        if (kind === 'queued') {
+          queuedAt ??= now();
+          if (now() - queuedAt >= 90_000) return { phase: 'build', state: 'fail', detail: noRunner, url: runUrl };
+        } else {
+          runningAt ??= now();
+          if (now() - runningAt >= 15 * 60 * 1000) {
+            return { phase: 'build', state: 'fail', detail: '构建超过 15 分钟还没结束。', url: runUrl };
+          }
+        }
       }
     }
-    await sleep(index === attempts - 1 ? 0 : 3000);
+    await sleep(3000);
   }
-  return { phase: 'build', state: 'fail', detail: '这次提交还没有出现在 Actions 里。', url: page };
+  return { phase: 'build', state: 'fail', detail: missing, url: page };
 }
 
 /** 打开站点首页，直到读到这次提交的 xiao-build。大约 5 分钟。 */
