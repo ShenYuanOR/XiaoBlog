@@ -718,6 +718,14 @@ app.whenReady().then(() => {
           ? await probeGiteaActions(url, token.trim())
           : { state: 'unknown' as const, detail: 'GitHub 下一步再接。' };
       const workflow = provider === 'gitea' ? writeDeployWorkflow(siteDir, branch) : 'kept';
+      if (workflow === 'written') {
+        const workflowFile = join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml');
+        try {
+          watcher?.noteWrite(workflowFile, readFileSync(workflowFile, 'utf8'));
+        } catch {
+          // 写完立刻读不到时，监视器仍可能提示一次，不因此让连接失败。
+        }
+      }
       const target: DeployTarget = {
         provider,
         remoteUrl: url,
