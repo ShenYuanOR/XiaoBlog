@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFileSync, watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
 
-const ignored = ['node_modules', 'dist', '.astro', '.git'];
+const ignored = ['node_modules', 'dist', '.astro', '.git', '.xiao'];
+
+/** 体检报告、构建产物和 Astro 缓存不该触发「文件已按磁盘刷新」。 */
+export function watchIgnored(file: string): boolean {
+  return file.split(/[\\/]/).some((part) => ignored.includes(part));
+}
 
 export interface ReloadEvent {
   file: string;
@@ -17,10 +22,6 @@ export interface ConflictEvent {
 
 function digest(text: string): string {
   return createHash('sha256').update(text).digest('hex');
-}
-
-function ignoredPath(file: string): boolean {
-  return file.split(/[\\/]/).some((part) => ignored.includes(part));
 }
 
 export class SiteWatcher {
@@ -47,7 +48,7 @@ export class SiteWatcher {
 
   start(): void {
     this.watcher = watch(this.root, { recursive: true }, (_event, name) => {
-      if (!name || ignoredPath(name)) return;
+      if (!name || watchIgnored(name)) return;
       const key = name.replaceAll('/', '\\');
       const pending = this.timers.get(key);
       if (pending) clearTimeout(pending);
