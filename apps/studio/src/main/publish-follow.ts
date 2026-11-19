@@ -108,6 +108,55 @@ export function extractFailureLog(raw: string): string {
   return [`${stepName || '构建'}失败`, ...kept].join('\n');
 }
 
+/**
+ * GitHub Actions 文本日志。步骤名取最后一个 ##[group]Run，正文到 ##[error] 为止。
+ * 目前用的是按公开格式写的合成样例，还没有真实失败日志。
+ */
+export function extractGithubFailureLog(raw: string): string {
+  const lines = raw.split(/\r?\n/).map((line) =>
+    line
+      .replace(/\u001b\[[0-9;]*m/g, '')
+      .replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?/, ''),
+  );
+  let errorAt = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index]?.includes('##[error]')) errorAt = index;
+  }
+  const limit = errorAt >= 0 ? errorAt : lines.length;
+  let groupAt = -1;
+  for (let index = 0; index < limit; index += 1) {
+    if (lines[index]?.includes('##[group]Run ')) groupAt = index;
+  }
+  const stepName = groupAt >= 0 ? (lines[groupAt]?.split('##[group]Run ').pop() ?? '').trim() : '';
+  let bodyStart = 0;
+  if (groupAt >= 0) {
+    let endGroup = -1;
+    for (let index = groupAt + 1; index < limit; index += 1) {
+      if (lines[index]?.includes('##[endgroup]')) {
+        endGroup = index;
+        break;
+      }
+    }
+    bodyStart = endGroup >= 0 ? endGroup + 1 : groupAt + 1;
+  }
+  const kept: string[] = [];
+  for (const line of lines.slice(bodyStart, limit)) {
+    const text = line.trim();
+    if (!text || text.startsWith('shell:') || text === stepName) continue;
+    kept.push(text);
+  }
+  const errorLine = errorAt >= 0 ? (lines[errorAt]?.replace('##[error]', '').trim() ?? '') : '';
+  return [`${stepName || '构建'}失败`, ...kept, errorLine].filter(Boolean).join('\n');
+}
+
+function githubHost(origin: string): boolean {
+  try {
+    return /(^|\.)github\.com$/i.test(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function failureLog(
   origin: string,
   owner: string,
@@ -115,20 +164,36 @@ async function failureLog(
   runId: number,
   token: string,
   fetchImpl: typeof fetch,
+  github: boolean,
 ): Promise<string> {
-  const headers = { Authorization: `token ${token}` };
+  const headers = github
+    ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
+    : { Authorization: `token ${token}` };
+  const jobsUrl = github
+    ? `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs`
+    : `${origin}/api/v1/repos/${owner}/${repo}/actions/runs/${runId}/jobs`;
   try {
-    const jobs = await fetchImpl(`${origin}/api/v1/repos/${owner}/${repo}/actions/runs/${runId}/jobs`, { headers });
+    const jobs = await fetchImpl(jobsUrl, { headers });
     if (!jobs.ok) return '';
-    const body = (await jobs.json()) as { jobs?: { id?: number; conclusion?: string; status?: string }[] };
+    const body = (await jobs.json()) as {
+      jobs?: { id?: number; conclusion?: string; status?: string; steps?: { name?: string; conclusion?: string }[] }[];
+    };
     const failed =
       (body.jobs ?? []).find((job) => job.conclusion === 'failure' || job.status === 'failure') ?? body.jobs?.[0];
     if (!failed?.id) return '';
-    const log = await fetchImpl(`${origin}/api/v1/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`, { headers });
-    if (!log.ok) return '';
+    const failedStep = (failed.steps ?? []).find((step) => step.conclusion === 'failure')?.name ?? '';
+    const logUrl = github
+      ? `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`
+      : `${origin}/api/v1/repos/${owner}/${repo}/actions/jobs/${failed.id}/logs`;
+    const log = await fetchImpl(logUrl, { headers });
+    if (!log.ok) return failedStep ? `${failedStep}失败` : '';
     const text = await log.text();
-    if (text.startsWith('PK')) return '';
-    return extractFailureLog(text);
+    if (text.startsWith('PK')) return failedStep ? `${failedStep}失败\n日志是压缩包，打开构建页面看完整记录。` : '';
+    if (!github) return extractFailureLog(text);
+    const extracted = extractGithubFailureLog(text);
+    if (!failedStep) return extracted;
+    const logBody = extracted.replace(/^[^\n]*失败\n?/, '');
+    return [`${failedStep}失败`, logBody].filter(Boolean).join('\n');
   } catch {
     return '';
   }
@@ -146,21 +211,34 @@ export async function watchBuild(options: {
   now?: () => number;
 }): Promise<FollowUpdate> {
   const remote = parseGiteaRemote(options.remoteUrl);
-  const page = remote ? `${remote.origin}/${remote.owner}/${remote.repo}/actions` : '';
-  if (options.actionsState === 'disabled' || options.actionsState === 'no-runner') {
+  const github = remote ? githubHost(remote.origin) : false;
+  const page = remote
+    ? github
+      ? `https://github.com/${remote.owner}/${remote.repo}/actions`
+      : `${remote.origin}/${remote.owner}/${remote.repo}/actions`
+    : '';
+  if (!github && (options.actionsState === 'disabled' || options.actionsState === 'no-runner')) {
     return { phase: 'build', state: 'fail', detail: options.actionsDetail || '没有可用的构建机。', url: page };
   }
   if (!remote) return { phase: 'build', state: 'fail', detail: '仓库地址解析不了，没法查构建。', url: page };
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const headers = { Authorization: `token ${options.token}` };
-  const listUrl = `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`;
+  const headers = github
+    ? { Authorization: `Bearer ${options.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
+    : { Authorization: `token ${options.token}` };
+  const listUrl = github
+    ? `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`
+    : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}/actions/runs?head_sha=${encodeURIComponent(options.sha)}`;
   const started = now();
   let queuedAt: number | null = null;
   let runningAt: number | null = null;
-  const missing = 'Gitea 没有为这次提交启动构建：构建配置可能写错（Gitea 不报错），或已被更新的提交取代';
-  const noRunner = '没有构建机接这次任务（需要带 xiao 标签的在线构建机）。';
+  const missing = github
+    ? 'GitHub 没有为这次提交启动构建。确认 Actions 已开启，并且构建配置已经在默认分支上。'
+    : 'Gitea 没有为这次提交启动构建：构建配置可能写错（Gitea 不报错），或已被更新的提交取代';
+  const noRunner = github
+    ? '构建还在排队，GitHub 暂时没有分到机器。'
+    : '没有构建机接这次任务（需要带 xiao 标签的在线构建机）。';
   while (now() - started <= 15 * 60 * 1000) {
     let response: Response;
     try {
@@ -174,7 +252,14 @@ export async function watchBuild(options: {
       };
     }
     if (response.status === 404) {
-      return { phase: 'build', state: 'fail', detail: 'Gitea 没有这次提交的构建接口。确认仓库已开启 Actions。', url: page };
+      return {
+        phase: 'build',
+        state: 'fail',
+        detail: github
+          ? 'GitHub 没有这次提交的构建记录。确认仓库已开启 Actions。'
+          : 'Gitea 没有这次提交的构建接口。确认仓库已开启 Actions。',
+        url: page,
+      };
     }
     if (response.ok) {
       const runs = runsOf(await response.json()).filter((item) => !item.head_sha || item.head_sha === options.sha);
@@ -194,7 +279,9 @@ export async function watchBuild(options: {
           };
         }
         if (kind === 'failure') {
-          const log = run.id ? await failureLog(remote.origin, remote.owner, remote.repo, run.id, options.token, fetchImpl) : '';
+          const log = run.id
+            ? await failureLog(remote.origin, remote.owner, remote.repo, run.id, options.token, fetchImpl, github)
+            : '';
           return {
             phase: 'build',
             state: 'fail',
@@ -224,6 +311,7 @@ export async function watchBuild(options: {
 export async function waitForLive(options: {
   siteUrl: string;
   sha: string;
+  provider?: 'github' | 'gitea';
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   attempts?: number;
@@ -257,7 +345,10 @@ export async function waitForLive(options: {
   return {
     phase: 'live',
     state: 'fail',
-    detail: '等了约 5 分钟，页面上还没有这次的版本号。静态服务可能还没接上，或者还没读到 pages 分支。',
+    detail:
+      options.provider === 'github'
+        ? '等了约 5 分钟，页面上还没有这次的版本号。GitHub Pages 首次部署通常要 1～2 分钟，CDN 也可能再拖一会儿。'
+        : '等了约 5 分钟，页面上还没有这次的版本号。静态服务可能还没接上，或者还没读到 pages 分支。',
     url: siteUrl,
   };
 }

@@ -273,7 +273,7 @@ export function explainPushFailure(error: unknown, token = ''): string {
     return '认证失败：检查用户名和访问令牌是否属于这个仓库、是否过期或有写权限。';
   }
   if (/HttpError.*403|Forbidden/i.test(text)) {
-    return '令牌没有写入权限：在 Gitea 里给这个令牌勾上仓库写权限。';
+    return '令牌没有写入权限。GitHub 需要 repo 或 Contents 写；Gitea 需要仓库写权限。';
   }
   if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|fetch failed/i.test(text)) {
     return '连不上远端：检查地址、网络，或这台电脑是否需要代理。';
@@ -386,7 +386,7 @@ export async function probeRemote(
     if (response.statusCode === 401) {
       return {
         ok: false,
-        message: '用户名或令牌不对：Gitea 的「用户名」填登录名或邮箱，令牌要有这个仓库的写权限。',
+        message: '用户名或令牌不对。令牌要有这个仓库的写权限。',
       };
     }
     if (response.statusCode === 404) {
@@ -437,9 +437,17 @@ export async function remoteDefaultBranch(
   try {
     const remote = parseGiteaRemote(remoteUrl);
     if (remote) {
-      const response = await fetchImpl(`${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`, {
-        headers: { Authorization: `token ${token}` },
-      });
+      const github = /(^|\.)github\.com$/i.test(new URL(remote.origin).hostname);
+      const response = await fetchImpl(
+        github
+          ? `https://api.github.com/repos/${remote.owner}/${remote.repo}`
+          : `${remote.origin}/api/v1/repos/${remote.owner}/${remote.repo}`,
+        {
+          headers: github
+            ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'XiaoBlog' }
+            : { Authorization: `token ${token}` },
+        },
+      );
       if (response.ok) {
         const body = (await response.json()) as { default_branch?: string };
         apiBranch = body.default_branch ?? '';

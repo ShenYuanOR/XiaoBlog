@@ -938,7 +938,7 @@ app.whenReady().then(() => {
     event.sender.send('publish:progress', build);
     if (build.state !== 'ok') return ok({ build, live: null, buildMs, liveMs: 0 });
     const liveStarted = Date.now();
-    const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha });
+    const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha, provider: target.provider });
     const liveMs = Date.now() - liveStarted;
     event.sender.send('publish:progress', live);
     return ok({ build, live, buildMs, liveMs });
@@ -1301,7 +1301,7 @@ app.whenReady().then(() => {
         };
       }
       const liveStarted = Date.now();
-      const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha });
+      const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha, provider: target.provider });
       return {
         ok: true,
         build: { state: 'ok', detail: build.detail, log: build.log, url: build.url, ms: buildMs },

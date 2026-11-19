@@ -39,6 +39,13 @@ describe('远端默认分支', () => {
     expect(text).not.toContain('覆盖远端并发');
   });
 
+  it('缺 workflow 权限时用中文说明怎么补', () => {
+    const text = explainPushFailure(new Error('refusing to allow a Personal Access Token to create or update workflow without `workflow` scope'));
+    expect(text).toContain('构建配置');
+    expect(text).toContain('workflow');
+    expect(text).not.toContain('refusing');
+  });
+
   it('读文件失败时不把 JS 异常原文给用户', () => {
     const text = explainPushFailure(new TypeError("Cannot read properties of null (reading 'length')"));
     expect(text).toContain('文件读不出来');
