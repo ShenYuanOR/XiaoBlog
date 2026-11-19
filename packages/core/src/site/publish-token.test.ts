@@ -89,17 +89,21 @@ describe('令牌验证', () => {
 
   it('细粒度令牌只补上探测得到的项', async () => {
     const base = readGithubVerify({ status: 200, scopes: '', expires: '', login: 'a' });
+    const seen: string[] = [];
     const fetchImpl = (async (url: string) => {
+      seen.push(url);
       if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
       if (url.includes('/actions/runs')) return new Response('{}', { status: 403 });
       return new Response('', { status: 500 });
     }) as typeof fetch;
     const probe = await probeTokenCapabilities({
       provider: 'github',
-      remoteUrl: 'https://github.com/a/b.git',
+      remoteUrl: 'https://github.com/ShenYuanOR/xiao-pages-test',
       token: 't',
       fetchImpl,
     });
+    expect(seen.some((url) => url.startsWith('https://github.com/ShenYuanOR/xiao-pages-test/info/refs'))).toBe(true);
+    expect(seen.some((url) => url.startsWith('https://api.github.com/repos/ShenYuanOR/xiao-pages-test/actions/runs'))).toBe(true);
     const merged = mergeProbe(base, probe);
     expect(merged.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
     expect(merged.capabilities.find((item) => item.key === 'actions')?.state).toBe('missing');

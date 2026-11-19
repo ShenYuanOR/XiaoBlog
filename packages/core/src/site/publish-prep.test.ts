@@ -20,6 +20,7 @@ import {
   interpretPagesCreate,
   interpretPagesRead,
   readCreatedRepo,
+  readRemoteFacts,
   readRepoChoices,
   staticHostMatches,
 } from '../../../../apps/studio/src/main/publish-remote.ts';
@@ -230,6 +231,62 @@ describe('准备用的远端判断', () => {
     expect(interpretPagesRead(200, 'legacy')).toBe('update');
     expect(staticHostMatches('xiao pages: /shenyuan/xiao-gate/\n', 'ShenYuan', 'Xiao-Gate')).toBe(true);
     expect(readCreatedRepo(403, {}).message).toContain('不能新建仓库');
+  });
+
+  it('xiao-pages-test：公开、空、main，Pages 未开启', async () => {
+    const remoteUrl = 'https://github.com/ShenYuanOR/xiao-pages-test';
+    const listed = readRepoChoices('github', 'https://github.com', [
+      { full_name: 'ShenYuanOR/xiao-pages-test', private: false, size: 0, default_branch: 'main', clone_url: `${remoteUrl}.git` },
+    ]);
+    expect(listed[0]).toMatchObject({
+      owner: 'ShenYuanOR',
+      name: 'xiao-pages-test',
+      private: false,
+      empty: true,
+      branch: 'main',
+      url: remoteUrl,
+    });
+    const facts = await readRemoteFacts({
+      provider: 'github',
+      remoteUrl,
+      token: 'token',
+      fetchImpl: (async (url: string) => {
+        if (url.endsWith('/contents/xiao.config.json')) return new Response('', { status: 404 });
+        return new Response(JSON.stringify({ private: false, size: 0, default_branch: 'main' }), { status: 200 });
+      }) as typeof fetch,
+    });
+    expect(facts).toMatchObject({
+      ok: true,
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      branch: 'main',
+      empty: true,
+      xiao: false,
+      isPrivate: false,
+    });
+    const picked = applyRepo(reachedRepo(), {
+      remoteUrl,
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      branch: 'main',
+      empty: true,
+      xiao: false,
+      isPrivate: false,
+    });
+    expect(picked.step).toBe('site');
+    expect(suggestSite(picked)).toEqual({
+      siteUrl: 'https://shenyuanor.github.io/xiao-pages-test/',
+      base: '/xiao-pages-test/',
+      needHost: false,
+    });
+    const pages = await enableGithubPages(
+      'ShenYuanOR',
+      'xiao-pages-test',
+      'token',
+      (async () => new Response('', { status: 404 })) as typeof fetch,
+    );
+    expect(pages.state).toBe('manual');
+    expect(pages.link).toBe('https://github.com/ShenYuanOR/xiao-pages-test/settings/pages');
   });
 
   it('开不了 Pages 时给出设置页', async () => {
