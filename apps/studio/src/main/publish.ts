@@ -77,6 +77,7 @@ const walkSkip = new Set([
   'node_modules',
   'dist',
   '.astro',
+  '.pnpm-store',
   '.xiao-recycle',
   '.xiao-pnpm-store',
   '.shim',
@@ -90,7 +91,37 @@ export function skipPath(filepath: string): boolean {
   const first = normalized.split('/')[0] ?? normalized;
   if (first === '.git' || normalized.startsWith('.git/')) return true;
   if (first.startsWith('.git-broken-')) return true;
-  return first === '.xiao-recycle' || first === '.xiao-pnpm-store' || first === '.shim';
+  return (
+    first === '.xiao-recycle' ||
+    first === '.xiao-pnpm-store' ||
+    first === '.pnpm-store' ||
+    first === 'node_modules' ||
+    first === 'dist' ||
+    first === '.astro' ||
+    first === '.shim'
+  );
+}
+
+const maxCommitFiles = 2000;
+const maxFileBytes = 20 * 1024 * 1024;
+
+/** 提交太大时拦住，并指出文件最多的那个顶层目录。 */
+export function guardCommitSize(files: { path: string; bytes: number }[]): string | null {
+  const huge = files.filter((file) => file.bytes > maxFileBytes);
+  if (huge.length > 0) {
+    return `这些文件超过 20 MB，不能发布：${huge
+      .slice(0, 5)
+      .map((file) => file.path)
+      .join('、')}`;
+  }
+  if (files.length <= maxCommitFiles) return null;
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    const top = file.path.split('/')[0] || file.path;
+    counts.set(top, (counts.get(top) ?? 0) + 1);
+  }
+  const [dir, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['', 0];
+  return `这次要提交 ${files.length} 个文件，超过 ${maxCommitFiles}。最大的目录是 ${dir}（${count} 个）。先把不该发布的目录忽略掉。`;
 }
 
 function walkFiles(root: string, dir = root): string[] {
@@ -148,19 +179,34 @@ async function stageChanges(siteDir: string): Promise<{ staged: string[]; remove
   ][];
   const staged: string[] = [];
   const removed: string[] = [];
-  // 旧版 Studio 把 .git/HEAD 之类提交进了索引；isomorphic-git 会拒绝含 .git 的路径，这里跳过。
-  // 同时跳过 .git-broken-*（修复备份）与 Studio 自己的临时目录。
-  for (const [filepath, head, workdir, stage] of matrix) {
+  const adding: string[] = [];
+  for (const row of matrix) {
+    if (!row) continue;
+    const [filepath, head, workdir, stage] = row;
     if (!filepath || skipPath(filepath)) continue;
     if (workdir === 0 && head === 1) {
-      await git.remove({ fs, dir: siteDir, filepath });
       removed.push(filepath);
       continue;
     }
-    if (workdir !== 0 && (workdir !== stage || head !== workdir)) {
-      await git.add({ fs, dir: siteDir, filepath });
-      staged.push(filepath);
+    if (workdir !== 0 && (workdir !== stage || head !== workdir)) adding.push(filepath);
+  }
+  const sized = adding.map((filepath) => {
+    let bytes = 0;
+    try {
+      bytes = statSync(path.join(siteDir, filepath)).size;
+    } catch {
+      bytes = 0;
     }
+    return { path: filepath, bytes };
+  });
+  const blocked = guardCommitSize(sized);
+  if (blocked) throw new Error(blocked);
+  for (const filepath of removed) {
+    await git.remove({ fs, dir: siteDir, filepath });
+  }
+  for (const filepath of adding) {
+    await git.add({ fs, dir: siteDir, filepath });
+    staged.push(filepath);
   }
   return { staged, removed };
 }

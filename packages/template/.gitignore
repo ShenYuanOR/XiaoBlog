@@ -1,4 +1,6 @@
 node_modules/
 dist/
 .astro/
+.pnpm-store/
+.xiao-pnpm-store/
 .xiao/seo-report.json
