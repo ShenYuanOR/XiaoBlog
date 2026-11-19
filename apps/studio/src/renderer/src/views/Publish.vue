@@ -20,7 +20,7 @@ import {
   tokenPage,
   type PrepStep,
 } from '../../../main/publish-prep.ts';
-import { TOKEN_CHECKLIST, tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
+import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
 import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -254,9 +254,6 @@ const foreignWarn = computed(
 );
 const tokenCanContinue = computed(
   () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
-);
-const tokenGaps = computed(
-  () => prep.value.report?.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing') ?? [],
 );
 const suggestedSite = computed(() => suggestSite(prep.value));
 
@@ -885,28 +882,26 @@ watch(
               <p v-else-if="stepPhase(prep.step, step, prep.done) === 'later'" class="later-step">{{ stepTitle(step) }}</p>
               <div v-else class="prep-current">
                 <template v-if="step === 'token'">
-                  <h3>令牌验证</h3>
-                  <UiField label="访问令牌">
-                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴只授权这个仓库的细粒度令牌" />
-                  </UiField>
-                  <p class="dim">只接受细粒度令牌，而且只能授权 {{ prep.owner }}/{{ prep.repo }}。</p>
-                  <ul class="cap-list">
-                    <li v-for="item in TOKEN_CHECKLIST" :key="item">{{ item }}</li>
-                  </ul>
+                  <h3>创建令牌</h3>
+                  <p>仓库：只选 {{ prep.owner }}/{{ prep.repo }}。权限：Contents 读写、Workflows 读写、Pages 读写、Actions 只读。</p>
                   <div class="prep-actions">
-                    <UiButton variant="ghost" @click="openLink(tokenPage(prep))">创建只授权这个仓库的令牌</UiButton>
+                    <UiButton variant="primary" @click="openLink(tokenPage(prep))">在 GitHub 创建只授权这个仓库的令牌</UiButton>
                   </div>
+                  <h3>粘贴并验证</h3>
+                  <UiField label="访问令牌">
+                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴刚才创建的细粒度令牌" />
+                  </UiField>
                   <div class="prep-actions">
                     <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
-                    <UiButton v-if="tokenGaps.length" variant="ghost" @click="openLink(tokenPage(prep))">去创建令牌</UiButton>
                     <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
                   </div>
-                  <p v-if="prep.report" class="summary">
-                    {{ prep.report.account || prep.report.message }}
-                    <template v-if="prep.report.status === 'valid'">
-                      · {{ tokenKindLabel(prep.report.kind) }} · {{ tokenExpiryText(prep.report.expiresAt) }}
-                    </template>
+                  <p v-if="prep.report?.status === 'rejected'" class="summary">
+                    账号 {{ prep.report.account || '未知' }} · {{ prep.report.kind === 'github-classic' ? '经典令牌' : '细粒度令牌' }}
                   </p>
+                  <p v-else-if="prep.report?.status === 'valid'" class="summary">
+                    {{ prep.report.account }} · {{ tokenKindLabel(prep.report.kind) }} · {{ tokenExpiryText(prep.report.expiresAt) }}
+                  </p>
+                  <p v-else-if="prep.report" class="summary">{{ prep.report.message }}</p>
                   <ul v-if="prep.report?.status === 'valid'" class="cap-list">
                     <li v-for="item in prep.report.capabilities" :key="item.key">
                       <UiIcon :path="capIcon(item.state)" :size="16" />
