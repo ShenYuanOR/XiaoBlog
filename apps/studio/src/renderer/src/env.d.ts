@@ -174,9 +174,20 @@ export interface XiaoApi {
     ) => Promise<IpcResult<null>>;
   };
   publish: {
-    changes: (
-      siteDir: string,
-    ) => Promise<IpcResult<{ posts: string[]; pages: string[]; settings: string[] }>>;
+    changes: (siteDir: string) => Promise<
+      IpcResult<{
+        posts: {
+          slug: string;
+          title: string;
+          status: 'added' | 'modified' | 'deleted' | 'renamed';
+          files: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; from?: string }[];
+        }[];
+        pages: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; from?: string }[];
+        settings: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; from?: string }[];
+        settingsStatus: 'added' | 'modified' | 'deleted' | 'renamed' | null;
+        other: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; from?: string }[];
+      }>
+    >;
     history: (siteDir: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
     record: (siteDir: string, repo: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
     target: (siteDir: string) => Promise<

@@ -20,16 +20,27 @@ import {
   UiSpinner,
 } from '../ui/index.ts';
 
-interface ChangeGroups {
-  posts: string[];
-  pages: string[];
-  settings: string[];
+type ChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+interface FileChange {
+  path: string;
+  status: ChangeStatus;
+  from?: string;
 }
 
-interface ChangeRow {
-  path: string;
-  area: '文章' | '页面' | '设置';
-  deleted: boolean;
+interface PostChange {
+  slug: string;
+  title: string;
+  status: ChangeStatus;
+  files: FileChange[];
+}
+
+interface ChangeSummary {
+  posts: PostChange[];
+  pages: FileChange[];
+  settings: FileChange[];
+  settingsStatus: ChangeStatus | null;
+  other: FileChange[];
 }
 
 interface SeoRow {
@@ -78,9 +89,14 @@ const guideImages: Record<string, string> = {
 
 const loading = ref(false);
 const errorText = ref('');
-const changes = ref<ChangeGroups>({ posts: [], pages: [], settings: [] });
-const filesKnown = ref(false);
-const diskFiles = ref<Set<string>>(new Set());
+const emptyChanges = (): ChangeSummary => ({
+  posts: [],
+  pages: [],
+  settings: [],
+  settingsStatus: null,
+  other: [],
+});
+const changes = ref<ChangeSummary>(emptyChanges());
 const seoRows = ref<SeoRow[]>([]);
 const seoFailed = ref(false);
 const history = ref<DeployRecord[]>([]);
@@ -116,27 +132,28 @@ const repoError = computed(() =>
     : '',
 );
 
-/** git 状态位没有经 IPC 返回，这里只能按「磁盘上还在不在」区分删除与其它改动。 */
-const changeRows = computed<ChangeRow[]>(() => {
-  const result: ChangeRow[] = [];
-  const push = (paths: string[], area: ChangeRow['area']): void => {
-    for (const path of paths) {
-      const normalized = path.replaceAll('\\', '/');
-      result.push({
-        path: normalized,
-        area,
-        deleted: filesKnown.value && !diskFiles.value.has(normalized),
-      });
-    }
-  };
-  push(changes.value.posts, '文章');
-  push(changes.value.pages, '页面');
-  push(changes.value.settings, '设置');
-  return result;
-});
+const STATUS_LABEL: Record<ChangeStatus, string> = {
+  added: '新增',
+  modified: '修改',
+  deleted: '删除',
+  renamed: '重命名',
+};
 
-const editedRows = computed(() => changeRows.value.filter((row) => !row.deleted));
-const deletedRows = computed(() => changeRows.value.filter((row) => row.deleted));
+function filesWith(status: ChangeStatus): FileChange[] {
+  return [...changes.value.pages, ...changes.value.other].filter((file) => file.status === status);
+}
+
+const addedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'added'));
+const editedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'modified'));
+const renamedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'renamed'));
+const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
+const changeCount = computed(
+  () =>
+    changes.value.posts.length +
+    changes.value.pages.length +
+    changes.value.other.length +
+    (changes.value.settings.length > 0 ? 1 : 0),
+);
 
 const seoErrors = computed(() => seoRows.value.filter((row) => row.level === 'error'));
 
@@ -188,9 +205,9 @@ const gateItems = computed<
   {
     key: 'changes',
     label: '待推送改动',
-    ok: changeRows.value.length > 0,
-    text: changeRows.value.length > 0 ? `${changeRows.value.length} 个文件` : '没有改动',
-    tone: changeRows.value.length > 0 ? 'accent' : 'neutral',
+    ok: changeCount.value > 0,
+    text: changeCount.value > 0 ? `${changeCount.value} 项` : '没有改动',
+    tone: changeCount.value > 0 ? 'accent' : 'neutral',
   },
 ]);
 
@@ -493,28 +510,13 @@ async function checkGitHub(): Promise<void> {
   );
 }
 
-async function loadFiles(): Promise<void> {
-  const siteDir = session.siteDir;
-  if (!siteDir) return;
-  const files = await window.xiao.dev.files(siteDir);
-  if (files.ok) {
-    filesKnown.value = true;
-    diskFiles.value = new Set(files.data.map((path) => path.replaceAll('\\', '/')));
-    return;
-  }
-  filesKnown.value = false;
-  diskFiles.value = new Set();
-}
-
 async function loadAll(): Promise<void> {
   const siteDir = session.siteDir;
   if (!siteDir) {
-    changes.value = { posts: [], pages: [], settings: [] };
+    changes.value = emptyChanges();
     seoRows.value = [];
     seoFailed.value = false;
     history.value = [];
-    filesKnown.value = false;
-    diskFiles.value = new Set();
     target.value = null;
     return;
   }
@@ -530,9 +532,7 @@ async function loadAll(): Promise<void> {
         window.xiao.publish.target(siteDir),
       ]);
 
-    changes.value = changesResult.ok
-      ? changesResult.data
-      : { posts: [], pages: [], settings: [] };
+    changes.value = changesResult.ok ? changesResult.data : emptyChanges();
 
     if (seoResult.ok) {
       seoRows.value = seoResult.data;
@@ -561,7 +561,6 @@ async function loadAll(): Promise<void> {
       }
     }
 
-    await loadFiles();
     await loadTokens();
   } catch (error) {
     errorText.value = `读取发布信息失败：${
@@ -641,59 +640,95 @@ watch(
       <div class="grid-2">
         <UiPanel title="改动清单">
           <template #actions>
-            <UiBadge :tone="changeRows.length > 0 ? 'accent' : 'neutral'" dot>
-              {{ changeRows.length }} 项
+            <UiBadge :tone="changeCount > 0 ? 'accent' : 'neutral'" dot>
+              {{ changeCount }} 项
             </UiBadge>
           </template>
 
           <UiEmpty
-            v-if="changeRows.length === 0"
+            v-if="changeCount === 0"
             title="没有改动"
-            description="改文章、页面或设置后，这里会列出待推送的文件；当前没有可发布内容。"
+            description="改文章、页面或设置后，这里会列出待发布的内容。"
             :icon="icons.ok"
           />
 
           <div v-else class="change-groups">
-            <section class="change-group">
+            <section v-if="addedPosts.length || filesWith('added').length || changes.settingsStatus === 'added'" class="change-group">
               <header class="group-head">
                 <h3>新增</h3>
-                <UiBadge tone="neutral">—</UiBadge>
+                <UiBadge tone="ok">{{ addedPosts.length + filesWith('added').length + (changes.settingsStatus === 'added' ? 1 : 0) }}</UiBadge>
               </header>
-              <p class="group-note">
-                当前 publish:changes 只返回文件路径，不返回 git 状态位，新增暂时无法与修改区分；
-                接通后会在主进程补上。
-              </p>
-            </section>
-
-            <section class="change-group">
-              <header class="group-head">
-                <h3>修改</h3>
-                <UiBadge tone="accent">{{ editedRows.length }}</UiBadge>
-              </header>
-              <p v-if="!editedRows.length" class="group-note">没有已存在的文件被修改。</p>
-              <ul v-else class="change-list">
-                <li v-for="row in editedRows" :key="row.path">
-                  <UiBadge tone="neutral">{{ row.area }}</UiBadge>
-                  <span class="change-path" :title="row.path">{{ row.path }}</span>
+              <ul class="change-list">
+                <li v-for="post in addedPosts" :key="post.slug">
+                  <UiBadge tone="neutral">文章</UiBadge>
+                  <span class="change-path" :title="post.slug">{{ post.title }}</span>
+                </li>
+                <li v-if="changes.settingsStatus === 'added'">
+                  <UiBadge tone="neutral">设置</UiBadge>
+                  <span class="change-path" :title="changes.settings.map((file) => file.path).join('\n')">站点设置与样式</span>
+                </li>
+                <li v-for="file in filesWith('added')" :key="file.path">
+                  <UiBadge tone="neutral">{{ file.path.startsWith('src/pages/') ? '页面' : '其他' }}</UiBadge>
+                  <span class="change-path" :title="file.path">{{ file.path }}</span>
                 </li>
               </ul>
             </section>
 
-            <section class="change-group">
+            <section v-if="editedPosts.length || filesWith('modified').length || changes.settingsStatus === 'modified'" class="change-group">
+              <header class="group-head">
+                <h3>修改</h3>
+                <UiBadge tone="accent">{{ editedPosts.length + filesWith('modified').length + (changes.settingsStatus === 'modified' ? 1 : 0) }}</UiBadge>
+              </header>
+              <ul class="change-list">
+                <li v-for="post in editedPosts" :key="post.slug">
+                  <UiBadge tone="neutral">文章</UiBadge>
+                  <span class="change-path" :title="post.slug">{{ post.title }}</span>
+                </li>
+                <li v-if="changes.settingsStatus === 'modified'">
+                  <UiBadge tone="neutral">设置</UiBadge>
+                  <span class="change-path" :title="changes.settings.map((file) => file.path).join('\n')">站点设置与样式</span>
+                </li>
+                <li v-for="file in filesWith('modified')" :key="file.path">
+                  <UiBadge tone="neutral">{{ file.path.startsWith('src/pages/') ? '页面' : '其他' }}</UiBadge>
+                  <span class="change-path" :title="file.path">{{ file.path }}</span>
+                </li>
+              </ul>
+            </section>
+
+            <section v-if="renamedPosts.length || filesWith('renamed').length" class="change-group">
+              <header class="group-head">
+                <h3>重命名</h3>
+                <UiBadge tone="accent">{{ renamedPosts.length + filesWith('renamed').length }}</UiBadge>
+              </header>
+              <ul class="change-list">
+                <li v-for="post in renamedPosts" :key="post.slug">
+                  <UiBadge tone="neutral">文章</UiBadge>
+                  <span class="change-path" :title="post.slug">{{ post.title }}</span>
+                </li>
+                <li v-for="file in filesWith('renamed')" :key="file.path">
+                  <UiBadge tone="neutral">{{ file.path.startsWith('src/pages/') ? '页面' : '其他' }}</UiBadge>
+                  <span class="change-path" :title="file.from ? `${file.from} → ${file.path}` : file.path">{{ file.path }}</span>
+                </li>
+              </ul>
+            </section>
+
+            <section v-if="deletedPosts.length || filesWith('deleted').length || changes.settingsStatus === 'deleted'" class="change-group">
               <header class="group-head">
                 <h3>删除</h3>
-                <UiBadge :tone="deletedRows.length > 0 ? 'danger' : 'neutral'">
-                  {{ deletedRows.length }}
-                </UiBadge>
+                <UiBadge tone="danger">{{ deletedPosts.length + filesWith('deleted').length + (changes.settingsStatus === 'deleted' ? 1 : 0) }}</UiBadge>
               </header>
-              <p v-if="!filesKnown" class="group-note">
-                读不到站点文件列表，暂时无法判断哪些改动是删除。
-              </p>
-              <p v-else-if="!deletedRows.length" class="group-note">没有删除的文件。</p>
-              <ul v-else class="change-list">
-                <li v-for="row in deletedRows" :key="row.path">
-                  <UiBadge tone="danger">{{ row.area }}</UiBadge>
-                  <span class="change-path is-deleted" :title="row.path">{{ row.path }}</span>
+              <ul class="change-list">
+                <li v-for="post in deletedPosts" :key="post.slug">
+                  <UiBadge tone="danger">文章</UiBadge>
+                  <span class="change-path is-deleted" :title="post.slug">{{ post.title }}</span>
+                </li>
+                <li v-if="changes.settingsStatus === 'deleted'">
+                  <UiBadge tone="danger">设置</UiBadge>
+                  <span class="change-path is-deleted">站点设置与样式</span>
+                </li>
+                <li v-for="file in filesWith('deleted')" :key="file.path">
+                  <UiBadge tone="danger">{{ file.path.startsWith('src/pages/') ? '页面' : '其他' }}</UiBadge>
+                  <span class="change-path is-deleted" :title="file.path">{{ file.path }}</span>
                 </li>
               </ul>
             </section>

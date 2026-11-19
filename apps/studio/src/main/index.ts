@@ -95,7 +95,8 @@ import { readArticleCss } from './article-css.ts';
 import { listSections, saveSection, usageCounts } from './sections.ts';
 import { lintSource, listSourceFiles, readSource, writeSource } from './develop.ts';
 import { writeDeployFiles } from './deploy-files.ts';
-import { groupChanges, rememberDeploy, type DeployRecord } from './release-gate.ts';
+import { collectChanges } from './publish-changes.ts';
+import { rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
@@ -684,17 +685,7 @@ app.whenReady().then(() => {
       return fail('CANVAS_REDO', error instanceof Error ? error.message : '重做失败');
     }
   });
-  ipcMain.handle('publish:changes', (_event, siteDir: string) => {
-    try {
-      const text = execFileSync('git', ['status', '--porcelain'], {
-        cwd: siteDir,
-        encoding: 'utf8',
-      });
-      return ok(groupChanges(text.split('\n').filter(Boolean)));
-    } catch {
-      return ok({ posts: [], pages: [], settings: [] });
-    }
-  });
+  ipcMain.handle('publish:changes', (_event, siteDir: string) => ok(collectChanges(siteDir)));
   ipcMain.handle('publish:history', (_event, siteDir: string) => ok(readDeployHistory(siteDir)));
   ipcMain.handle('publish:target', (_event, siteDir: string) => {
     const target = deployStore().read()[siteDir] ?? null;

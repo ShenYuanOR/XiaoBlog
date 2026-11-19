@@ -1,20 +1,138 @@
-export interface ChangeGroups {
-  posts: string[];
-  pages: string[];
-  settings: string[];
+export type ChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+export interface FileChange {
+  path: string;
+  status: ChangeStatus;
+  from?: string;
 }
 
-export function groupChanges(lines: string[]): ChangeGroups {
-  const groups: ChangeGroups = { posts: [], pages: [], settings: [] };
-  for (const line of lines) {
-    const file = line.slice(3).trim().replaceAll('\\', '/');
-    if (!file) continue;
-    if (file.includes('src/content/posts/')) groups.posts.push(file);
-    else if (file.includes('src/pages/')) groups.pages.push(file);
-    else if (file.endsWith('xiao.config.json') || file.includes('src/styles/'))
-      groups.settings.push(file);
+export interface PostChange {
+  slug: string;
+  title: string;
+  status: ChangeStatus;
+  files: FileChange[];
+}
+
+export interface ChangeSummary {
+  posts: PostChange[];
+  pages: FileChange[];
+  settings: FileChange[];
+  settingsStatus: ChangeStatus | null;
+  other: FileChange[];
+}
+
+const SETTINGS_FILES = new Set([
+  'xiao.config.json',
+  'xiao.config.schema.json',
+  'src/theme.json',
+  'astro.config.mjs',
+  'package.json',
+  'pnpm-lock.yaml',
+  'tsconfig.json',
+]);
+
+const SETTINGS_PREFIXES = ['src/styles/', 'src/layouts/', 'src/components/', 'src/lib/'];
+
+export function emptyChanges(): ChangeSummary {
+  return { posts: [], pages: [], settings: [], settingsStatus: null, other: [] };
+}
+
+function unquoteGitPath(value: string): string {
+  const text = value.trim().replaceAll('\\', '/');
+  if (text.startsWith('"') && text.endsWith('"')) {
+    try {
+      return String(JSON.parse(text)).replaceAll('\\', '/');
+    } catch {
+      return text.slice(1, -1).replaceAll('\\', '/');
+    }
   }
-  return groups;
+  return text;
+}
+
+function statusOf(xy: string): ChangeStatus {
+  if (xy === '??' || (xy[0] === 'A' && xy[1] !== 'D')) return 'added';
+  if (xy.includes('D')) return 'deleted';
+  if (xy.includes('R')) return 'renamed';
+  if (xy.includes('C')) return 'added';
+  return 'modified';
+}
+
+/** 解析 `git status --porcelain` 的一行。重命名保留原路径。 */
+export function parseStatusLine(line: string): FileChange | null {
+  if (line.length < 4 || line[2] !== ' ') return null;
+  const xy = line.slice(0, 2);
+  const rest = line.slice(3);
+  const renamed = xy.includes('R') || xy.includes('C');
+  const arrow = rest.indexOf(' -> ');
+  const from = renamed && arrow >= 0 ? unquoteGitPath(rest.slice(0, arrow)) : undefined;
+  const path = unquoteGitPath(renamed && arrow >= 0 ? rest.slice(arrow + 4) : rest);
+  if (!path || path.endsWith('/')) return null;
+  const file: FileChange = { path, status: statusOf(xy) };
+  if (from) file.from = from;
+  return file;
+}
+
+export function parseStatus(text: string): FileChange[] {
+  const files: FileChange[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+    const file = parseStatusLine(raw.trimEnd());
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+function skipped(path: string): boolean {
+  return (
+    path === '.pnpm-store' ||
+    path.startsWith('.pnpm-store/') ||
+    path.startsWith('node_modules/') ||
+    path.split('/').includes('.pnpm-store')
+  );
+}
+
+function isSettings(path: string): boolean {
+  return SETTINGS_FILES.has(path) || SETTINGS_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+export function rollupStatus(statuses: ChangeStatus[]): ChangeStatus {
+  const unique = new Set(statuses);
+  if (unique.size === 0) return 'modified';
+  if (unique.size === 1) return [...unique][0] ?? 'modified';
+  if ([...unique].every((item) => item === 'deleted')) return 'deleted';
+  if ([...unique].every((item) => item === 'added')) return 'added';
+  return 'modified';
+}
+
+/** 文章按目录归成一篇；设置、主题、样式和模板归成一组。标题由调用方读 frontmatter。 */
+export function summarizeChanges(files: FileChange[], titleOf: (slug: string) => string): ChangeSummary {
+  const summary = emptyChanges();
+  const posts = new Map<string, FileChange[]>();
+  for (const file of files) {
+    if (skipped(file.path)) continue;
+    const post = /^src\/content\/posts\/([^/]+)\/(.+)$/.exec(file.path);
+    if (post?.[1] && post[2]) {
+      const list = posts.get(post[1]) ?? [];
+      list.push(file);
+      posts.set(post[1], list);
+      continue;
+    }
+    if (file.path.startsWith('src/pages/')) summary.pages.push(file);
+    else if (isSettings(file.path)) summary.settings.push(file);
+    else summary.other.push(file);
+  }
+  summary.posts = [...posts.entries()]
+    .map(([slug, list]) => ({
+      slug,
+      title: titleOf(slug) || slug,
+      status: rollupStatus(list.map((file) => file.status)),
+      files: list,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+  summary.settingsStatus = summary.settings.length
+    ? rollupStatus(summary.settings.map((file) => file.status))
+    : null;
+  return summary;
 }
 
 export function blockedBy(rows: { level: string }[]): boolean {
