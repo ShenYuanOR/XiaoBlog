@@ -205,6 +205,7 @@ const failureView = computed(() => {
   return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
 });
 const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
+  if (tokenBlocked.value) return { text: '令牌失效，无法确认', tone: 'neutral' };
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready'
       ? { text: 'GitHub 构建', tone: 'ok' }
@@ -219,6 +220,7 @@ const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral'
 });
 const tokenStatusText = computed(() => tokenStatusLine(tokenReport.value, publish.now));
 const pagesLabel = computed(() => {
+  if (tokenBlocked.value) return '令牌失效，无法确认';
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready' ? 'Pages 已开启' : 'Pages 未开启';
   }
@@ -1205,11 +1207,10 @@ watch(
               </ul>
             </template>
             <div class="publish-row">
-              <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message }}</p>
+              <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message || '令牌已失效' }}</p>
               <p v-else-if="blockReason" class="dim">{{ blockReason }}</p>
-              <UiButton v-if="tokenBlocked" variant="primary" @click="reconnectOpen = true">重新连接</UiButton>
               <UiButton
-                v-else
+                v-if="!tokenBlocked"
                 variant="primary"
                 :icon-left="icons.publish"
                 :disabled="blocked || checking"
@@ -1286,7 +1287,7 @@ watch(
             <p class="dim">分支 {{ target?.branch }}</p>
             <p class="dim">令牌账号 {{ tokenReport?.account || '—' }}</p>
             <p class="dim">{{ pagesLabel }}</p>
-            <p v-if="target?.actionsDetail" class="dim">{{ target.actionsDetail }}</p>
+            <p v-if="target?.actionsDetail && !tokenBlocked" class="dim">{{ target.actionsDetail }}</p>
             <button
               v-if="target?.siteUrl"
               type="button"
