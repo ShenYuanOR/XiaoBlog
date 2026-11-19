@@ -339,7 +339,7 @@ async function startPublish(force = false): Promise<void> {
       key: 'build',
       label: '远端构建',
       state: build.state === 'ok' ? 'ok' : 'fail',
-      detail: build.log ? `${build.detail}\n${build.log}` : build.detail,
+      detail: build.log || build.detail,
       ms: buildMs,
       url: build.url,
     };

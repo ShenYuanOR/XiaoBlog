@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { extractFailureLog, waitForLive, watchBuild } from '../../../../apps/studio/src/main/publish-follow.ts';
 
@@ -76,8 +77,18 @@ describe('跟踪发布', () => {
       },
     });
     expect(result.detail).toContain('没有为这次提交启动构建');
-    const sample = extractFailureLog('2026-11-19T12:00:00.0000000Z ⭐ Run Main 构建\n');
+  });
+
+  it('真实失败日志只留构建步骤，路径改成相对路径', () => {
+    const sample = extractFailureLog(readFileSync(new URL('./fixtures/gitea-build-fail.log', import.meta.url), 'utf8'));
     expect(sample.startsWith('构建失败')).toBe(true);
+    expect(sample).toContain('src/content/posts/coffee/index.md:2:0');
+    expect(sample).not.toContain('Writing entry');
+    expect(sample).not.toContain('expression');
+    expect(sample).not.toContain('Stack trace');
+    expect(sample).not.toContain('/workspace/');
+    expect(sample).not.toContain('[ELIFECYCLE]');
+    expect(sample).not.toContain('at Composer');
   });
 
   it('读到 xiao-build 才算上线', async () => {

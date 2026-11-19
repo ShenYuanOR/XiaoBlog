@@ -36,27 +36,55 @@ function phaseOf(run: RunRow): 'queued' | 'running' | 'success' | 'failure' {
   return 'queued';
 }
 
-/** 只留失败步骤正文：去掉时间戳、颜色、堆栈，并把容器里的站点目录换成相对路径。 */
+function stripLogLine(line: string): string {
+  const plain = line.replace(/\u001b\[[0-9;]*m/g, '');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(plain) && plain.length > 29) return plain.slice(29);
+  return plain;
+}
+
+/**
+ * 真实构建日志只有第一步带「⭐ Run Main」。
+ * 步骤名取「❌  Failure - Main <步骤名>」；正文从它前面最后一个 ::group::Run 的 ::endgroup:: 之后，到失败行为止。
+ */
 export function extractFailureLog(raw: string): string {
-  const plain = raw.replace(/\u001b\[[0-9;]*m/g, '');
-  const lines = plain.split(/\r?\n/).map((line) => {
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(line) && line.length > 29) return line.slice(29);
-    return line;
-  });
-  const start = lines.findIndex((line) => line.includes('⭐ Run Main '));
-  const stepName = start >= 0 ? (lines[start]?.split('⭐ Run Main ')[1] ?? '').trim() : '';
-  const end = lines.findIndex((line, index) => index > start && line.includes('❌') && line.includes('Failure - Main'));
-  const slice = start >= 0 ? lines.slice(start + 1, end > start ? end : undefined) : lines;
-  const body = slice
-    .map((line) => line.replace(/\/workspace\/[^/]+\/[^/]+\/site\//g, ''))
-    .filter((line) => {
-      const text = line.trim();
-      if (!text) return false;
-      if (text === 'Stack trace:' || text.startsWith('Stack trace')) return false;
-      if (/^at\s/.test(text)) return false;
-      return true;
-    });
-  return [`${stepName || '构建'}失败`, ...body].join('\n');
+  const lines = raw.split(/\r?\n/).map(stripLogLine);
+  let failAt = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index]?.includes('Failure - Main')) failAt = index;
+  }
+  const stepName =
+    failAt >= 0 ? (lines[failAt]?.split('Failure - Main').pop() ?? '').trim() : '';
+  let groupAt = -1;
+  const limit = failAt >= 0 ? failAt : lines.length;
+  for (let index = 0; index < limit; index += 1) {
+    if (lines[index]?.includes('::group::Run')) groupAt = index;
+  }
+  let bodyStart = 0;
+  if (groupAt >= 0) {
+    let endGroup = -1;
+    for (let index = groupAt + 1; index < limit; index += 1) {
+      if (lines[index]?.includes('::endgroup::')) {
+        endGroup = index;
+        break;
+      }
+    }
+    bodyStart = endGroup >= 0 ? endGroup + 1 : groupAt + 1;
+  }
+  const kept: string[] = [];
+  let skippingStack = false;
+  for (const line of lines.slice(bodyStart, failAt >= 0 ? failAt : lines.length)) {
+    const text = line.trim();
+    if (!text) continue;
+    if (text.includes('[ELIFECYCLE]')) continue;
+    if (/stack trace:?$/i.test(text)) {
+      skippingStack = true;
+      continue;
+    }
+    if (skippingStack && /^at\s/i.test(text)) continue;
+    skippingStack = false;
+    kept.push(line.replace(/\/workspace\/[^/]+\/[^/]+\/site\//g, '').trimEnd());
+  }
+  return [`${stepName || '构建'}失败`, ...kept].join('\n');
 }
 
 async function failureLog(
