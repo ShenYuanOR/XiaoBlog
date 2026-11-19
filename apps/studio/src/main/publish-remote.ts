@@ -69,9 +69,9 @@ export function interpretPagesRead(status: number, buildType: string): 'ok' | 'u
   return 'manual';
 }
 
-export function staticHostMatches(text: string, owner: string, repo: string): boolean {
-  const expected = `xiao pages: /${owner.trim().toLowerCase()}/${repo.trim().replace(/\.git$/, '').toLowerCase()}/`;
-  return text.toLowerCase().includes(expected);
+/** 首页是固定前缀。`/<owner>/<repo>/` 原样返回，不会换成仓库名。 */
+export function staticHostMatches(text: string): boolean {
+  return text.trim().toLowerCase().startsWith('xiao pages:');
 }
 
 export function readCreatedRepo(
@@ -289,8 +289,8 @@ export async function enableGiteaActions(
 
 export async function probeStaticHost(
   host: string,
-  owner: string,
-  repo: string,
+  _owner: string,
+  _repo: string,
   fetchImpl: typeof fetch,
 ): Promise<{ ok: boolean; message: string }> {
   const root = host.trim().replace(/\/$/, '');
@@ -299,8 +299,8 @@ export async function probeStaticHost(
     const response = await fetchImpl(root);
     if (!response.ok) return { ok: false, message: `静态服务没有响应（HTTP ${response.status}）。` };
     const text = await response.text();
-    if (!staticHostMatches(text, owner, repo)) {
-      return { ok: false, message: `首页不是这个仓库的静态服务。应能看到 xiao pages: /${owner.toLowerCase()}/${repo.toLowerCase()}/` };
+    if (!staticHostMatches(text)) {
+      return { ok: false, message: '首页没有以 xiao pages: 开头。确认这是晓的静态服务。' };
     }
     return { ok: true, message: '' };
   } catch (error) {

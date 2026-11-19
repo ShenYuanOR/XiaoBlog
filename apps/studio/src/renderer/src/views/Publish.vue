@@ -552,7 +552,7 @@ async function acceptSite(): Promise<void> {
           ...prep.value,
           staticHost: staticHost.value,
           error: probed.message,
-          next: '确认静态服务地址后再探测。已填的地址还留着。',
+          next: '上线核对可能等不到这次的版本。可以改地址再探测，或仍然使用这个地址。',
         };
         return;
       }
@@ -564,6 +564,15 @@ async function acceptSite(): Promise<void> {
   }
   const suggested = suggestSite(prep.value, '');
   prep.value = applySite(prep.value, { siteUrl: suggested.siteUrl, base: suggested.base });
+}
+
+function useHostAnyway(): void {
+  const suggested = suggestSite(prep.value, staticHost.value);
+  prep.value = applySite(prep.value, {
+    siteUrl: suggested.siteUrl,
+    base: suggested.base,
+    staticHost: staticHost.value,
+  });
 }
 
 async function runPrepare(): Promise<void> {
@@ -962,7 +971,10 @@ watch(
                       <UiInput v-model="staticHost" placeholder="http://192.168.1.10:8700" />
                     </UiField>
                     <p v-if="suggestedSite.siteUrl" class="dim">探测通过后会是 {{ suggestedSite.siteUrl }}</p>
-                    <UiButton variant="primary" :loading="prepBusy" @click="acceptSite">探测并继续</UiButton>
+                    <div class="prep-actions">
+                      <UiButton variant="primary" :loading="prepBusy" @click="acceptSite">探测并继续</UiButton>
+                      <UiButton v-if="prep.error" @click="useHostAnyway">仍然使用这个地址</UiButton>
+                    </div>
                   </template>
                 </template>
                 <template v-else-if="step === 'build'">
@@ -1294,6 +1306,14 @@ watch(
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.prep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--ui-s2);
 }
 
 .prep-current h3 {

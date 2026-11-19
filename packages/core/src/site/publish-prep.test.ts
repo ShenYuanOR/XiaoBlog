@@ -20,6 +20,7 @@ import {
   interpretPagesCreate,
   interpretPagesRead,
   readCreatedRepo,
+  probeStaticHost,
   readRemoteFacts,
   readRepoChoices,
   staticHostMatches,
@@ -218,7 +219,7 @@ describe('发布准备状态机', () => {
 });
 
 describe('准备用的远端判断', () => {
-  it('仓库列表、Pages 状态、静态服务和建仓库失败', () => {
+  it('仓库列表、Pages 状态、静态服务和建仓库失败', async () => {
     const repos = readRepoChoices('github', 'https://github.com', [
       { full_name: 'ShenYuanOR/xiao-pages-test', private: false, size: 0, default_branch: 'main' },
       { full_name: 'ShenYuanOR/notes', private: true, size: 12, default_branch: 'main' },
@@ -229,7 +230,15 @@ describe('准备用的远端判断', () => {
     expect(interpretPagesCreate(403)).toBe('manual');
     expect(interpretPagesRead(200, 'workflow')).toBe('ok');
     expect(interpretPagesRead(200, 'legacy')).toBe('update');
-    expect(staticHostMatches('xiao pages: /shenyuan/xiao-gate/\n', 'ShenYuan', 'Xiao-Gate')).toBe(true);
+    expect(staticHostMatches('xiao pages: /<owner>/<repo>/')).toBe(true);
+    expect(staticHostMatches('hello')).toBe(false);
+    const probed = await probeStaticHost(
+      'http://192.168.1.170:8700',
+      'ShenYuan',
+      'xiao-gate2',
+      (async () => new Response('xiao pages: /<owner>/<repo>/\n')) as typeof fetch,
+    );
+    expect(probed.ok).toBe(true);
     expect(readCreatedRepo(403, {}).message).toContain('不能新建仓库');
   });
 
