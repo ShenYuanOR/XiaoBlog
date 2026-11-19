@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   acceptToken,
+  asTokenReport,
   applyBuild,
   applyRepo,
   applySite,
@@ -19,6 +20,7 @@ import {
   stepTitle,
   suggestSite,
   tokenPage,
+  type PrepStep,
 } from '../../../main/publish-prep.ts';
 import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
 import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
@@ -223,7 +225,7 @@ const pagesLabel = computed(() => {
   return '页面在 pages 分支';
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
-const prepHelp: Record<string, { title: string; body: string }> = {
+const prepHelp: Record<PrepStep, { title: string; body: string }> = {
   platform: {
     title: '选平台',
     body: 'GitHub 是正式站点，用自带的 Pages。Gitea 是局域网测试，要填实例地址。',
@@ -243,6 +245,10 @@ const prepHelp: Record<string, { title: string; body: string }> = {
   build: {
     title: '构建准备',
     body: '权限够就自动写入构建配置，并开启 Pages 或 Actions。做不到的会给你网页链接，做完点「我已完成，重新检查」。',
+  },
+  publish: {
+    title: '首次发布',
+    body: '点「开始首次发布」进入检查、推送、远端构建、上线。',
   },
 };
 const shownPrep = computed(() => PREP_ORDER);
@@ -421,6 +427,12 @@ async function submitReconnect(): Promise<void> {
   }
 }
 
+function readyProvider(): 'github' | 'gitea' | null {
+  const provider = prep.value.provider;
+  if (provider === 'github' || provider === 'gitea') return provider;
+  return null;
+}
+
 function openLink(url: string): void {
   if (url) void window.xiao.app.openExternal(url);
 }
@@ -452,23 +464,27 @@ async function verifyPasted(): Promise<void> {
     notify('先粘贴访问令牌。', 'error', 'publish-prep');
     return;
   }
+  const provider = readyProvider();
+  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.checkToken(prep.value.provider, prep.value.origin, token);
+    const result = await window.xiao.publish.checkToken(provider, prep.value.origin, token);
     if (!result.ok) {
       notify(result.message, 'error', 'publish-prep');
       return;
     }
-    prep.value = applyTokenReport({ ...prep.value, token }, result.data);
+    prep.value = applyTokenReport({ ...prep.value, token }, asTokenReport(result.data));
   } finally {
     prepBusy.value = false;
   }
 }
 
 async function loadRepos(): Promise<void> {
+  const provider = readyProvider();
+  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.repos(prep.value.provider, prep.value.origin, prep.value.token);
+    const result = await window.xiao.publish.repos(provider, prep.value.origin, prep.value.token);
     if (!result.ok) {
       prep.value = { ...prep.value, error: result.message, next: '也可以直接粘贴仓库地址。', manualLink: '' };
       return;
@@ -483,9 +499,11 @@ async function loadRepos(): Promise<void> {
 }
 
 async function useRemote(remoteUrl: string): Promise<void> {
+  const provider = readyProvider();
+  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.repoFacts(prep.value.provider, remoteUrl, prep.value.token);
+    const result = await window.xiao.publish.repoFacts(provider, remoteUrl, prep.value.token);
     if (!result.ok) {
       prep.value = { ...prep.value, remoteUrl, error: result.message, next: '检查地址后再试。已填的地址还留着。' };
       return;
@@ -507,7 +525,7 @@ async function useRemote(remoteUrl: string): Promise<void> {
         prep.value.token,
         prep.value.report?.account || '',
       );
-      if (refined.ok) prep.value = { ...prep.value, report: refined.data as typeof prep.value.report };
+      if (refined.ok) prep.value = { ...prep.value, report: asTokenReport(refined.data) };
     }
   } finally {
     prepBusy.value = false;
@@ -559,9 +577,11 @@ async function createRepoNow(): Promise<void> {
     notify('先填仓库名。', 'error', 'publish-prep');
     return;
   }
+  const provider = readyProvider();
+  if (!provider) return;
   prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.createRepo(prep.value.provider, prep.value.origin, prep.value.token, name);
+    const result = await window.xiao.publish.createRepo(provider, prep.value.origin, prep.value.token, name);
     if (!result.ok) {
       notify(result.message, 'error', 'publish-prep');
       return;
@@ -1102,8 +1122,8 @@ watch(
         </section>
         <aside class="side">
           <section class="card">
-            <h2>{{ prepHelp[prep.step]?.title }}</h2>
-            <p>{{ prepHelp[prep.step]?.body }}</p>
+            <h2>{{ prepHelp[prep.step].title }}</h2>
+            <p>{{ prepHelp[prep.step].body }}</p>
           </section>
         </aside>
       </div>

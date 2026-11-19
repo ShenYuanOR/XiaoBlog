@@ -5,6 +5,7 @@ import {
   githubNewRepoLink,
   githubPagesUrl,
   githubTokenLink,
+  type CapabilityKey,
   type TokenReport,
 } from './publish-token.ts';
 
@@ -237,6 +238,29 @@ export function applyBuild(draft: PrepDraft, input: BuildResult): PrepDraft {
 export function reopen(draft: PrepDraft, step: PrepStep): PrepDraft {
   if (draft.step !== step && !draft.done.includes(step)) return draft;
   return clearHint({ ...draft, step });
+}
+
+const CAPABILITY_KEYS: CapabilityKey[] = ['push', 'workflow', 'hosting', 'actions', 'create'];
+
+export function asTokenReport(data: {
+  status: TokenReport['status'];
+  account: string;
+  kind: TokenReport['kind'];
+  expiresAt: string;
+  message: string;
+  capabilities: { key: string; label: string; state: TokenReport['capabilities'][number]['state']; how: string }[];
+}): TokenReport {
+  return {
+    status: data.status,
+    account: data.account,
+    kind: data.kind,
+    expiresAt: data.expiresAt,
+    message: data.message,
+    capabilities: data.capabilities.flatMap((item) => {
+      if (!CAPABILITY_KEYS.includes(item.key as CapabilityKey)) return [];
+      return [{ key: item.key as CapabilityKey, label: item.label, state: item.state, how: item.how }];
+    }),
+  };
 }
 
 export function tokenResultLine(report: TokenReport | null): string {
