@@ -4,8 +4,18 @@ import { join } from 'node:path';
 import { parsePostMeta } from './content.ts';
 import { emptyChanges, parseStatus, summarizeChanges, type ChangeSummary } from './release-gate.ts';
 
+/** 开头信息写坏时标题会变成半截符号，这时用目录名。 */
+export function usablePostTitle(title: string, slug: string): string {
+  const text = title.trim();
+  if (!text) return slug;
+  const open = (text.match(/\[/g) ?? []).length;
+  const close = (text.match(/\]/g) ?? []).length;
+  if (open !== close || text.startsWith('[') || text.startsWith('{')) return slug;
+  return text;
+}
+
 function titleFromRaw(raw: string, slug: string, html: boolean): string {
-  return parsePostMeta(raw, slug, html ? 'html' : 'markdown').title;
+  return usablePostTitle(parsePostMeta(raw, slug, html ? 'html' : 'markdown').title, slug);
 }
 
 /** 磁盘上还在的读文件；已删除的从 HEAD 读标题。读不到就用目录名。 */
