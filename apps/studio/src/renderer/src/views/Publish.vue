@@ -226,25 +226,25 @@ const pagesLabel = computed(() => {
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 const prepHelp: Record<PrepStep, { title: string; body: string }> = {
-  token: {
-    title: '令牌验证',
-    body: '粘贴后会看账号和每一项能力。缺了推送权限就先去创建令牌。建仓库的权限不是必需的，没有也可以用网页新建。',
-  },
   repo: {
     title: '选仓库',
-    body: '默认用已有仓库，空仓库也可以。不是晓站点的非空仓库会先警告。没有仓库就去网页新建，建好后点重新检查。',
+    body: '填 owner/repo 或仓库网址。公开仓库会看出是不是空的、是不是晓的站点。找不到可以去网页新建，或先继续。不是晓站点的非空仓库会先警告。',
+  },
+  token: {
+    title: '令牌验证',
+    body: '先在 GitHub 创建只授权这个仓库的细粒度令牌，再粘贴验证。经典令牌，以及能访问其他仓库的令牌，都不会通过。',
   },
   site: {
     title: '网站地址',
-    body: 'GitHub 按仓库名计算。仓库名是 owner.github.io 时用根路径，否则挂在 /仓库名/。',
+    body: '按仓库名计算。仓库名是 owner.github.io 时用根路径，否则挂在 /仓库名/。确认后写入站点配置。',
   },
   build: {
     title: '构建准备',
-    body: '权限够就自动写入构建配置，并开启 Pages 或 Actions。做不到的会给你网页链接，做完点「我已完成，重新检查」。',
+    body: '写入 GitHub Actions 构建配置，并把 Pages 的构建类型设成 workflow。做不到的会给你网页链接，做完点「我已完成，重新检查」。',
   },
   publish: {
     title: '首次发布',
-    body: '点「开始首次发布」进入检查、推送、远端构建、上线。',
+    body: '点「开始首次发布」，按检查、推送、远端构建、上线走完。',
   },
 };
 const shownPrep = computed(() => PREP_ORDER);
@@ -912,7 +912,7 @@ watch(
                 </template>
                 <template v-else-if="step === 'repo'">
                   <h3>仓库</h3>
-                  <p class="dim">默认用已有仓库，可以是空的。</p>
+                  <p class="dim">填 owner/repo 或仓库网址。空的公开仓库可以直接用。</p>
                   <template v-if="repoChosen">
                     <div class="repo-card">
                       <p>{{ prep.owner }}/{{ prep.repo }}</p>
