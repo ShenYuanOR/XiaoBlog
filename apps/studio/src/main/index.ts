@@ -1485,6 +1485,15 @@ app.whenReady().then(() => {
       }
       const errors = patchConfig(siteDir, { set: { 'site.url': input.siteUrl, 'site.base': input.base } });
       if (errors.length) return ok({ ...idle, error: errors.join('；'), next: '修正站点配置后再试。' });
+      const noteSiteFile = (relative: string): void => {
+        const full = join(siteDir, relative);
+        try {
+          watcher?.noteWrite(full, readFileSync(full, 'utf8'));
+        } catch {
+          // 监视器读不到时不让准备失败。
+        }
+      };
+      noteSiteFile('xiao.config.json');
       const branch = input.branch || 'main';
       let workflow: 'ok' | 'manual' = 'ok';
       let hosting: 'ok' | 'manual' = 'ok';
@@ -1497,22 +1506,10 @@ app.whenReady().then(() => {
       try {
         if (input.provider === 'github') {
           writeGithubWorkflow(siteDir, branch);
-          const file = join(siteDir, '.github', 'workflows', 'xiao-deploy.yml');
-          try {
-            watcher?.noteWrite(file, readFileSync(file, 'utf8'));
-          } catch {
-            // 监视器读不到时不让准备失败。
-          }
+          noteSiteFile('.github/workflows/xiao-deploy.yml');
         } else {
-          const wrote = writeDeployWorkflow(siteDir, branch);
-          if (wrote === 'written') {
-            const file = join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml');
-            try {
-              watcher?.noteWrite(file, readFileSync(file, 'utf8'));
-            } catch {
-              // 同上。
-            }
-          }
+          writeDeployWorkflow(siteDir, branch);
+          noteSiteFile('.gitea/workflows/xiao-deploy.yml');
         }
       } catch {
         workflow = 'manual';
