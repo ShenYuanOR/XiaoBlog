@@ -117,6 +117,7 @@ const editedPosts = computed(() =>
 );
 const deletedPosts = computed(() => changes.value.posts.filter((post) => post.status === 'deleted'));
 const failedCheck = computed(() => checks.value.find((item) => !item.ok));
+const liveOk = computed(() => steps.value.some((step) => step.key === 'live' && step.state === 'ok'));
 const blocked = computed(
   () => checking.value || checks.value.length === 0 || checks.value.some((item) => !item.ok),
 );
@@ -214,6 +215,15 @@ function openArticle(slug: string): void {
   session.activePost = slug;
   session.setNav('posts');
   window.dispatchEvent(new CustomEvent('xiao:open-post', { detail: { slug } }));
+}
+
+function openSite(): void {
+  const url = target.value?.siteUrl || steps.value.find((step) => step.key === 'live')?.url || '';
+  if (url) void window.xiao.app.openExternal(url);
+}
+
+function finishPublish(): void {
+  phase.value = 'ready';
 }
 
 async function connectGitea(): Promise<void> {
@@ -330,19 +340,19 @@ async function startPublish(force = false): Promise<void> {
     phase.value = 'result';
     return;
   }
+  const sha = pushResult.value?.sha ?? '';
   next[1] = {
     key: 'push',
     label: '推送',
     state: 'ok',
-    detail: pushResult.value?.message || '已推送',
+    detail: sha ? `已推送 ${sha.slice(0, 7)}` : '已推送',
     ms: pushMs,
   };
-  const sha = pushResult.value?.sha ?? '';
   next[2] = { key: 'build', label: '远端构建', state: 'run', detail: sha ? '正在查看这次提交的构建' : '没有提交号，没法对照构建', ms: 0 };
   steps.value = [...next];
   const buildStarted = Date.now();
   const followed = sha && session.siteDir ? await window.xiao.publish.follow(session.siteDir, sha) : null;
-  const buildMs = Date.now() - buildStarted;
+  const buildMs = followed && followed.ok ? followed.data.buildMs : Date.now() - buildStarted;
   if (!followed || !followed.ok) {
     next[2] = { key: 'build', label: '远端构建', state: 'fail', detail: followed && !followed.ok ? followed.message : '没有提交号', ms: buildMs };
   } else {
@@ -361,7 +371,7 @@ async function startPublish(force = false): Promise<void> {
         label: '上线',
         state: followed.data.live.state === 'ok' ? 'ok' : 'fail',
         detail: followed.data.live.detail,
-        ms: 0,
+        ms: followed.data.liveMs,
         url: followed.data.live.url,
       };
     }
@@ -634,23 +644,28 @@ watch(
       </template>
 
       <section v-else class="block">
-        <h2>{{ steps.some((step) => step.state === 'fail') ? '发布停住了' : '发布进度' }}</h2>
+        <h2>{{ liveOk ? '已上线' : steps.some((step) => step.state === 'fail') ? '发布停住了' : '发布进度' }}</h2>
+        <p v-if="liveOk && target?.siteUrl" class="site-url">{{ target.siteUrl }}</p>
         <ol class="steps">
           <li v-for="step in steps" :key="step.key" :class="step.state">
             <span class="step-label">{{ step.label }}</span>
             <span class="step-state">
               {{ step.state === 'ok' ? '完成' : step.state === 'fail' ? '失败' : step.state === 'run' ? '进行中' : '等待' }}
             </span>
-            <span v-if="step.ms" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
+            <span v-if="step.state === 'ok' || step.state === 'fail'" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
             <p class="dim step-detail">{{ step.detail }}</p>
             <details v-if="step.key === 'check' && step.state === 'fail' && failedCheck?.more" class="more">
               <summary>详细信息</summary>
               <pre>{{ failedCheck.more }}</pre>
             </details>
-            <a v-if="step.url" class="dim" :href="step.url">{{ step.key === 'live' ? '打开网站' : '在 Gitea 查看' }}</a>
+            <a v-if="step.url && step.key !== 'live'" class="dim" :href="step.url">在 Gitea 查看</a>
           </li>
         </ol>
-        <div class="actions">
+        <div v-if="liveOk" class="actions">
+          <UiButton variant="primary" @click="openSite">打开网站</UiButton>
+          <UiButton @click="finishPublish">完成</UiButton>
+        </div>
+        <div v-else class="actions">
           <UiButton v-if="needsForce" size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
           <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
           <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
@@ -900,6 +915,12 @@ h2 {
 
 .step-detail {
   white-space: pre-wrap;
+}
+
+.site-url {
+  margin: 0;
+  font-size: var(--ui-fs-3);
+  word-break: break-all;
 }
 
 .more {

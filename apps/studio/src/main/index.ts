@@ -800,6 +800,7 @@ app.whenReady().then(() => {
     if (!target) return fail('PUBLISH_TARGET', '还没有连接仓库');
     const token = secretStore().load(siteDir);
     if (!token) return fail('PUBLISH_TOKEN', '令牌丢了，重新连接一次');
+    const buildStarted = Date.now();
     const build = await watchBuild({
       remoteUrl: target.remoteUrl,
       token,
@@ -807,11 +808,14 @@ app.whenReady().then(() => {
       actionsState: target.actionsState,
       actionsDetail: target.actionsDetail,
     });
+    const buildMs = Date.now() - buildStarted;
     event.sender.send('publish:progress', build);
-    if (build.state !== 'ok') return ok({ build, live: null });
+    if (build.state !== 'ok') return ok({ build, live: null, buildMs, liveMs: 0 });
+    const liveStarted = Date.now();
     const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha });
+    const liveMs = Date.now() - liveStarted;
     event.sender.send('publish:progress', live);
-    return ok({ build, live });
+    return ok({ build, live, buildMs, liveMs });
   });
   ipcMain.handle('publish:record', (_event, siteDir: string, item: DeployRecord | string) => {
     const row: DeployRecord =

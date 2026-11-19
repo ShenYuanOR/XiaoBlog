@@ -200,6 +200,8 @@ export interface XiaoApi {
       IpcResult<{
         build: { phase: 'build' | 'live'; state: 'run' | 'ok' | 'fail'; detail: string; log?: string; url?: string };
         live: { phase: 'build' | 'live'; state: 'run' | 'ok' | 'fail'; detail: string; log?: string; url?: string } | null;
+        buildMs: number;
+        liveMs: number;
       }>
     >;
     target: (siteDir: string) => Promise<
