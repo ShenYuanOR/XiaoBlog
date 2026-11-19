@@ -736,6 +736,7 @@ function applyJob(job: {
 }
 
 async function startFirstPublish(): Promise<void> {
+  if (prep.value.report) tokenReport.value = prep.value.report;
   if (heldTarget.value) target.value = heldTarget.value;
   if (!target.value && session.siteDir) {
     const current = await window.xiao.publish.target(session.siteDir);
