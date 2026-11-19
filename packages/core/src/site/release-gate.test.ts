@@ -7,6 +7,7 @@ import { collectChanges } from '../../../../apps/studio/src/main/publish-changes
 import {
   blockedBy,
   parseStatus,
+  historyRows,
   rememberDeploy,
   renewalDue,
   summarizeChanges,
@@ -85,5 +86,27 @@ describe('发布门禁', () => {
     const now = new Date('2026-10-17T00:00:00Z');
     expect(renewalDue('2026-10-20T00:00:00Z', now)).toBe(true);
     expect(renewalDue('2026-12-01T00:00:00Z', now)).toBe(false);
+  });
+
+  it('写盘失败时发布记录留在内存，并带短提交号、四步和总耗时', () => {
+    const row = {
+      at: '2026-11-19T07:46:11.000Z',
+      repo: 'http://gitea.local/owner/site.git',
+      sha: '213933cd2d3bed60409acae015c6c6fd336bdf0f',
+      ms: 39000,
+      result: '已上线',
+      steps: [
+        { key: 'check' as const, label: '检查', state: 'ok' as const, ms: 2000 },
+        { key: 'push' as const, label: '推送', state: 'ok' as const, ms: 2100 },
+        { key: 'build' as const, label: '远端构建', state: 'ok' as const, ms: 34700 },
+        { key: 'live' as const, label: '上线', state: 'ok' as const, ms: 200 },
+      ],
+    };
+    const kept = rememberDeploy([], row);
+    expect(kept[0]?.sha?.slice(0, 7)).toBe('213933c');
+    expect(kept[0]?.steps).toHaveLength(4);
+    expect(kept[0]?.ms).toBe(39000);
+    expect(historyRows(kept, [])).toEqual(kept);
+    expect(historyRows(undefined, [])).toEqual([]);
   });
 });

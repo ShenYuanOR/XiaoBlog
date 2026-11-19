@@ -38,12 +38,20 @@ interface PreflightItem {
   action: '' | 'seo' | 'settings' | 'apply-url' | 'open-post';
 }
 
+interface DeployStepNote {
+  key: 'check' | 'push' | 'build' | 'live';
+  label: string;
+  state: StepState;
+  ms: number;
+}
+
 interface DeployRecord {
   at: string;
   repo: string;
   sha?: string;
   result?: string;
   ms?: number;
+  steps?: DeployStepNote[];
 }
 
 interface DeployTarget {
@@ -94,6 +102,7 @@ const changes = ref<ChangeSummary>(emptyChanges());
 const checks = ref<PreflightItem[]>([]);
 const checking = ref(false);
 const history = ref<DeployRecord[]>([]);
+const historyPersisted = ref(true);
 const target = ref<DeployTarget | null>(null);
 const giteaUrl = ref('');
 const giteaLogin = ref('');
@@ -195,6 +204,12 @@ function formatTime(at: string): string {
 
 function isPushRecord(repo: string): boolean {
   return /^https?:\/\//i.test(repo);
+}
+
+function historyResult(item: DeployRecord): string {
+  if (!item.steps?.length) return item.result || (isPushRecord(item.repo) ? '已推送' : '已记录');
+  const name = (state: StepState): string => (state === 'ok' ? '完成' : state === 'fail' ? '失败' : '未进行');
+  return item.steps.map((step) => `${step.label}${name(step.state)}`).join('、');
 }
 
 function freshSteps(): StepRow[] {
@@ -386,6 +401,7 @@ async function startPublish(force = false): Promise<void> {
       sha,
       result: resultText,
       ms: Date.now() - started,
+      steps: next.map((step) => ({ key: step.key, label: step.label, state: step.state, ms: step.ms })),
     });
   }
   await loadAll(false);
@@ -479,6 +495,7 @@ async function loadAll(check = true): Promise<void> {
     changes.value = emptyChanges();
     checks.value = [];
     history.value = [];
+    historyPersisted.value = true;
     target.value = null;
     return;
   }
@@ -491,7 +508,8 @@ async function loadAll(check = true): Promise<void> {
       window.xiao.publish.target(siteDir),
     ]);
     changes.value = changesResult.ok ? changesResult.data : emptyChanges();
-    history.value = historyResult.ok ? historyResult.data : [];
+    history.value = historyResult.ok ? historyResult.data.rows : [];
+    historyPersisted.value = historyResult.ok ? historyResult.data.persisted : true;
     target.value = targetResult.ok ? targetResult.data : null;
     if (target.value) {
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
@@ -701,6 +719,7 @@ watch(
 
       <details v-if="target" class="drawer">
         <summary>发布历史</summary>
+        <p v-if="!historyPersisted" class="dim">本机无法保存，重启后清空</p>
         <p v-if="!historyRows.length" class="dim">还没有发布记录。</p>
         <table v-else class="history">
           <thead>
@@ -716,7 +735,7 @@ watch(
             <tr v-for="item in historyRows" :key="item.at">
               <td>{{ formatTime(item.at) }}</td>
               <td :title="item.repo">{{ item.repo }}</td>
-              <td>{{ item.result || (isPushRecord(item.repo) ? '已推送' : '已记录') }}</td>
+              <td>{{ historyResult(item) }}</td>
               <td :title="item.sha">{{ item.sha ? item.sha.slice(0, 7) : '没有记录' }}</td>
               <td>{{ item.ms ? `${(item.ms / 1000).toFixed(1)} 秒` : '没有记录' }}</td>
             </tr>

@@ -139,16 +139,29 @@ export function blockedBy(rows: { level: string }[]): boolean {
   return rows.some((row) => row.level === 'error');
 }
 
+export interface DeployStepNote {
+  key: 'check' | 'push' | 'build' | 'live';
+  label: string;
+  state: 'ok' | 'fail' | 'wait' | 'run';
+  ms: number;
+}
+
 export interface DeployRecord {
   at: string;
   repo: string;
   sha?: string;
   result?: string;
   ms?: number;
+  steps?: DeployStepNote[];
 }
 
 export function rememberDeploy(history: DeployRecord[], item: DeployRecord): DeployRecord[] {
   return [...history, item].slice(-20);
+}
+
+/** 本次运行里写过的历史优先于磁盘。磁盘读失败或还没写过时，用另一边。 */
+export function historyRows(memory: DeployRecord[] | undefined, disk: DeployRecord[] | undefined): DeployRecord[] {
+  return memory ?? disk ?? [];
 }
 
 export function renewalDue(expires: string, now: Date): boolean {

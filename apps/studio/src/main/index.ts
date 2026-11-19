@@ -99,7 +99,7 @@ import { collectChanges } from './publish-changes.ts';
 import { buildPreflight } from './publish-preflight.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
-import { rememberDeploy, type DeployRecord } from './release-gate.ts';
+import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
 import { manifest } from '@xiao/core/components';
@@ -334,16 +334,22 @@ function historyFile(): string {
   return join(app.getPath('userData'), 'deploy-history.json');
 }
 
+const historyMemory = new Map<string, DeployRecord[]>();
+let historyDiskOk = true;
+
 function readDeployHistory(siteDir: string): DeployRecord[] {
+  let disk: DeployRecord[] | undefined;
   try {
     const all = JSON.parse(readFileSync(historyFile(), 'utf8')) as Record<string, DeployRecord[]>;
-    return all[siteDir] ?? [];
+    disk = all[siteDir];
   } catch {
-    return [];
+    disk = undefined;
   }
+  return historyRows(historyMemory.has(siteDir) ? historyMemory.get(siteDir) : undefined, disk);
 }
 
 function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
+  historyMemory.set(siteDir, rows);
   const file = historyFile();
   let all: Record<string, DeployRecord[]> = {};
   try {
@@ -355,8 +361,9 @@ function writeDeployHistory(siteDir: string, rows: DeployRecord[]): void {
   try {
     mkdirSync(app.getPath('userData'), { recursive: true });
     writeFileSync(file, `${JSON.stringify(all)}\n`);
+    historyDiskOk = true;
   } catch (error) {
-    // 部署历史是附属记录，写不进去不能影响推送结果本身。
+    historyDiskOk = false;
     console.warn(`记录部署历史失败：${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -689,7 +696,9 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('publish:changes', (_event, siteDir: string) => ok(collectChanges(siteDir)));
-  ipcMain.handle('publish:history', (_event, siteDir: string) => ok(readDeployHistory(siteDir)));
+  ipcMain.handle('publish:history', (_event, siteDir: string) =>
+    ok({ rows: readDeployHistory(siteDir), persisted: historyDiskOk }),
+  );
   ipcMain.handle('publish:target', (_event, siteDir: string) => {
     const target = deployStore().read()[siteDir] ?? null;
     return ok(target);
@@ -824,7 +833,7 @@ app.whenReady().then(() => {
         : { ...item, at: item.at || new Date().toISOString() };
     const next = rememberDeploy(readDeployHistory(siteDir), row);
     writeDeployHistory(siteDir, next);
-    return ok(next);
+    return ok({ rows: next, persisted: historyDiskOk });
   });
   ipcMain.handle(
     'wizard:write',

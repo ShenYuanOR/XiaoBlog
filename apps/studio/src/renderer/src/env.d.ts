@@ -188,11 +188,37 @@ export interface XiaoApi {
         other: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; from?: string }[];
       }>
     >;
-    history: (siteDir: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
+    history: (siteDir: string) => Promise<
+      IpcResult<{
+        rows: {
+          at: string;
+          repo: string;
+          sha?: string;
+          result?: string;
+          ms?: number;
+          steps?: { key: 'check' | 'push' | 'build' | 'live'; label: string; state: 'ok' | 'fail' | 'wait' | 'run'; ms: number }[];
+        }[];
+        persisted: boolean;
+      }>
+    >;
     record: (
       siteDir: string,
-      item: { at: string; repo: string; sha?: string; result?: string; ms?: number } | string,
-    ) => Promise<IpcResult<{ at: string; repo: string; sha?: string; result?: string; ms?: number }[]>>;
+      item:
+        | {
+            at: string;
+            repo: string;
+            sha?: string;
+            result?: string;
+            ms?: number;
+            steps?: { key: 'check' | 'push' | 'build' | 'live'; label: string; state: 'ok' | 'fail' | 'wait' | 'run'; ms: number }[];
+          }
+        | string,
+    ) => Promise<
+      IpcResult<{
+        rows: { at: string; repo: string; sha?: string; result?: string; ms?: number }[];
+        persisted: boolean;
+      }>
+    >;
     follow: (
       siteDir: string,
       sha: string,
