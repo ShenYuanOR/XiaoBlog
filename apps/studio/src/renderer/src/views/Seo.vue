@@ -46,6 +46,7 @@ interface PostItem {
 interface Tag {
   level: 'error' | 'warn';
   text: string;
+  title: string;
 }
 
 /** 显示宽度：汉字和全角算 2，其余算 1。与 main/seo.ts、seo-audit.mjs 保持一致，改规则时三处一起改。 */
@@ -208,32 +209,49 @@ function reportIssuesFor(slug: string): Issue[] {
   });
 }
 
+function shortTitle(title: string): string {
+  const chars = [...title.trim()];
+  if (chars.length <= 12) return title.trim();
+  return `${chars.slice(0, 12).join('')}…`;
+}
+
+function clipByWidth(text: string, max: number): string {
+  if (displayWidth(text) <= max) return text;
+  const mark = '…';
+  let used = displayWidth(mark);
+  let out = '';
+  for (const char of text) {
+    const width = displayWidth(char);
+    if (used + width > max) break;
+    out += char;
+    used += width;
+  }
+  return `${out}${mark}`;
+}
+
 function tagsFor(post: PostItem): Tag[] {
   const tags: Tag[] = [];
   const title = liveTitle(post).trim();
   const written = liveDescription(post).trim();
-  if (displayWidth(title) > 60) {
-    tags.push({ level: 'warn', text: `标题太长（约 ${charsOf(title)} 字）` });
-  }
-  if (!written) {
-    tags.push({ level: 'warn', text: '没写摘要（自动截取正文）' });
-  } else if (displayWidth(written) < 60) {
-    tags.push({ level: 'warn', text: `摘要太短（约 ${charsOf(written)} 字）` });
-  } else if (displayWidth(written) > 160) {
-    tags.push({ level: 'warn', text: `摘要太长（约 ${charsOf(written)} 字）` });
-  }
+  const add = (level: 'error' | 'warn', text: string, titleText = text) => {
+    tags.push({ level, text, title: titleText });
+  };
+  if (displayWidth(title) > 60) add('warn', `标题太长（约 ${charsOf(title)} 字）`);
+  if (!written) add('warn', '没写摘要（自动截取正文）');
+  else if (displayWidth(written) < 60) add('warn', `摘要太短（约 ${charsOf(written)} 字）`);
+  else if (displayWidth(written) > 160) add('warn', `摘要太长（约 ${charsOf(written)} 字）`);
   const mine = effectiveDescription(post);
   if (mine) {
     const other = posts.value.find(
       (item) => item.slug !== post.slug && effectiveDescription(item) === mine,
     );
-    if (other) tags.push({ level: 'warn', text: `摘要与《${liveTitle(other)}》重复` });
+    if (other) {
+      const otherTitle = liveTitle(other);
+      add('warn', `摘要与《${shortTitle(otherTitle)}》重复`, `摘要与《${otherTitle}》重复`);
+    }
   }
   for (const issue of reportIssuesFor(post.slug)) {
-    tags.push({
-      level: issue.level === 'error' ? 'error' : 'warn',
-      text: REPORT_LABELS[issue.rule] ?? issue.rule,
-    });
+    add(issue.level === 'error' ? 'error' : 'warn', REPORT_LABELS[issue.rule] ?? issue.rule);
   }
   return tags;
 }
@@ -533,21 +551,25 @@ watch(
 
     <template v-else>
       <header class="head">
-        <h1>SEO</h1>
-        <p class="dim">{{ summaryLine }}</p>
+        <div class="head-main">
+          <h1>SEO</h1>
+          <p class="dim">{{ summaryLine }}</p>
+        </div>
         <UiButton size="sm" :icon-left="icons.refresh" :loading="auditing" @click="runAudit">
           {{ auditing ? '正在构建并体检…' : '体检' }}
         </UiButton>
       </header>
 
-      <p v-if="errorText" class="error-text">{{ errorText }}</p>
-      <details v-if="buildLog" class="build-log">
-        <summary>完整日志</summary>
-        <pre>{{ buildLog }}</pre>
-      </details>
+      <div v-if="errorText" class="alert" role="alert">
+        <p>{{ errorText }}</p>
+        <details v-if="buildLog">
+          <summary>完整日志</summary>
+          <pre>{{ buildLog }}</pre>
+        </details>
+      </div>
 
       <section class="site">
-        <h2>站点与首页</h2>
+        <h2 class="section-title">站点与首页</h2>
         <div class="site-row">
           <label for="seo-url">站点地址</label>
           <input id="seo-url" v-model="siteUrl" placeholder="https://name.github.io" />
@@ -569,6 +591,10 @@ watch(
       </section>
 
       <section class="articles">
+        <div class="section-head">
+          <h2 class="section-title">文章</h2>
+          <p class="dim">{{ report ? `生成后的页面问题来自上次体检 ${reportClock}` : '点体检检查生成后的页面' }}</p>
+        </div>
         <div class="article-bar">
           <div class="filters">
             <button type="button" :class="{ on: filter === 'all' }" @click="filter = 'all'">全部 {{ posts.length }}</button>
@@ -577,15 +603,14 @@ watch(
           </div>
           <input v-model="query" class="search" placeholder="按标题搜索" />
         </div>
-        <p class="dim">{{ report ? `生成后的页面问题来自上次体检 ${reportClock}` : '点体检检查生成后的页面' }}</p>
 
         <div class="table">
           <template v-for="post in visiblePosts" :key="post.slug">
             <button type="button" class="article" :class="{ open: openSlug === post.slug }" @click="toggle(post.slug)">
               <span class="dot" :class="rowLevel(post)" />
-              <span class="name">{{ liveTitle(post) }}</span>
+              <span class="name" :title="liveTitle(post)">{{ liveTitle(post) }}</span>
               <span class="tags">
-                <span v-for="tag in tagsFor(post)" :key="tag.text" class="tag" :class="tag.level">{{ tag.text }}</span>
+                <span v-for="tag in tagsFor(post)" :key="tag.title" class="tag" :class="tag.level" :title="tag.title">{{ tag.text }}</span>
               </span>
             </button>
             <div v-if="openSlug === post.slug" class="editor">
@@ -607,8 +632,8 @@ watch(
                 <h3>搜索结果</h3>
                 <article class="serp">
                   <p class="serp-url">{{ serpUrl(post.slug) }}</p>
-                  <p class="serp-title">{{ templatedTitle(editTitle) }}</p>
-                  <p class="serp-desc">{{ editDescription.trim() || excerpts[post.slug] || '（没有摘要）' }}</p>
+                  <p class="serp-title">{{ clipByWidth(templatedTitle(editTitle), 60) }}</p>
+                  <p class="serp-desc">{{ clipByWidth(editDescription.trim() || excerpts[post.slug] || '（没有摘要）', 160) }}</p>
                 </article>
               </div>
               <div class="editor-actions">
@@ -630,8 +655,8 @@ watch(
             <span>没有分享图</span>
           </div>
           <div class="social-body">
-            <p class="social-title">{{ previewTitle }}</p>
-            <p class="social-desc">{{ previewDescription || '（没有摘要）' }}</p>
+            <p class="social-title">{{ clipByWidth(previewTitle, 60) }}</p>
+            <p class="social-desc">{{ clipByWidth(previewDescription || '（没有摘要）', 160) }}</p>
           </div>
         </article>
       </UiDialog>
@@ -641,12 +666,22 @@ watch(
 
 <style scoped>
 .seo {
+  /* 顶栏最小宽度约 1056，1024 / 960 时 Shell 会把整列撑出窗口再裁掉。
+     这里按视口扣掉 view-body 两侧间距来限宽，避免保存按钮和搜索框被切。 */
+  --seo-view: min(1200px, calc(100vw - 2 * var(--ui-s6)));
   display: flex;
   flex-direction: column;
   gap: var(--ui-s4);
-  width: 100%;
-  max-width: 1200px;
-  margin-inline: auto;
+  width: var(--seo-view);
+  max-width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-left: max(0px, calc((100vw - var(--seo-view) - 2 * var(--ui-s6)) / 2));
+  margin-right: 0;
+  overflow: hidden;
 }
 
 .center {
@@ -658,22 +693,57 @@ watch(
   text-align: center;
 }
 
-.head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--ui-s3);
-  align-items: baseline;
+.head,
+.section-head,
+.article-bar,
+.site-row,
+.editor,
+.fields,
+.article,
+.tags {
+  min-width: 0;
 }
 
-.head h1,
-.site h2 {
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ui-s3);
+}
+
+.head-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ui-s3);
+  min-width: 0;
+}
+
+.head h1 {
   margin: 0;
   font-size: var(--ui-fs-5);
   font-weight: 600;
+  white-space: nowrap;
 }
 
-.site h2 {
+.head-main .dim,
+.section-head .dim {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-title {
+  margin: 0;
   font-size: var(--ui-fs-3);
+  font-weight: 600;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ui-s3);
 }
 
 .dim,
@@ -683,20 +753,23 @@ watch(
   font-size: var(--ui-fs-2);
 }
 
-.error-text {
-  margin: 0;
+.alert {
+  padding: var(--ui-s3);
+  border: 1px solid var(--ui-danger);
+  border-radius: var(--ui-r);
+  background: var(--ui-danger-weak);
   color: var(--ui-danger);
   font-size: var(--ui-fs-2);
+}
+
+.alert p {
+  margin: 0;
   white-space: pre-wrap;
 }
 
-.build-log {
-  color: var(--ui-text-2);
-  font-size: var(--ui-fs-2);
-}
-
-.build-log pre {
+.alert pre {
   max-height: 12rem;
+  margin: var(--ui-s2) 0 0;
   overflow: auto;
   white-space: pre-wrap;
 }
@@ -705,14 +778,36 @@ watch(
 .articles {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-s2);
+  gap: var(--ui-s3);
+  min-width: 0;
+}
+
+.articles {
+  flex: 1;
+  min-height: 0;
 }
 
 .site-row {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr) minmax(8rem, 18rem);
-  gap: var(--ui-s3);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label status'
+    'input input';
+  gap: 4px var(--ui-s3);
   align-items: center;
+}
+
+.site-row label {
+  grid-area: label;
+}
+
+.site-row input {
+  grid-area: input;
+}
+
+.site-row .status {
+  grid-area: status;
+  text-align: right;
 }
 
 .site-row label {
@@ -725,6 +820,8 @@ watch(
 .fields input,
 .fields textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--ui-line);
   border-radius: var(--ui-r-sm);
@@ -738,6 +835,14 @@ watch(
 .fields em {
   font-size: var(--ui-fs-2);
   font-style: normal;
+}
+
+.status {
+  display: -webkit-box;
+  max-width: 16rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .status.error,
@@ -763,6 +868,7 @@ watch(
 
 .article-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--ui-s3);
   align-items: center;
   justify-content: space-between;
@@ -790,23 +896,29 @@ watch(
 }
 
 .search {
-  width: 14rem;
+  flex: 1 1 10rem;
+  width: auto;
+  max-width: 14rem;
 }
 
 .table {
-  max-height: 33rem;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 240px;
   overflow: auto;
   border-top: 1px solid var(--ui-line);
 }
 
 .article {
   display: grid;
-  grid-template-columns: 12px minmax(8rem, 16rem) minmax(0, 1fr);
+  grid-template-columns: 12px minmax(0, 12rem) minmax(0, 1fr);
   gap: var(--ui-s3);
   align-items: center;
   width: 100%;
-  height: 2.5rem;
-  padding: 0;
+  min-height: 2.5rem;
+  height: auto;
+  padding: 6px 0;
   border: 0;
   border-bottom: 1px solid var(--ui-line);
   background: transparent;
@@ -848,15 +960,19 @@ watch(
 
 .tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 .tag {
+  max-width: 100%;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--ui-warn-weak);
   font-size: var(--ui-fs-1);
+  line-height: var(--ui-lh);
   white-space: nowrap;
 }
 
@@ -866,8 +982,8 @@ watch(
 
 .editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
-  gap: var(--ui-s4);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ui-s3);
   padding: var(--ui-s3) 0 var(--ui-s4);
   border-bottom: 1px solid var(--ui-line);
 }
@@ -918,11 +1034,27 @@ watch(
 
 .serp-url,
 .serp-desc,
+.serp-title,
+.social-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serp-url,
+.serp-desc,
 .social-desc {
   margin: 0;
   color: var(--ui-text-2);
   font-size: var(--ui-fs-2);
   line-height: var(--ui-lh);
+}
+
+.social-desc {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .serp-title,
@@ -960,24 +1092,37 @@ watch(
   color: var(--ui-text-3);
 }
 
-@media (max-width: 1024px) {
-  .head,
-  .site-row,
-  .editor,
-  .article-bar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .article-bar,
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
+@media (min-width: 1100px) {
   .site-row {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 120px minmax(0, 1fr) 260px;
+    grid-template-areas: 'label input status';
+    align-items: center;
+  }
+
+  .site-row .status {
+    max-width: none;
+    text-align: left;
+  }
+
+  .editor {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  }
+}
+
+@media (max-height: 700px) {
+  .seo {
+    height: auto;
+    overflow: visible;
+  }
+
+  .articles {
+    flex: none;
+  }
+
+  .table {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
   }
 }
 </style>
