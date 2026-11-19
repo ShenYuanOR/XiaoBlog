@@ -38,3 +38,8 @@ export function cachedCheck<T>(entry: CheckCacheEntry<T> | undefined, fingerprin
   if (!entry || entry.fingerprint !== fingerprint) return null;
   return entry;
 }
+
+/** 提交后 HEAD 变了，但检查过的内容就是这次提交。把同一份结果记到新指纹上。 */
+export function retargetCache<T>(entry: CheckCacheEntry<T>, fingerprint: string): CheckCacheEntry<T> {
+  return { ...entry, fingerprint };
+}

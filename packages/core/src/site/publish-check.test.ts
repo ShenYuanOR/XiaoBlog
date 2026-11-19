@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cachedCheck, checkFingerprint } from '../../../../apps/studio/src/main/publish-check.ts';
+import { cachedCheck, checkFingerprint, retargetCache } from '../../../../apps/studio/src/main/publish-check.ts';
 
 const porcelain = [' M src/content/posts/coffee/index.md', '?? .pnpm-store/v11/file', '?? node_modules/left-pad/index.js'].join('\n');
 
@@ -30,5 +30,14 @@ describe('检查指纹', () => {
     const changed = checkFingerprint({ head: 'abc', porcelain, stat: statOf(13) });
     expect(changed).not.toBe(first);
     expect(cachedCheck({ fingerprint: first, at: 5, value: ['通过'] }, changed)).toBeNull();
+  });
+
+  it('提交后把同一份检查记到新指纹上', () => {
+    const before = checkFingerprint({ head: 'aaa', porcelain: ' M src/a.md\n', stat: statOf(12) });
+    const after = checkFingerprint({ head: 'bbb', porcelain: '', stat: statOf(12) });
+    expect(after).not.toBe(before);
+    const entry = retargetCache({ fingerprint: before, at: 9, value: ['通过'] }, after);
+    expect(cachedCheck(entry, after)?.value).toEqual(['通过']);
+    expect(cachedCheck(entry, before)).toBeNull();
   });
 });

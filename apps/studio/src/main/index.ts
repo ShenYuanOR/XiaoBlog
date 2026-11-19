@@ -99,7 +99,7 @@ import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
 import { buildPreflight, itemsForConfigReadError, type PreflightItem } from './publish-preflight.ts';
 import { createPublishJobs, quitKind, type PublishJobSnapshot } from './publish-job.ts';
-import { cachedCheck, checkFingerprint, type CheckCacheEntry } from './publish-check.ts';
+import { cachedCheck, checkFingerprint, retargetCache, type CheckCacheEntry } from './publish-check.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
@@ -1225,6 +1225,20 @@ app.whenReady().then(() => {
     },
     record: (siteDir, row) => {
       writeDeployHistory(siteDir, rememberDeploy(readDeployHistory(siteDir), row));
+      const current = checkCache.get(siteDir);
+      if (!current) return;
+      let porcelain = '';
+      try {
+        porcelain = execFileSync(
+          'git',
+          ['status', '--porcelain', '-uall', '--', '.', ':(exclude).pnpm-store', ':(exclude)node_modules'],
+          { cwd: siteDir, encoding: 'utf8', windowsHide: true },
+        );
+      } catch {
+        return;
+      }
+      if (porcelain.trim()) return;
+      checkCache.set(siteDir, retargetCache(current, readFingerprint(siteDir)));
     },
     emit: broadcastJob,
   });
