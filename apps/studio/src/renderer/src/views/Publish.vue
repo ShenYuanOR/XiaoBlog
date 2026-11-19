@@ -772,30 +772,36 @@ watch(
       </div>
 
       <UiDialog v-model="settingsOpen" title="发布设置" :width="440">
+        <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
+        <p class="dim">分支 {{ target?.branch }}。令牌只存在本机。</p>
         <UiField label="站点网址">
           <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
         </UiField>
-        <p class="dim">令牌只存在本机。</p>
         <template #actions="{ close }">
-          <UiButton variant="ghost" @click="close">关闭</UiButton>
-          <UiButton
-            variant="danger"
-            @click="
-              close();
-              disconnectOpen = true;
-            "
-          >
-            断开连接
-          </UiButton>
-          <UiButton
-            variant="primary"
-            @click="
-              close();
-              void saveSiteUrl();
-            "
-          >
-            保存网址
-          </UiButton>
+          <div class="dialog-actions">
+            <UiButton
+              variant="ghost"
+              style="color: var(--ui-danger); background: transparent"
+              @click="
+                close();
+                disconnectOpen = true;
+              "
+            >
+              断开连接
+            </UiButton>
+            <span class="dialog-actions__end">
+              <UiButton variant="ghost" @click="close">关闭</UiButton>
+              <UiButton
+                variant="primary"
+                @click="
+                  close();
+                  void saveSiteUrl();
+                "
+              >
+                保存网址
+              </UiButton>
+            </span>
+          </div>
         </template>
       </UiDialog>
 
@@ -1005,6 +1011,19 @@ watch(
 
 .card-head h2 {
   margin: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s2);
+  width: 100%;
+}
+
+.dialog-actions__end {
+  display: inline-flex;
+  gap: var(--ui-s2);
 }
 
 .recent li {
