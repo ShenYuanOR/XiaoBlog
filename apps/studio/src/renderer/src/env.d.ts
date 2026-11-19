@@ -387,7 +387,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine' | 'gitea';
+        kind: 'github-classic' | 'github-fine';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
@@ -400,7 +400,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine' | 'gitea';
+        kind: 'github-classic' | 'github-fine';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
@@ -414,7 +414,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine' | 'gitea';
+        kind: 'github-classic' | 'github-fine';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
@@ -430,7 +430,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine' | 'gitea';
+        kind: 'github-classic' | 'github-fine';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];

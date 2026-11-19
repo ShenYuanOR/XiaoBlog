@@ -95,7 +95,12 @@ export function explainWorkflowScope(message: string): string {
 
 /** 已连接那一行右侧的短句。 */
 export function tokenStatusLine(
-  report: { status: string; expiresAt?: string; capabilities?: { key: string; label: string; state: string }[] } | null,
+  report: {
+    status: string;
+    message?: string;
+    expiresAt?: string;
+    capabilities?: { key: string; label: string; state: string }[];
+  } | null,
   now = Date.now(),
 ): string {
   if (!report) return '还没验证';
