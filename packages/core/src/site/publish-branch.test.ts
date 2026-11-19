@@ -33,6 +33,12 @@ describe('远端默认分支', () => {
     expect(guardCommitSize([{ path: 'src/ok.md', bytes: 10 }])).toBeNull();
   });
 
+  it('不能快进时提示的按钮名和界面一致', () => {
+    const text = explainPushFailure(new Error('PushRejected: non-fast-forward'));
+    expect(text).toContain('覆盖并推送');
+    expect(text).not.toContain('覆盖远端并发');
+  });
+
   it('读文件失败时不把 JS 异常原文给用户', () => {
     const text = explainPushFailure(new TypeError("Cannot read properties of null (reading 'length')"));
     expect(text).toContain('文件读不出来');

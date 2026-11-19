@@ -264,7 +264,7 @@ export function explainPushFailure(error: unknown, token = ''): string {
   const text = token ? raw.split(token).join('[secret]') : raw;
   if (text.startsWith('REPO_BROKEN:')) return text;
   if (/fast-forward|PushRejected/i.test(text)) {
-    return '远端有你本地没有的提交。确认要覆盖远端内容后，点「覆盖远端并发」重试。';
+    return '远端有你本地没有的提交。确认要覆盖远端内容后，点「覆盖并推送」重试。';
   }
   if (/canceled|cancelled|401|Unauthorized|authentication/i.test(text)) {
     return '认证失败：检查用户名和访问令牌是否属于这个仓库、是否过期或有写权限。';

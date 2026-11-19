@@ -743,7 +743,7 @@ watch(
         </table>
       </details>
 
-      <UiDialog v-model="forceOpen" title="覆盖远端并发" :width="440">
+      <UiDialog v-model="forceOpen" title="覆盖远端内容？" :width="440">
         <p>推送被远端的新提交挡住了。覆盖会用本站内容重写远端分支 {{ target?.branch }}，远端上其他提交会丢失。</p>
         <template #actions="{ close }">
           <UiButton variant="ghost" @click="close">取消</UiButton>
