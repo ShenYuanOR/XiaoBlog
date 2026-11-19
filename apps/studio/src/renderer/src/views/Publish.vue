@@ -613,10 +613,10 @@ watch(
         <section class="block">
           <h2>将发布什么</h2>
           <p class="summary">{{ summaryLine }}</p>
-          <button type="button" class="fold" @click="filesOpen = !filesOpen">
+          <button v-if="fileLines.length" type="button" class="fold" @click="filesOpen = !filesOpen">
             {{ filesOpen ? '收起文件明细' : '展开文件明细' }}
           </button>
-          <ul v-if="filesOpen" class="files">
+          <ul v-if="filesOpen && fileLines.length" class="files">
             <li v-for="line in fileLines" :key="line.key" :class="{ deleted: line.deleted }">{{ line.text }}</li>
             <li v-if="!fileLines.length" class="dim">没有文件变化。</li>
           </ul>
