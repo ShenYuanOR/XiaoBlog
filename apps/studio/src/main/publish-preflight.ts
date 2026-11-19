@@ -119,6 +119,15 @@ export function explainLocalBuild(
     const summary = post ? `文章 ${post.slug} 开头信息${where}写法不对` : '文章开头信息写法不对';
     return { kind: 'frontmatter', summary, detail, slug: post?.slug ?? '' };
   }
+  const jsonAt = log.match(/in JSON at position \d+ \(line (\d+) column (\d+)\)/i);
+  if (jsonAt) {
+    return {
+      kind: 'config',
+      summary: `站点配置 xiao.config.json 第 ${jsonAt[1]} 行第 ${jsonAt[2]} 列附近写法不对（常见原因：多了逗号、少了引号）`,
+      detail,
+      slug: '',
+    };
+  }
   if (/xiao\.config\.json/.test(log)) {
     const fields = log.match(/字段无效[:：]\s*([^\r\n]+)/)?.[1]?.trim() ?? '';
     return {

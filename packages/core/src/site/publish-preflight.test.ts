@@ -111,6 +111,33 @@ describe('发布前检查', () => {
     expect(item?.slug).toBe('coffee');
   });
 
+  it('站点配置 JSON 写坏时用中文说明行号，不给去 SEO', () => {
+    const log = [
+      'SyntaxError: Expected double-quoted property name in JSON at position 61 (line 3 column 16)',
+      '    at JSON.parse (<anonymous>)',
+      '    at file:///F:/XiaoBlog/blog/test/astro.config.mjs:9:16',
+    ].join('\n');
+    const explained = explainLocalBuild(log);
+    expect(explained.summary).toBe(
+      '站点配置 xiao.config.json 第 3 行第 16 列附近写法不对（常见原因：多了逗号、少了引号）',
+    );
+    expect(explained.detail).toContain('Expected double-quoted property name');
+    expect(explained.detail).not.toContain('F:/XiaoBlog');
+    expect(explained.slug).toBe('');
+    const item = buildPreflight({
+      siteUrl: 'https://blog.xiaoblog.test',
+      targetUrl: 'https://blog.xiaoblog.test',
+      workflowReady: true,
+      buildFailed: true,
+      buildMessage: 'Expected double-quoted property name in JSON at position 61 (line 3 column 16)',
+      buildLog: log,
+      errors: [],
+    }).find((row) => row.key === 'build');
+    expect(item?.action).toBe('');
+    expect(item?.detail).toContain('第 3 行第 16 列');
+    expect(item?.more).toContain('Expected double-quoted property name');
+  });
+
   it('站点配置校验失败时不给文章入口', () => {
     const log = [
       'Error: xiao.config.json 字段无效：site.url',
