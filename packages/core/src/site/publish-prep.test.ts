@@ -8,6 +8,7 @@ import {
   applyRepo,
   applySite,
   applyTokenReport,
+  PREP_ORDER,
   blankPrep,
   canCreateRepo,
   newRepoPage,
@@ -25,7 +26,7 @@ import {
   readRemoteFacts,
   readRepoChoices,
 } from '../../../../apps/studio/src/main/publish-remote.ts';
-import { readGithubVerify } from '../../../../apps/studio/src/main/publish-token.ts';
+import { readGithubVerify, reuseTokenOn } from '../../../../apps/studio/src/main/publish-token.ts';
 import { writeGithubWorkflow } from '../../../../apps/studio/src/main/publish-workflow.ts';
 
 const classic = readGithubVerify({
@@ -40,6 +41,13 @@ function reachedRepo() {
 }
 
 describe('发布准备状态机', () => {
+  it('GitHub 流程仍不复用进页验证，并且是先仓库的五步', () => {
+    expect(PREP_ORDER).toEqual(['repo', 'token', 'site', 'build', 'publish']);
+    expect(reuseTokenOn('page')).toBe(false);
+    expect(reuseTokenOn('publish')).toBe(false);
+    expect(reuseTokenOn('prep')).toBe(true);
+  });
+
   it('六步都在，后面的只是名称', () => {
     const draft = blankPrep();
     expect(stepPhase(draft.step, 'repo', draft.done)).toBe('current');
