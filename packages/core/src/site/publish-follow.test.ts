@@ -89,6 +89,7 @@ describe('跟踪发布', () => {
     expect(sample).not.toContain('/workspace/');
     expect(sample).not.toContain('[ELIFECYCLE]');
     expect(sample).not.toContain('at Composer');
+    expect(sample.split('\n').some((line) => /^\d{4}-\d\d-\d\dT[\d:.]+Z\s*$/.test(line))).toBe(false);
   });
 
   it('读到 xiao-build 才算上线', async () => {

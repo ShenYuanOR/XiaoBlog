@@ -36,10 +36,14 @@ function phaseOf(run: RunRow): 'queued' | 'running' | 'success' | 'failure' {
   return 'queued';
 }
 
+const stampOnly = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*$/;
+
 function stripLogLine(line: string): string {
   const plain = line.replace(/\u001b\[[0-9;]*m/g, '');
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(plain) && plain.length > 29) return plain.slice(29);
-  return plain;
+  const stamped = plain.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)([\s\S]*)$/);
+  if (!stamped) return plain;
+  const rest = stamped[2] ?? '';
+  return rest.startsWith(' ') ? rest.slice(1) : rest;
 }
 
 /**
@@ -74,7 +78,7 @@ export function extractFailureLog(raw: string): string {
   let skippingStack = false;
   for (const line of lines.slice(bodyStart, failAt >= 0 ? failAt : lines.length)) {
     const text = line.trim();
-    if (!text) continue;
+    if (!text || stampOnly.test(text)) continue;
     if (text.includes('[ELIFECYCLE]')) continue;
     if (/stack trace:?$/i.test(text)) {
       skippingStack = true;
