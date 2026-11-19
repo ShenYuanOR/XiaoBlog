@@ -6,8 +6,10 @@ import {
   giteaPagesUrl,
   mergeProbe,
   probeTokenCapabilities,
+  readGiteaCreateProbe,
   readGithubVerify,
   readGiteaVerify,
+  refineGiteaReport,
   requiredMissing,
   tokenStatusLine,
   verifyCacheKey,
@@ -110,6 +112,35 @@ describe('令牌验证', () => {
     expect(merged.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
     const classic = readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' });
     expect(mergeProbe(classic, { push: 'missing' }).capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
+  });
+
+  it('Gitea 选好仓库后把还不确定变成确定结果，建仓库探测不带名字', async () => {
+    expect(readGiteaCreateProbe(422)).toBe('ok');
+    expect(readGiteaCreateProbe(403)).toBe('missing');
+    const base = readGiteaVerify({ status: 200, scopes: '', login: 'ShenYuan', origin: 'http://gitea.local:3000' });
+    expect(base.capabilities.every((item) => item.state === 'unknown')).toBe(true);
+    const bodies: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.includes('/user/repos')) {
+        bodies.push(String(init?.body ?? ''));
+        return new Response(JSON.stringify({ message: 'name is empty' }), { status: 422 });
+      }
+      if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
+      if (url.includes('/actions/runs')) return new Response('{}', { status: 200 });
+      return new Response('', { status: 500 });
+    }) as typeof fetch;
+    const refined = await refineGiteaReport(base, {
+      origin: 'http://gitea.local:3000',
+      remoteUrl: 'http://gitea.local:3000/ShenYuan/xiao-gate2',
+      token: 't',
+      fetchImpl,
+    });
+    expect(bodies).toEqual(['{}']);
+    expect(refined.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
+    expect(refined.capabilities.find((item) => item.key === 'workflow')?.state).toBe('ok');
+    expect(refined.capabilities.find((item) => item.key === 'hosting')?.state).toBe('ok');
+    expect(refined.capabilities.find((item) => item.key === 'actions')?.state).toBe('ok');
+    expect(refined.capabilities.find((item) => item.key === 'create')?.state).toBe('ok');
   });
 
   it('缺 workflow 权限的推送失败写成中文', () => {

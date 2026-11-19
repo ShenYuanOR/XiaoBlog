@@ -471,6 +471,16 @@ async function useRemote(remoteUrl: string): Promise<void> {
       xiao: result.data.xiao,
       isPrivate: result.data.isPrivate,
     });
+    if (prep.value.provider === 'gitea') {
+      const refined = await window.xiao.publish.refineToken(
+        'gitea',
+        prep.value.origin,
+        remoteUrl,
+        prep.value.token,
+        prep.value.report?.account || '',
+      );
+      if (refined.ok) prep.value = { ...prep.value, report: refined.data as typeof prep.value.report };
+    }
   } finally {
     prepBusy.value = false;
   }

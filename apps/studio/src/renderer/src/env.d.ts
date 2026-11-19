@@ -418,6 +418,22 @@ export interface XiaoApi {
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
+    refineToken: (
+      provider: 'gitea',
+      origin: string,
+      remoteUrl: string,
+      token: string,
+      login?: string,
+    ) => Promise<
+      IpcResult<{
+        status: 'valid' | 'invalid' | 'expired';
+        account: string;
+        kind: 'github-classic' | 'github-fine' | 'gitea';
+        expiresAt: string;
+        message: string;
+        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+      }>
+    >;
     repos: (
       provider: 'github' | 'gitea',
       origin: string,

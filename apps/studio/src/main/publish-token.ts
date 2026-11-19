@@ -358,6 +358,51 @@ export async function probeTokenCapabilities(input: {
   return out;
 }
 
+/** 故意不带 name。422 表示有权建仓库但参数不够，不会真的建出来。403 是没权限。 */
+export function readGiteaCreateProbe(status: number): CapabilityState {
+  if (status === 422) return 'ok';
+  if (status === 401 || status === 403) return 'missing';
+  return 'unknown';
+}
+
+/**
+ * 选好仓库后再测。推送和读构建记录走现成探测。
+ * Gitea 的仓库写权限同时覆盖推送、构建配置和打开 Actions。
+ */
+export async function refineGiteaReport(
+  report: TokenReport,
+  input: { origin: string; remoteUrl: string; token: string; login?: string; fetchImpl: typeof fetch },
+): Promise<TokenReport> {
+  const probe = await probeTokenCapabilities({
+    provider: 'gitea',
+    remoteUrl: input.remoteUrl,
+    token: input.token,
+    login: input.login,
+    fetchImpl: input.fetchImpl,
+  });
+  let create: CapabilityState = 'unknown';
+  try {
+    const response = await input.fetchImpl(`${input.origin.replace(/\/$/, '')}/api/v1/user/repos`, {
+      method: 'POST',
+      headers: {
+        Authorization: `token ${input.token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'XiaoBlog',
+      },
+      body: '{}',
+    });
+    create = readGiteaCreateProbe(response.status);
+  } catch {
+    create = 'unknown';
+  }
+  const filled: Partial<Record<CapabilityKey, CapabilityState>> = { ...probe, create };
+  if (probe.push === 'ok' || probe.push === 'missing') {
+    filled.workflow = probe.push;
+    filled.hosting = probe.push;
+  }
+  return mergeProbe(report, filled);
+}
+
 export function verifyCacheKey(provider: string, origin: string, token: string): string {
   let hash = 0;
   for (const char of token) hash = (hash * 33 + char.charCodeAt(0)) >>> 0;

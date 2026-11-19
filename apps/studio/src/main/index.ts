@@ -105,6 +105,7 @@ import {
   mergeProbe,
   probeTokenCapabilities,
   verifyCacheKey,
+  refineGiteaReport,
   verifyGiteaToken,
   verifyGithubToken,
   type TokenReport,
@@ -1362,6 +1363,32 @@ app.whenReady().then(() => {
     tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
     return ok(report);
   });
+  ipcMain.handle(
+    'publish:refineToken',
+    async (
+      _event,
+      provider: 'github' | 'gitea',
+      origin: string,
+      remoteUrl: string,
+      token: string,
+      login?: string,
+    ) => {
+      const trimmed = typeof token === 'string' ? token.trim() : '';
+      if (!trimmed || !remoteUrl) return fail('PUBLISH_TOKEN', '还没有仓库或令牌');
+      if (provider !== 'gitea') return fail('PUBLISH_TOKEN', '这一步只补 Gitea 令牌');
+      const root = String(origin || '').replace(/\/$/, '');
+      const report = await verifyGiteaToken(root, trimmed, apiFetch);
+      if (report.status !== 'valid') return ok(report);
+      const refined = await refineGiteaReport(report, {
+        origin: root,
+        remoteUrl: String(remoteUrl),
+        token: trimmed,
+        login,
+        fetchImpl: apiFetch,
+      });
+      return ok(refined);
+    },
+  );
   ipcMain.handle('publish:checkToken', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {
     const trimmed = typeof token === 'string' ? token.trim() : '';
     if (provider !== 'github' && provider !== 'gitea') return fail('PUBLISH_TOKEN', '先选平台');

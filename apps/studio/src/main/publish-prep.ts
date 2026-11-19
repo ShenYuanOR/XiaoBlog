@@ -220,9 +220,18 @@ export function reopen(draft: PrepDraft, step: PrepStep): PrepDraft {
   return clearHint({ ...draft, step });
 }
 
+export function tokenResultLine(report: TokenReport | null): string {
+  if (!report?.account) return '令牌验证：已验证';
+  const missing = report.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing');
+  if (missing.length > 0) return `令牌验证：${report.account}，缺少${missing.map((item) => item.label).join('、')}`;
+  const unknown = report.capabilities.filter((item) => item.state === 'unknown');
+  if (report.capabilities.length > 0 && unknown.length === 0) return `令牌验证：${report.account}，能力已确认`;
+  return `令牌验证：${report.account}`;
+}
+
 export function stepLine(draft: PrepDraft, step: PrepStep): string {
   if (step === 'platform') return draft.provider === 'github' ? '平台：GitHub' : `平台：Gitea ${draft.origin}`;
-  if (step === 'token') return `令牌验证：${draft.report?.account || '已验证'}`;
+  if (step === 'token') return tokenResultLine(draft.report);
   if (step === 'repo') return `仓库：${draft.owner}/${draft.repo}`;
   if (step === 'site') return `网站：${draft.siteUrl}`;
   if (step === 'build') return '构建准备：已完成';

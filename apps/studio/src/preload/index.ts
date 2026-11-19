@@ -86,6 +86,8 @@ const api = {
     replaceToken: (siteDir: string, token: string) => ipcRenderer.invoke('publish:replaceToken', siteDir, token),
     checkToken: (provider: 'github' | 'gitea', origin: string, token: string) =>
       ipcRenderer.invoke('publish:checkToken', provider, origin, token),
+    refineToken: (provider: 'gitea', origin: string, remoteUrl: string, token: string, login?: string) =>
+      ipcRenderer.invoke('publish:refineToken', provider, origin, remoteUrl, token, login),
     repos: (provider: 'github' | 'gitea', origin: string, token: string) =>
       ipcRenderer.invoke('publish:repos', provider, origin, token),
     repoFacts: (provider: 'github' | 'gitea', remoteUrl: string, token: string) =>
