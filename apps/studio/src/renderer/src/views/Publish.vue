@@ -143,6 +143,7 @@ const repoQuery = ref('');
 const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>([]);
 const newRepoName = ref('');
 const createOpen = ref(false);
+const heldTarget = ref<DeployTarget | null>(null);
 const staticHost = ref('');
 const prepBusy = ref(false);
 const platformPick = ref<'' | 'github' | 'gitea'>('');
@@ -658,12 +659,11 @@ async function runPrepare(): Promise<void> {
       link: result.data.link,
     });
     if (result.data.target) {
-      target.value = result.data.target;
-      notify(`已连接 ${result.data.target.remoteUrl}`, 'info', 'publish-prep');
+      heldTarget.value = result.data.target;
+      notify('构建准备完成。点「开始首次发布」进入四步。', 'info', 'publish-prep');
       if (result.data.target.persisted === false) {
         notify('令牌无法写入本机用户目录，只在本次运行有效。下次启动需要重新连接。', 'error', 'publish-persist');
       }
-      await loadAll();
     } else if (prep.value.step === 'publish') {
       prep.value = { ...prep.value, step: 'build', error: '准备没有保存连接。', next: '再点一次重新检查。已填内容还在。' };
     }
@@ -706,6 +706,15 @@ function applyJob(job: {
   const push = job.steps.find((step) => step.key === 'push');
   pushError.value = job.pushRejected ? push?.detail || '' : '';
   if (job.code === 'REPO_BROKEN') repairOpen.value = true;
+}
+
+async function startFirstPublish(): Promise<void> {
+  if (heldTarget.value) target.value = heldTarget.value;
+  if (!target.value && session.siteDir) {
+    const current = await window.xiao.publish.target(session.siteDir);
+    if (current.ok && current.data) target.value = current.data;
+  }
+  await startPublish(false);
 }
 
 async function startPublish(force = false): Promise<void> {
@@ -752,6 +761,7 @@ async function confirmDisconnect(): Promise<void> {
     return;
   }
   target.value = null;
+  heldTarget.value = null;
   prep.value = blankPrep();
   pushResult.value = null;
   pushError.value = '';
@@ -891,6 +901,7 @@ watch(
     phase.value = 'ready';
     steps.value = [];
     prep.value = blankPrep();
+    heldTarget.value = null;
     repoChoices.value = [];
     repoQuery.value = '';
     staticHost.value = '';
@@ -1066,6 +1077,10 @@ watch(
                 </template>
                 <template v-else-if="step === 'publish'">
                   <h3>首次发布</h3>
+                  <p>仓库和构建都准备好了。接下来是检查、推送、远端构建、上线。</p>
+                  <div class="prep-actions">
+                    <UiButton variant="primary" :loading="pushing" @click="startFirstPublish">开始首次发布</UiButton>
+                  </div>
                 </template>
                 <p v-if="prep.error && !foreignWarn" class="alert">{{ prep.error }}</p>
                 <p v-if="prep.next" class="dim">{{ prep.next }}</p>
