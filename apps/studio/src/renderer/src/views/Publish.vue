@@ -161,10 +161,13 @@ const failureView = computed(() => {
   const extra = failed.key === 'check' ? failedCheck.value?.more ?? '' : '';
   return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
 });
-const runnerLabel = computed(() => {
-  if (target.value?.actionsState === 'ready') return '就绪';
-  if (target.value?.actionsState === 'no-runner' || target.value?.actionsState === 'disabled') return '没有构建机';
-  return '没有构建机';
+const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
+  const state = target.value?.actionsState;
+  const detail = target.value?.actionsDetail ?? '';
+  if (state === 'ready') return { text: '就绪', tone: 'ok' };
+  if (detail.includes('xiao')) return { text: '缺少 xiao 标签', tone: 'warn' };
+  if (state === 'no-runner' || state === 'disabled') return { text: '没有构建机', tone: 'warn' };
+  return { text: '没有构建机', tone: 'neutral' };
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 
@@ -732,13 +735,22 @@ watch(
 
         <aside class="side">
           <section class="card">
-            <h2>发布目标</h2>
+            <div class="card-head">
+              <h2>发布目标</h2>
+              <UiButton size="sm" variant="ghost" @click="settingsOpen = true">设置</UiButton>
+            </div>
             <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
             <p class="dim">分支 {{ target?.branch }}</p>
-            <button v-if="target?.siteUrl" type="button" class="link" @click="openPublishedSite">{{ target?.siteUrl }}</button>
-            <p class="dim">构建机 {{ runnerLabel }}</p>
-            <p v-if="target?.actionsState && target?.actionsState !== 'ready'" class="dim">{{ target?.actionsDetail }}</p>
-            <UiButton size="sm" variant="ghost" @click="settingsOpen = true">设置</UiButton>
+            <button
+              v-if="target?.siteUrl"
+              type="button"
+              class="link url-clip"
+              :title="target?.siteUrl"
+              @click="openPublishedSite"
+            >
+              {{ target?.siteUrl }}
+            </button>
+            <p><UiBadge :tone="runnerBadge.tone" dot>{{ runnerBadge.text }}</UiBadge></p>
           </section>
           <section class="card">
             <h2>最近发布</h2>
@@ -973,8 +985,26 @@ watch(
   color: var(--ui-accent);
   font: inherit;
   text-align: left;
-  word-break: break-all;
   cursor: pointer;
+}
+
+.url-clip {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s2);
+}
+
+.card-head h2 {
+  margin: 0;
 }
 
 .recent li {
