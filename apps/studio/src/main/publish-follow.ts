@@ -6,7 +6,7 @@ export interface FollowUpdate {
   detail: string;
   log?: string;
   url?: string;
-  /** 远端构建用 Gitea 的开始到结束；没有时间戳时才是本地计时。 */
+  /** 远端构建用 GitHub 运行记录的开始到结束；没有时间戳时才是本地计时。 */
   ms?: number;
 }
 

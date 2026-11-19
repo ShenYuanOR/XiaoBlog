@@ -27,9 +27,9 @@ export interface DeployTarget {
   provider: 'gitea' | 'github';
   remoteUrl: string;
   branch: string;
-  /** 远端登录名（Gitea 用登录名或邮箱；GitHub 可留空走 x-access-token）。 */
+  /** GitHub 登录名。推送时也可以留空，用 x-access-token。 */
   login?: string;
-  /** 发布后读者打开的站点网址。Gitea 由用户填写。 */
+  /** 发布后读者打开的站点网址。 */
   siteUrl?: string;
   /** 连接时探测到的 Actions / 构建机状态。 */
   actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
@@ -402,7 +402,7 @@ export async function probeRemote(
   }
 }
 
-/** 空仓库没有 HEAD。Gitea 这时的默认分支是接口里的 default_branch，通常是 main。 */
+/** 空仓库没有 HEAD。这时用 GitHub 接口里的 default_branch，通常是 main。 */
 export function chooseDefaultBranch(head: string | undefined, apiBranch: string | undefined): string {
   if (head?.startsWith('refs/heads/')) return head.slice('refs/heads/'.length);
   const fromApi = apiBranch?.trim();

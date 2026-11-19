@@ -1,5 +1,6 @@
-export const tokenUrl =
-  'https://github.com/settings/personal-access-tokens/new?name=XiaoBlog+Publish&description=XiaoBlog+Studio%3A+push+site+and+watch+Actions.+Select+ONLY+your+blog+repository.&expires_in=90&contents=write&workflows=write&pages=read&actions=read';
+import { githubFineTokenLink } from './publish-token.ts';
+
+export const tokenUrl = githubFineTokenLink('owner', 'repo');
 
 export const guides = [
   {
