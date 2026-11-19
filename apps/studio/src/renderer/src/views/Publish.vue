@@ -665,13 +665,18 @@ watch(
           <UiButton variant="primary" @click="openSite">打开网站</UiButton>
           <UiButton @click="finishPublish">完成</UiButton>
         </div>
-        <div v-else class="actions">
-          <UiButton v-if="needsForce" size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
-          <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
-          <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
-            {{ entry.label }}
-          </UiButton>
-          <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+        <div v-else-if="phase === 'result'" class="actions">
+          <template v-if="needsForce">
+            <UiButton size="sm" variant="danger" @click="forceOpen = true">覆盖并推送</UiButton>
+            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+          </template>
+          <template v-else>
+            <UiButton size="sm" :disabled="pushing || checking" @click="startPublish(false)">重试</UiButton>
+            <UiButton v-for="entry in resultEntries" :key="entry.key" size="sm" variant="ghost" @click="entry.run">
+              {{ entry.label }}
+            </UiButton>
+            <UiButton size="sm" variant="ghost" @click="phase = 'ready'">返回</UiButton>
+          </template>
         </div>
       </section>
 
