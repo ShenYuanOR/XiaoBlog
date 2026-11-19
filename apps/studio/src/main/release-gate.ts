@@ -142,6 +142,9 @@ export function blockedBy(rows: { level: string }[]): boolean {
 export interface DeployRecord {
   at: string;
   repo: string;
+  sha?: string;
+  result?: string;
+  ms?: number;
 }
 
 export function rememberDeploy(history: DeployRecord[], item: DeployRecord): DeployRecord[] {

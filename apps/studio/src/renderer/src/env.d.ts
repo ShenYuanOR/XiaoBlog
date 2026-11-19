@@ -189,7 +189,19 @@ export interface XiaoApi {
       }>
     >;
     history: (siteDir: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
-    record: (siteDir: string, repo: string) => Promise<IpcResult<{ at: string; repo: string }[]>>;
+    record: (
+      siteDir: string,
+      item: { at: string; repo: string; sha?: string; result?: string; ms?: number } | string,
+    ) => Promise<IpcResult<{ at: string; repo: string; sha?: string; result?: string; ms?: number }[]>>;
+    follow: (
+      siteDir: string,
+      sha: string,
+    ) => Promise<
+      IpcResult<{
+        build: { phase: 'build' | 'live'; state: 'run' | 'ok' | 'fail'; detail: string; log?: string; url?: string };
+        live: { phase: 'build' | 'live'; state: 'run' | 'ok' | 'fail'; detail: string; log?: string; url?: string } | null;
+      }>
+    >;
     target: (siteDir: string) => Promise<
       IpcResult<{
         provider: 'gitea' | 'github';
@@ -255,6 +267,7 @@ export interface XiaoApi {
         message: string;
         remote: string;
         branch: string;
+        sha: string;
       }>
     >;
     disconnect: (siteDir: string) => Promise<IpcResult<null>>;

@@ -39,6 +39,9 @@ interface PreflightItem {
 interface DeployRecord {
   at: string;
   repo: string;
+  sha?: string;
+  result?: string;
+  ms?: number;
 }
 
 interface DeployTarget {
@@ -59,6 +62,7 @@ interface PushResult {
   message: string;
   remote: string;
   branch: string;
+  sha: string;
 }
 
 type StepState = 'wait' | 'run' | 'ok' | 'fail';
@@ -69,6 +73,7 @@ interface StepRow {
   state: StepState;
   detail: string;
   ms: number;
+  url?: string;
 }
 
 const session = useSession();
@@ -235,7 +240,6 @@ async function push(force: boolean): Promise<boolean> {
       return false;
     }
     pushResult.value = result.data;
-    await window.xiao.publish.record(session.siteDir, result.data.remote);
     return true;
   } catch (error) {
     pushError.value = error instanceof Error ? error.message : String(error);
@@ -281,16 +285,48 @@ async function startPublish(force = false): Promise<void> {
     detail: pushResult.value?.message || '已推送',
     ms: pushMs,
   };
-  next[2] = {
-    key: 'build',
-    label: '远端构建',
-    state: 'wait',
-    detail: '推送已经完成。跟踪这次提交的构建还没接上，所以这次不能算已上线。',
-    ms: 0,
-  };
+  const sha = pushResult.value?.sha ?? '';
+  next[2] = { key: 'build', label: '远端构建', state: 'run', detail: sha ? '正在查看这次提交的构建' : '没有提交号，没法对照构建', ms: 0 };
+  steps.value = [...next];
+  const buildStarted = Date.now();
+  const followed = sha && session.siteDir ? await window.xiao.publish.follow(session.siteDir, sha) : null;
+  const buildMs = Date.now() - buildStarted;
+  if (!followed || !followed.ok) {
+    next[2] = { key: 'build', label: '远端构建', state: 'fail', detail: followed && !followed.ok ? followed.message : '没有提交号', ms: buildMs };
+  } else {
+    const build = followed.data.build;
+    next[2] = {
+      key: 'build',
+      label: '远端构建',
+      state: build.state === 'ok' ? 'ok' : 'fail',
+      detail: build.log ? `${build.detail}\n${build.log}` : build.detail,
+      ms: buildMs,
+      url: build.url,
+    };
+    if (followed.data.live) {
+      next[3] = {
+        key: 'live',
+        label: '上线',
+        state: followed.data.live.state === 'ok' ? 'ok' : 'fail',
+        detail: followed.data.live.detail,
+        ms: 0,
+        url: followed.data.live.url,
+      };
+    }
+  }
   steps.value = [...next];
   phase.value = 'result';
-  await loadAll();
+  if (session.siteDir && target.value) {
+    const resultText = next[3]?.state === 'ok' ? '已上线' : next[2]?.state === 'ok' ? '构建完成，还没确认上线' : next[1]?.state === 'ok' ? '已推送' : '未完成';
+    await window.xiao.publish.record(session.siteDir, {
+      at: new Date().toISOString(),
+      repo: target.value.remoteUrl,
+      sha,
+      result: resultText,
+      ms: Date.now() - started,
+    });
+  }
+  await loadAll(false);
 }
 
 async function confirmRepair(): Promise<void> {
@@ -375,7 +411,7 @@ async function saveSiteUrl(): Promise<void> {
   await runPreflight();
 }
 
-async function loadAll(): Promise<void> {
+async function loadAll(check = true): Promise<void> {
   const siteDir = session.siteDir;
   if (!siteDir) {
     changes.value = emptyChanges();
@@ -399,7 +435,7 @@ async function loadAll(): Promise<void> {
       if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
       if (!giteaLogin.value && target.value.login) giteaLogin.value = target.value.login;
       if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
-      await runPreflight();
+      if (check) await runPreflight();
     } else {
       checks.value = [];
     }
@@ -460,7 +496,7 @@ watch(
           <h1>发布</h1>
           <p class="dim">{{ target ? (phase === 'ready' ? '待发布' : '发布进度') : '还没选择发布目标' }}</p>
         </div>
-        <UiButton size="sm" :icon-left="icons.refresh" @click="loadAll">刷新</UiButton>
+        <UiButton size="sm" :icon-left="icons.refresh" @click="loadAll()">刷新</UiButton>
       </header>
 
       <p v-if="errorText" class="alert">{{ errorText }}</p>
@@ -547,7 +583,8 @@ watch(
               {{ step.state === 'ok' ? '完成' : step.state === 'fail' ? '失败' : step.state === 'run' ? '进行中' : '等待' }}
             </span>
             <span v-if="step.ms" class="dim">{{ (step.ms / 1000).toFixed(1) }} 秒</span>
-            <p class="dim">{{ step.detail }}</p>
+            <p class="dim step-detail">{{ step.detail }}</p>
+            <a v-if="step.url" class="dim" :href="step.url">{{ step.key === 'live' ? '打开网站' : '在 Gitea 查看' }}</a>
           </li>
         </ol>
         <div class="actions">
@@ -585,13 +622,17 @@ watch(
               <th>时间</th>
               <th>仓库</th>
               <th>结果</th>
+              <th>提交</th>
+              <th>耗时</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in historyRows" :key="item.at">
               <td>{{ formatTime(item.at) }}</td>
               <td :title="item.repo">{{ item.repo }}</td>
-              <td>{{ isPushRecord(item.repo) ? '已推送' : '已记录' }}</td>
+              <td>{{ item.result || (isPushRecord(item.repo) ? '已推送' : '已记录') }}</td>
+              <td :title="item.sha">{{ item.sha ? item.sha.slice(0, 7) : '没有记录' }}</td>
+              <td>{{ item.ms ? `${(item.ms / 1000).toFixed(1)} 秒` : '没有记录' }}</td>
             </tr>
           </tbody>
         </table>
@@ -782,6 +823,10 @@ h2 {
 
 .step-label {
   font-weight: 600;
+}
+
+.step-detail {
+  white-space: pre-wrap;
 }
 
 .steps .ok .step-state {

@@ -97,6 +97,7 @@ import { lintSource, listSourceFiles, readSource, writeSource } from './develop.
 import { writeDeployFiles } from './deploy-files.ts';
 import { collectChanges } from './publish-changes.ts';
 import { buildPreflight } from './publish-preflight.ts';
+import { waitForLive, watchBuild } from './publish-follow.ts';
 import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
 import { rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
@@ -786,11 +787,30 @@ app.whenReady().then(() => {
     secretStore().remove(siteDir);
     return ok(null);
   });
-  ipcMain.handle('publish:record', (_event, siteDir: string, repo: string) => {
-    const next = rememberDeploy(readDeployHistory(siteDir), {
-      at: new Date().toISOString(),
-      repo,
+  ipcMain.handle('publish:follow', async (event, siteDir: string, sha: string) => {
+    const target = deployStore().read()[siteDir];
+    if (!target) return fail('PUBLISH_TARGET', '还没有连接仓库');
+    const token = secretStore().load(siteDir);
+    if (!token) return fail('PUBLISH_TOKEN', '令牌丢了，重新连接一次');
+    const build = await watchBuild({
+      remoteUrl: target.remoteUrl,
+      token,
+      sha,
+      actionsState: target.actionsState,
+      actionsDetail: target.actionsDetail,
     });
+    event.sender.send('publish:progress', build);
+    if (build.state !== 'ok') return ok({ build, live: null });
+    const live = await waitForLive({ siteUrl: target.siteUrl ?? '', sha });
+    event.sender.send('publish:progress', live);
+    return ok({ build, live });
+  });
+  ipcMain.handle('publish:record', (_event, siteDir: string, item: DeployRecord | string) => {
+    const row: DeployRecord =
+      typeof item === 'string'
+        ? { at: new Date().toISOString(), repo: item }
+        : { ...item, at: item.at || new Date().toISOString() };
+    const next = rememberDeploy(readDeployHistory(siteDir), row);
     writeDeployHistory(siteDir, next);
     return ok(next);
   });

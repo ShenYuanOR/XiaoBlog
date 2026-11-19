@@ -66,7 +66,9 @@ const api = {
   publish: {
     changes: (siteDir: string) => ipcRenderer.invoke('publish:changes', siteDir),
     history: (siteDir: string) => ipcRenderer.invoke('publish:history', siteDir),
-    record: (siteDir: string, repo: string) => ipcRenderer.invoke('publish:record', siteDir, repo),
+    record: (siteDir: string, item: { at: string; repo: string; sha?: string; result?: string; ms?: number } | string) =>
+      ipcRenderer.invoke('publish:record', siteDir, item),
+    follow: (siteDir: string, sha: string) => ipcRenderer.invoke('publish:follow', siteDir, sha),
     target: (siteDir: string) => ipcRenderer.invoke('publish:target', siteDir),
     connect: (
       siteDir: string,

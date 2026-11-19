@@ -54,6 +54,7 @@ export interface PushSiteResult {
   message: string;
   remote: string;
   branch: string;
+  sha: string;
 }
 
 function isNothingToCommit(error: unknown): boolean {
@@ -255,12 +256,13 @@ async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
   if (check.errors.length > 0) throw new Error(check.errors.join('；'));
 
   let committed = false;
+  let sha = '';
   const now = input.now ?? new Date();
   const pad = (value: number): string => String(value).padStart(2, '0');
   const message = `发布：${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   if (staged.length > 0 || removed.length > 0) {
     try {
-      await git.commit({
+      sha = await git.commit({
         fs,
         dir: siteDir,
         message,
@@ -291,6 +293,7 @@ async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
     throw new Error(friendlyPushError(error, input.token));
   }
 
+  if (!sha) sha = await git.resolveRef({ fs, dir: siteDir, ref: 'HEAD' });
   return {
     committed,
     forced: Boolean(input.force),
@@ -298,6 +301,7 @@ async function pushSiteInner(input: PushSiteInput): Promise<PushSiteResult> {
     message,
     remote: target.remoteUrl,
     branch,
+    sha,
   };
 }
 
