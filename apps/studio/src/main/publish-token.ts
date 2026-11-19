@@ -92,6 +92,23 @@ export function explainWorkflowScope(message: string): string {
   return '令牌不能修改构建配置。GitHub 需要勾上 workflow（或细粒度令牌的 Workflows 写权限），然后重新连接。';
 }
 
+/** 已连接那一行右侧的短句。 */
+export function tokenStatusLine(
+  report: { status: string; expiresAt?: string; capabilities?: { key: string; label: string; state: string }[] } | null,
+  now = Date.now(),
+): string {
+  if (!report) return '还没验证';
+  if (report.status === 'invalid' || report.status === 'expired') return '已失效';
+  const missing = (report.capabilities ?? []).find((item) => item.key !== 'create' && item.state === 'missing');
+  if (missing) return `缺少${missing.label}`;
+  const expires = Date.parse(report.expiresAt ?? '');
+  if (Number.isFinite(expires) && expires > now) {
+    const days = Math.max(1, Math.ceil((expires - now) / 86_400_000));
+    return `将在 ${days} 天后过期`;
+  }
+  return '有效';
+}
+
 export function requiredMissing(report: TokenReport): TokenCapability[] {
   return report.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing');
 }

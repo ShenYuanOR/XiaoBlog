@@ -19,6 +19,7 @@ import {
   tokenPage,
   type PrepStep,
 } from '../../../main/publish-prep.ts';
+import { tokenStatusLine } from '../../../main/publish-token.ts';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -196,12 +197,24 @@ const failureView = computed(() => {
   return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
 });
 const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
+  if (target.value?.provider === 'github') {
+    return target.value.actionsState === 'ready'
+      ? { text: 'GitHub 构建', tone: 'ok' }
+      : { text: 'Pages 未开启', tone: 'warn' };
+  }
   const state = target.value?.actionsState;
   const detail = target.value?.actionsDetail ?? '';
   if (state === 'ready') return { text: '构建机就绪', tone: 'ok' };
   if (detail.includes('xiao')) return { text: '缺少 xiao 标签', tone: 'warn' };
   if (state === 'no-runner' || state === 'disabled') return { text: '没有构建机', tone: 'warn' };
   return { text: '没有构建机', tone: 'neutral' };
+});
+const tokenStatusText = computed(() => tokenStatusLine(tokenReport.value, publish.now));
+const pagesLabel = computed(() => {
+  if (target.value?.provider === 'github') {
+    return target.value.actionsState === 'ready' ? 'Pages 已开启' : 'Pages 未开启';
+  }
+  return '页面在 pages 分支';
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
 const prepHelp: Record<string, { title: string; body: string }> = {
@@ -270,7 +283,7 @@ const resultEntries = computed(() => {
   } else if (failed.key === 'build' && failed.url) {
     entries.push({
       key: 'gitea',
-      label: '在 Gitea 查看',
+      label: target.value?.provider === 'github' ? '在 GitHub 查看' : '在 Gitea 查看',
       run: () => void window.xiao.app.openExternal(failed.url ?? ''),
     });
   }
@@ -978,18 +991,17 @@ watch(
 
       <div v-else class="frame">
         <section class="panel card">
-          <template v-if="phase === 'ready'">
-            <p v-if="tokenReport?.status === 'invalid' || tokenReport?.status === 'expired'" class="alert">
-              {{ tokenReport.message }}
+          <div class="target-line" :class="{ warn: tokenBlocked }">
+            <UiIcon :path="target?.provider === 'github' ? icons.github : icons.repo" :size="18" />
+            <p>
+              发布到 {{ target?.provider === 'github' ? 'GitHub' : 'Gitea' }} · {{ repoName(target?.remoteUrl ?? '') }}（{{ target?.branch }}）→
+              <button v-if="target?.siteUrl" type="button" class="link" @click="openPublishedSite">{{ target?.siteUrl }}</button>
+              <span v-else class="dim">还没有网址</span>
             </p>
-            <section v-if="tokenReport?.status === 'valid'" class="token-box">
-              <p>令牌验证 · {{ tokenReport.account }}</p>
-              <ul class="titles">
-                <li v-for="item in tokenReport.capabilities" :key="item.key">
-                  {{ item.label }}：{{ item.state === 'ok' ? '可以' : item.state === 'missing' ? '缺少' : '还不确定' }}
-                </li>
-              </ul>
-            </section>
+            <span class="token-status">{{ tokenStatusText }}</span>
+            <UiButton v-if="tokenBlocked" size="sm" variant="primary" @click="reconnectOpen = true">重新连接</UiButton>
+          </div>
+          <template v-if="phase === 'ready'">
             <h2>将发布什么</h2>
             <p class="summary">{{ summaryLine }}</p>
             <ul v-if="previewPosts.length" class="titles">
@@ -1091,7 +1103,12 @@ watch(
               </button>
             </p>
             <p v-else-if="failureView.reason" class="summary">{{ failureView.reason }}</p>
-            <p v-else class="dim">{{ steps.find((step) => step.state === 'run')?.detail }}</p>
+            <p v-else class="dim">
+              {{ steps.find((step) => step.state === 'run')?.detail }}
+              <template v-if="target?.provider === 'github' && steps.some((step) => step.key === 'build' && step.state === 'run')">
+                GitHub Pages 首次部署可能要 1～2 分钟。
+              </template>
+            </p>
             <pre v-if="failureView.log" class="log">{{ failureView.log }}</pre>
             <div v-if="liveOk" class="publish-row">
               <UiButton variant="primary" @click="openPublishedSite">打开网站</UiButton>
@@ -1104,7 +1121,7 @@ watch(
               </template>
               <template v-else-if="buildFailed">
                 <UiButton v-if="steps.find((step) => step.key === 'build')?.url" size="sm" variant="ghost" @click="openBuildLog">
-                  在 Gitea 查看
+                  {{ target?.provider === 'github' ? '在 GitHub 查看' : '在 Gitea 查看' }}
                 </UiButton>
                 <UiButton size="sm" variant="ghost" @click="dismissJob">返回</UiButton>
               </template>
@@ -1127,6 +1144,9 @@ watch(
             </div>
             <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
             <p class="dim">分支 {{ target?.branch }}</p>
+            <p class="dim">令牌账号 {{ tokenReport?.account || '—' }}</p>
+            <p class="dim">{{ pagesLabel }}</p>
+            <p v-if="target?.actionsDetail" class="dim">{{ target.actionsDetail }}</p>
             <button
               v-if="target?.siteUrl"
               type="button"
@@ -1228,8 +1248,8 @@ watch(
         </template>
       </UiDialog>
 
-      <UiDialog v-model="disconnectOpen" title="断开 Gitea 连接" :width="420">
-        <p>将断开当前站点的 Gitea 连接，并删除本机保存的仓库地址与令牌。站点文件和远端仓库不受影响。</p>
+      <UiDialog v-model="disconnectOpen" title="断开连接" :width="420">
+        <p>将断开当前站点的发布连接，并删除本机保存的仓库地址与令牌。站点文件和远端仓库不受影响。</p>
         <template #actions="{ close }">
           <UiButton variant="ghost" @click="close">取消</UiButton>
           <UiButton variant="danger" @click="confirmDisconnect">断开连接</UiButton>
@@ -1280,6 +1300,27 @@ watch(
   margin: 0;
   font-size: var(--ui-fs-3);
   font-weight: 400;
+}
+
+.target-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-s2);
+  margin-bottom: var(--ui-s3);
+}
+
+.target-line p {
+  margin: 0;
+  min-width: 0;
+}
+
+.target-line.warn {
+  color: var(--ui-danger);
+}
+
+.token-status {
+  margin-left: auto;
 }
 
 .titles,

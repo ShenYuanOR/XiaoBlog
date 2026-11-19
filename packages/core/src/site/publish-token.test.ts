@@ -9,6 +9,7 @@ import {
   readGithubVerify,
   readGiteaVerify,
   requiredMissing,
+  tokenStatusLine,
   verifyCacheKey,
 } from '../../../../apps/studio/src/main/publish-token.ts';
 
@@ -112,6 +113,32 @@ describe('令牌验证', () => {
       '构建配置',
     );
     expect(explainWorkflowScope('not a fast-forward')).toBe('');
+  });
+});
+
+describe('已连接时的令牌短句', () => {
+  const now = Date.parse('2026-11-19T00:00:00Z');
+
+  it('失效、将过期、缺权限和有效', () => {
+    expect(tokenStatusLine(null)).toBe('还没验证');
+    expect(tokenStatusLine(readGithubVerify({ status: 401, scopes: '', expires: '', login: '' }))).toBe('已失效');
+    expect(
+      tokenStatusLine(
+        readGithubVerify({ status: 200, scopes: 'repo', expires: '2020-01-01T00:00:00Z', login: 'a', now }),
+        now,
+      ),
+    ).toBe('已失效');
+    expect(
+      tokenStatusLine(
+        readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '2026-12-01T00:00:00Z', login: 'a', now }),
+        now,
+      ),
+    ).toBe('将在 12 天后过期');
+    const missing = readGithubVerify({ status: 200, scopes: 'public_repo', expires: '', login: 'a' });
+    expect(tokenStatusLine(missing)).toBe('缺少修改构建配置');
+    expect(tokenStatusLine(readGithubVerify({ status: 200, scopes: 'repo, workflow', expires: '', login: 'a' }))).toBe(
+      '有效',
+    );
   });
 });
 
