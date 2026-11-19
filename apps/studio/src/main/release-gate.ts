@@ -164,6 +164,20 @@ export function historyRows(memory: DeployRecord[] | undefined, disk: DeployReco
   return memory ?? disk ?? [];
 }
 
+/** 历史表结果列只写结论。四步明细用 historyStepDetail。 */
+export function historyConclusion(record: { result?: string; steps?: { key?: string; label: string; state: string }[] }): string {
+  const failed = record.steps?.find((step) => step.state === 'fail');
+  if (failed) return `停在${failed.label}`;
+  if (record.steps?.length && record.steps.every((step) => step.state === 'ok')) return '已上线';
+  return record.result || '已记录';
+}
+
+export function historyStepDetail(steps: { label: string; state: string }[] | undefined): string {
+  if (!steps?.length) return '';
+  const name = (state: string): string => (state === 'ok' ? '完成' : state === 'fail' ? '失败' : '未进行');
+  return steps.map((step) => `${step.label}${name(step.state)}`).join('、');
+}
+
 export function renewalDue(expires: string, now: Date): boolean {
   if (!expires) return false;
   const end = new Date(expires).getTime();

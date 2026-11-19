@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
 import { useSession } from '../stores/session.ts';
@@ -201,16 +202,6 @@ const fileLines = computed(() => {
 function formatTime(at: string): string {
   const date = new Date(at);
   return Number.isNaN(date.getTime()) ? at : date.toLocaleString('zh-CN', { hour12: false });
-}
-
-function isPushRecord(repo: string): boolean {
-  return /^https?:\/\//i.test(repo);
-}
-
-function historyResult(item: DeployRecord): string {
-  if (!item.steps?.length) return item.result || (isPushRecord(item.repo) ? '已推送' : '已记录');
-  const name = (state: StepState): string => (state === 'ok' ? '完成' : state === 'fail' ? '失败' : '未进行');
-  return item.steps.map((step) => `${step.label}${name(step.state)}`).join('、');
 }
 
 function freshSteps(): StepRow[] {
@@ -762,7 +753,7 @@ watch(
             <tr v-for="item in historyRows" :key="item.at">
               <td>{{ formatTime(item.at) }}</td>
               <td :title="item.repo">{{ item.repo }}</td>
-              <td>{{ historyResult(item) }}</td>
+              <td :title="historyStepDetail(item.steps) || undefined">{{ historyConclusion(item) }}</td>
               <td :title="item.sha">{{ item.sha ? item.sha.slice(0, 7) : '没有记录' }}</td>
               <td>{{ item.ms ? `${(item.ms / 1000).toFixed(1)} 秒` : '没有记录' }}</td>
             </tr>

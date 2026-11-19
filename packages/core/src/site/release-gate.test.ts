@@ -7,7 +7,9 @@ import { collectChanges } from '../../../../apps/studio/src/main/publish-changes
 import {
   blockedBy,
   parseStatus,
+  historyConclusion,
   historyRows,
+  historyStepDetail,
   rememberDeploy,
   renewalDue,
   summarizeChanges,
@@ -108,5 +110,8 @@ describe('发布门禁', () => {
     expect(kept[0]?.ms).toBe(39000);
     expect(historyRows(kept, [])).toEqual(kept);
     expect(historyRows(undefined, [])).toEqual([]);
+    expect(historyConclusion(row)).toBe('已上线');
+    expect(historyStepDetail(row.steps)).toContain('检查完成');
+    expect(historyConclusion({ steps: [{ label: '远端构建', state: 'fail' }] })).toBe('停在远端构建');
   });
 });
