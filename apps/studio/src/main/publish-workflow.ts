@@ -1,8 +1,10 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { deployWorkflow } from './wizard.ts';
 
 export const WORKFLOW_VERSION = 2;
 export const WORKFLOW_PATH = '.gitea/workflows/xiao-deploy.yml';
+export const GITHUB_WORKFLOW_PATH = '.github/workflows/xiao-deploy.yml';
 
 export interface GiteaRemote {
   origin: string;
@@ -70,6 +72,16 @@ jobs:
           git -c user.name=xiao-bot -c user.email=xiao-bot@localhost commit -q -m "pages: \${{ github.sha }}"
           git -c http.extraHeader="Authorization: token $TOKEN" push -f "$REPO_URL" pages
 `;
+}
+
+/** GitHub Pages 构建配置。内容相同就保留。 */
+export function writeGithubWorkflow(siteDir: string, branch: string): 'written' | 'kept' {
+  const full = join(siteDir, GITHUB_WORKFLOW_PATH);
+  const next = deployWorkflow(branch);
+  if (existsSync(full) && readFileSync(full, 'utf8') === next) return 'kept';
+  mkdirSync(join(siteDir, '.github', 'workflows'), { recursive: true });
+  writeFileSync(full, next);
+  return 'written';
 }
 
 /** 已有同版本文件就保留。返回 written 或 kept。 */

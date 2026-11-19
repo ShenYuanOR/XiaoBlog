@@ -97,6 +97,8 @@ export function deployWorkflow(branch: string): string {
     '    steps:',
     '      - uses: actions/checkout@v7',
     '      - uses: withastro/action@v6',
+    '        env:',
+    '          XIAO_BUILD_SHA: ${{ github.sha }}',
     '  deploy:',
     '    needs: build',
     '    runs-on: ubuntu-latest',

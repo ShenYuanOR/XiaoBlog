@@ -404,6 +404,85 @@ export interface XiaoApi {
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
+    checkToken: (
+      provider: 'github' | 'gitea',
+      origin: string,
+      token: string,
+    ) => Promise<
+      IpcResult<{
+        status: 'valid' | 'invalid' | 'expired';
+        account: string;
+        kind: 'github-classic' | 'github-fine' | 'gitea';
+        expiresAt: string;
+        message: string;
+        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+      }>
+    >;
+    repos: (
+      provider: 'github' | 'gitea',
+      origin: string,
+      token: string,
+    ) => Promise<
+      IpcResult<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>
+    >;
+    repoFacts: (
+      provider: 'github' | 'gitea',
+      remoteUrl: string,
+      token: string,
+    ) => Promise<
+      IpcResult<{
+        owner: string;
+        repo: string;
+        branch: string;
+        empty: boolean;
+        xiao: boolean;
+        isPrivate: boolean;
+      }>
+    >;
+    createRepo: (
+      provider: 'github' | 'gitea',
+      origin: string,
+      token: string,
+      name: string,
+    ) => Promise<
+      IpcResult<{ ok: boolean; remoteUrl: string; owner: string; repo: string; branch: string; message: string }>
+    >;
+    rememberedHost: (origin: string) => Promise<IpcResult<string>>;
+    probeHost: (origin: string, host: string, owner: string, repo: string) => Promise<IpcResult<null>>;
+    prepare: (
+      siteDir: string,
+      input: {
+        provider: 'github' | 'gitea';
+        origin: string;
+        remoteUrl: string;
+        token: string;
+        login?: string;
+        branch: string;
+        owner: string;
+        repo: string;
+        siteUrl: string;
+        base: string;
+      },
+    ) => Promise<
+      IpcResult<{
+        workflow: 'idle' | 'ok' | 'manual' | 'warn';
+        hosting: 'idle' | 'ok' | 'manual' | 'warn';
+        runner: 'idle' | 'ok' | 'manual' | 'warn';
+        error: string;
+        next: string;
+        link: string;
+        target: {
+          provider: 'gitea' | 'github';
+          remoteUrl: string;
+          branch: string;
+          login?: string;
+          siteUrl?: string;
+          actionsState?: 'ready' | 'disabled' | 'no-runner' | 'unknown';
+          actionsDetail?: string;
+          persisted?: boolean;
+        } | null;
+      }>
+    >;
     preflight: (siteDir: string, force?: boolean) => Promise<
       IpcResult<{
         blocked: boolean;

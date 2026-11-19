@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   app,
@@ -110,7 +110,15 @@ import {
   type TokenReport,
 } from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
-import { probeGiteaActions, writeDeployWorkflow } from './publish-workflow.ts';
+import { probeGiteaActions, writeDeployWorkflow, writeGithubWorkflow } from './publish-workflow.ts';
+import {
+  createRemoteRepo,
+  enableGiteaActions,
+  enableGithubPages,
+  listRemoteRepos,
+  probeStaticHost,
+  readRemoteFacts,
+} from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -352,6 +360,31 @@ async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
   const report = await verifyLooseToken(target.provider, origin, token, target.remoteUrl, target.login);
   tokenCache.put(key, report);
   return report;
+}
+
+function pagesHostFile(): string {
+  return join(app.getPath('userData'), 'pages-hosts.json');
+}
+
+function readPagesHost(origin: string): string {
+  try {
+    const all = JSON.parse(readFileSync(pagesHostFile(), 'utf8')) as Record<string, string>;
+    return all[origin] ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writePagesHost(origin: string, host: string): void {
+  let all: Record<string, string> = {};
+  try {
+    all = JSON.parse(readFileSync(pagesHostFile(), 'utf8')) as Record<string, string>;
+  } catch {
+    all = {};
+  }
+  all[origin] = host;
+  mkdirSync(dirname(pagesHostFile()), { recursive: true });
+  writeFileSync(pagesHostFile(), `${JSON.stringify(all, null, 2)}\n`);
 }
 
 function deployStore(): ReturnType<typeof createDeployStore> {
@@ -1329,6 +1362,183 @@ app.whenReady().then(() => {
     tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
     return ok(report);
   });
+  ipcMain.handle('publish:checkToken', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {
+    const trimmed = typeof token === 'string' ? token.trim() : '';
+    if (provider !== 'github' && provider !== 'gitea') return fail('PUBLISH_TOKEN', '先选平台');
+    if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
+    const root = provider === 'github' ? 'https://github.com' : String(origin || '').replace(/\/$/, '');
+    if (provider === 'gitea' && !/^https?:\/\//i.test(root)) return fail('PUBLISH_URL', '先填 Gitea 实例地址');
+    const report = await verifyLooseToken(provider, root, trimmed);
+    return ok(report);
+  });
+  ipcMain.handle('publish:repos', async (_event, provider: 'github' | 'gitea', origin: string, token: string) => {
+    const listed = await listRemoteRepos({
+      provider,
+      origin: provider === 'github' ? 'https://github.com' : String(origin || ''),
+      token: String(token || ''),
+      fetchImpl: apiFetch,
+    });
+    if (!listed.ok) return fail('PUBLISH_REPOS', listed.message);
+    return ok(listed.repos);
+  });
+  ipcMain.handle('publish:repoFacts', async (_event, provider: 'github' | 'gitea', remoteUrl: string, token: string) => {
+    const facts = await readRemoteFacts({
+      provider,
+      remoteUrl: String(remoteUrl || ''),
+      token: String(token || ''),
+      fetchImpl: apiFetch,
+    });
+    if (!facts.ok) return fail('PUBLISH_REPO', facts.message);
+    return ok(facts);
+  });
+  ipcMain.handle(
+    'publish:createRepo',
+    async (_event, provider: 'github' | 'gitea', origin: string, token: string, name: string) => {
+      const created = await createRemoteRepo({
+        provider,
+        origin: provider === 'github' ? 'https://github.com' : String(origin || ''),
+        token: String(token || ''),
+        name: String(name || ''),
+        fetchImpl: apiFetch,
+      });
+      return ok(created);
+    },
+  );
+  ipcMain.handle('publish:rememberedHost', (_event, origin: string) => ok(readPagesHost(String(origin || '').replace(/\/$/, ''))));
+  ipcMain.handle(
+    'publish:probeHost',
+    async (_event, origin: string, host: string, owner: string, repo: string) => {
+      const probed = await probeStaticHost(String(host || ''), String(owner || ''), String(repo || ''), apiFetch);
+      if (!probed.ok) return fail('PUBLISH_HOST', probed.message);
+      const root = String(origin || '').replace(/\/$/, '');
+      if (root) writePagesHost(root, String(host || '').trim().replace(/\/$/, ''));
+      return ok(null);
+    },
+  );
+  ipcMain.handle(
+    'publish:prepare',
+    async (
+      _event,
+      siteDir: string,
+      input: {
+        provider: 'github' | 'gitea';
+        origin: string;
+        remoteUrl: string;
+        token: string;
+        login?: string;
+        branch: string;
+        owner: string;
+        repo: string;
+        siteUrl: string;
+        base: string;
+      },
+    ) => {
+      if (!siteDir || !input?.token || !input.remoteUrl || !input.siteUrl) {
+        return fail('PUBLISH_PREP', '还没填完仓库、令牌和网站地址');
+      }
+      const idle = { workflow: 'idle' as const, hosting: 'idle' as const, runner: 'idle' as const, link: '', target: null };
+      const probe = await probeRemote(input.remoteUrl, input.login || '', input.token, publishHttp);
+      if (!probe.ok) {
+        return ok({ ...idle, error: probe.message, next: '确认仓库地址和令牌后重新检查。' });
+      }
+      const errors = patchConfig(siteDir, { set: { 'site.url': input.siteUrl, 'site.base': input.base } });
+      if (errors.length) return ok({ ...idle, error: errors.join('；'), next: '修正站点配置后再试。' });
+      const branch = input.branch || 'main';
+      let workflow: 'ok' | 'manual' = 'ok';
+      let hosting: 'ok' | 'manual' = 'ok';
+      let runner: 'ok' | 'warn' | 'idle' = 'idle';
+      let link = '';
+      let error = '';
+      let next = '';
+      let actionsState: DeployTarget['actionsState'] = 'unknown';
+      let actionsDetail = '';
+      try {
+        if (input.provider === 'github') {
+          writeGithubWorkflow(siteDir, branch);
+          const file = join(siteDir, '.github', 'workflows', 'xiao-deploy.yml');
+          try {
+            watcher?.noteWrite(file, readFileSync(file, 'utf8'));
+          } catch {
+            // 监视器读不到时不让准备失败。
+          }
+        } else {
+          const wrote = writeDeployWorkflow(siteDir, branch);
+          if (wrote === 'written') {
+            const file = join(siteDir, '.gitea', 'workflows', 'xiao-deploy.yml');
+            try {
+              watcher?.noteWrite(file, readFileSync(file, 'utf8'));
+            } catch {
+              // 同上。
+            }
+          }
+        }
+      } catch {
+        workflow = 'manual';
+        error = '构建配置写不进站点目录。可以在网页上新建这份文件。';
+        next = '写好后点「我已完成，重新检查」。';
+        link =
+          input.provider === 'github'
+            ? `https://github.com/${input.owner}/${input.repo}/new/${branch}?filename=.github/workflows/xiao-deploy.yml`
+            : `${String(input.origin || '').replace(/\/$/, '')}/${input.owner}/${input.repo}`;
+      }
+      if (workflow === 'ok' && input.provider === 'github') {
+        const pages = await enableGithubPages(input.owner, input.repo, input.token, apiFetch);
+        if (pages.state === 'ok') {
+          actionsState = 'ready';
+          actionsDetail = pages.detail;
+        } else {
+          hosting = 'manual';
+          actionsDetail = pages.detail;
+          error = pages.detail;
+          next = '做完后点「我已完成，重新检查」。';
+          link = pages.link;
+        }
+      }
+      if (workflow === 'ok' && input.provider === 'gitea') {
+        const actions = await enableGiteaActions(input.remoteUrl, input.token, apiFetch);
+        actionsState = actions.actionsState;
+        actionsDetail = actions.detail;
+        if (actions.state === 'manual') {
+          hosting = 'manual';
+          error = actions.detail;
+          next = '做完后点「我已完成，重新检查」。';
+          link = actions.link;
+        } else if (actions.state === 'warn') {
+          runner = 'warn';
+          error = actions.detail;
+          next = '准备好构建机后点「我已完成，重新检查」。';
+          link = actions.link;
+        } else {
+          runner = 'ok';
+        }
+      }
+      if (workflow === 'manual' || hosting === 'manual' || runner === 'warn') {
+        return ok({ workflow, hosting, runner, error, next, link, target: null });
+      }
+      const target: DeployTarget = {
+        provider: input.provider,
+        remoteUrl: input.remoteUrl.replace(/\/$/, ''),
+        branch,
+        ...(input.login ? { login: input.login } : {}),
+        siteUrl: input.siteUrl,
+        actionsState,
+        actionsDetail,
+      };
+      secretStore().save(siteDir, input.token, '');
+      const all = deployStore().read();
+      all[siteDir] = target;
+      deployStore().write(all);
+      return ok({
+        workflow,
+        hosting,
+        runner,
+        error: '',
+        next: '',
+        link: '',
+        target: { ...target, persisted: secretStore().persisted(siteDir) && deployStore().persisted() },
+      });
+    },
+  );
   ipcMain.handle('publish:start', async (_event, siteDir: string, force?: boolean) => {
     if (!siteDir || !publishJobs) return fail('PUBLISH_JOB', '还没有选择站点');
     const report = await verifySavedToken(siteDir);

@@ -1,5 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import {
+  acceptToken,
+  applyBuild,
+  applyRepo,
+  applySite,
+  applyTokenReport,
+  blankPrep,
+  canCreateRepo,
+  choosePlatform,
+  newRepoPage,
+  parseRepoUrl,
+  PREP_ORDER,
+  pushBlocks,
+  reopen,
+  stepLine,
+  suggestSite,
+  tokenPage,
+  type PrepStep,
+} from '../../../main/publish-prep.ts';
 import { historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -116,11 +135,14 @@ const tokenReport = ref<{
   message: string;
   capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
 } | null>(null);
-const giteaUrl = ref('');
-const giteaLogin = ref('');
-const giteaToken = ref('');
+const prep = ref(blankPrep());
+const instanceUrl = ref('');
+const repoQuery = ref('');
+const repoChoices = ref<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>([]);
+const newRepoName = ref('');
+const staticHost = ref('');
+const prepBusy = ref(false);
 const giteaSiteUrl = ref('');
-const connecting = ref(false);
 const pushing = ref(false);
 const pushError = ref('');
 const pushResult = ref<PushResult | null>(null);
@@ -182,6 +204,45 @@ const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral'
   return { text: '没有构建机', tone: 'neutral' };
 });
 const needsForce = computed(() => /覆盖远端|快进|non-fast-forward|force/i.test(pushError.value));
+const prepHelp: Record<string, { title: string; body: string }> = {
+  platform: {
+    title: '选平台',
+    body: 'GitHub 是正式站点，用自带的 Pages。Gitea 是局域网测试，要填实例地址。',
+  },
+  token: {
+    title: '令牌验证',
+    body: '粘贴后会看账号和每一项能力。缺了推送权限就先去创建令牌。建仓库的权限不是必需的，没有也可以用网页新建。',
+  },
+  repo: {
+    title: '选仓库',
+    body: '默认用已有仓库，空仓库也可以。不是晓站点的非空仓库会先警告。没有仓库就去网页新建，建好后点重新检查。',
+  },
+  site: {
+    title: '网站地址',
+    body: 'GitHub 按仓库名计算。仓库名是 owner.github.io 时用根路径，否则挂在 /仓库名/。Gitea 要填静态服务地址，第一次会探测。',
+  },
+  build: {
+    title: '构建准备',
+    body: '权限够就自动写入构建配置，并开启 Pages 或 Actions。做不到的会给你网页链接，做完点「我已完成，重新检查」。',
+  },
+};
+const shownPrep = computed(() => {
+  const index = PREP_ORDER.indexOf(prep.value.step as PrepStep);
+  return PREP_ORDER.slice(0, index < 0 ? PREP_ORDER.length : index + 1);
+});
+const filteredRepos = computed(() => {
+  const query = repoQuery.value.trim().toLowerCase();
+  if (!query || query.includes('/')) return repoChoices.value;
+  return repoChoices.value.filter((item) => `${item.owner}/${item.name}`.toLowerCase().includes(query));
+});
+const tokenCanContinue = computed(
+  () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
+);
+const tokenGaps = computed(
+  () => prep.value.report?.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing') ?? [],
+);
+const suggestedSite = computed(() => suggestSite(prep.value, staticHost.value));
+const offerCreate = computed(() => canCreateRepo(prep.value.report));
 
 const resultEntries = computed(() => {
   const failed = steps.value.find((step) => step.state === 'fail');
@@ -330,59 +391,214 @@ async function submitReconnect(): Promise<void> {
   }
 }
 
-async function connectGitea(): Promise<void> {
-  if (!session.siteDir) {
-    notify('先打开站点，才能连接仓库。', 'error', 'publish-connect');
+function openLink(url: string): void {
+  if (url) void window.xiao.app.openExternal(url);
+}
+
+function capabilityText(state: 'ok' | 'missing' | 'unknown'): string {
+  if (state === 'ok') return '可以';
+  if (state === 'missing') return '缺少';
+  return '还不确定';
+}
+
+function continuePlatform(provider: 'github' | 'gitea'): void {
+  prep.value = choosePlatform(prep.value, provider, instanceUrl.value);
+}
+
+async function verifyPasted(): Promise<void> {
+  const token = prep.value.token.trim();
+  if (!token) {
+    notify('先粘贴访问令牌。', 'error', 'publish-prep');
     return;
   }
-  const url = giteaUrl.value.trim().replace(/\/$/, '');
-  if (!url) {
-    notify('先填 Gitea 仓库地址。', 'error', 'publish-connect');
-    return;
-  }
-  if (!/^https?:\/\//i.test(url)) {
-    notify('仓库地址要以 http:// 或 https:// 开头。', 'error', 'publish-connect');
-    return;
-  }
-  if (!giteaLogin.value.trim()) {
-    notify('先填 Gitea 用户名。Gitea 不接受空用户名。', 'error', 'publish-connect');
-    return;
-  }
-  if (!giteaToken.value.trim()) {
-    notify('先填访问令牌。它会加密保存在本机，不会写进站点文件。', 'error', 'publish-connect');
-    return;
-  }
-  connecting.value = true;
+  prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.connect(
-      session.siteDir,
-      'gitea',
-      url,
-      giteaLogin.value.trim(),
-      giteaToken.value.trim(),
-      giteaSiteUrl.value.trim(),
-    );
+    const result = await window.xiao.publish.checkToken(prep.value.provider, prep.value.origin, token);
     if (!result.ok) {
-      notify(`连接失败：${result.message}`, 'error', 'publish-connect');
+      notify(result.message, 'error', 'publish-prep');
       return;
     }
-    target.value = result.data;
-    giteaToken.value = '';
-    pushError.value = '';
-    phase.value = 'ready';
-    notify(`已连接 ${result.data.remoteUrl}（分支 ${result.data.branch}）。`, 'info', 'publish-connect');
-    if (result.data.persisted === false) {
-      notify('令牌无法写入本机用户目录，只在本次运行有效。下次启动需要重新连接。', 'error', 'publish-persist');
-    }
-    await runPreflight();
-  } catch (error) {
-    notify(
-      `连接失败：${error instanceof Error ? error.message : String(error)}。检查地址、令牌和网络后重试。`,
-      'error',
-      'publish-connect',
-    );
+    prep.value = applyTokenReport({ ...prep.value, token }, result.data);
   } finally {
-    connecting.value = false;
+    prepBusy.value = false;
+  }
+}
+
+async function loadRepos(): Promise<void> {
+  prepBusy.value = true;
+  try {
+    const result = await window.xiao.publish.repos(prep.value.provider, prep.value.origin, prep.value.token);
+    if (!result.ok) {
+      prep.value = { ...prep.value, error: result.message, next: '也可以直接粘贴仓库地址。', manualLink: '' };
+      return;
+    }
+    repoChoices.value = result.data;
+    if (!prep.value.error.includes('xiao.config.json') && !prep.value.error.includes('私有')) {
+      prep.value = { ...prep.value, error: '', next: '', manualLink: '' };
+    }
+  } finally {
+    prepBusy.value = false;
+  }
+}
+
+async function useRemote(remoteUrl: string): Promise<void> {
+  prepBusy.value = true;
+  try {
+    const result = await window.xiao.publish.repoFacts(prep.value.provider, remoteUrl, prep.value.token);
+    if (!result.ok) {
+      prep.value = { ...prep.value, remoteUrl, error: result.message, next: '检查地址后再试。已填的地址还留着。' };
+      return;
+    }
+    prep.value = applyRepo(prep.value, {
+      remoteUrl,
+      owner: result.data.owner,
+      repo: result.data.repo,
+      branch: result.data.branch,
+      empty: result.data.empty,
+      xiao: result.data.xiao,
+      isPrivate: result.data.isPrivate,
+    });
+  } finally {
+    prepBusy.value = false;
+  }
+}
+
+function confirmForeign(): void {
+  prep.value = applyRepo(prep.value, {
+    remoteUrl: prep.value.remoteUrl,
+    owner: prep.value.owner,
+    repo: prep.value.repo,
+    branch: prep.value.branch,
+    empty: prep.value.empty === true,
+    xiao: prep.value.xiao === true,
+    isPrivate: prep.value.isPrivate,
+    confirmed: true,
+  });
+}
+
+async function useTypedRepo(): Promise<void> {
+  const parsed = parseRepoUrl(repoQuery.value, prep.value.origin || 'https://github.com');
+  if (!parsed) {
+    notify('仓库地址要像 https://github.com/owner/repo，或 owner/repo。', 'error', 'publish-prep');
+    return;
+  }
+  await useRemote(parsed.remoteUrl);
+}
+
+async function createRepoNow(): Promise<void> {
+  const name = newRepoName.value.trim();
+  if (!name) {
+    notify('先填仓库名。', 'error', 'publish-prep');
+    return;
+  }
+  prepBusy.value = true;
+  try {
+    const result = await window.xiao.publish.createRepo(prep.value.provider, prep.value.origin, prep.value.token, name);
+    if (!result.ok) {
+      notify(result.message, 'error', 'publish-prep');
+      return;
+    }
+    if (!result.data.ok) {
+      prep.value = {
+        ...prep.value,
+        error: result.data.message,
+        next: '用网页新建后点「我已建好，重新检查」。',
+        manualLink: newRepoPage(prep.value, name),
+      };
+      return;
+    }
+    await useRemote(result.data.remoteUrl);
+  } finally {
+    prepBusy.value = false;
+  }
+}
+
+async function loadRememberedHost(): Promise<void> {
+  if (prep.value.provider !== 'gitea') return;
+  const result = await window.xiao.publish.rememberedHost(prep.value.origin);
+  if (result.ok && result.data && !staticHost.value) staticHost.value = result.data;
+}
+
+async function acceptSite(): Promise<void> {
+  if (prep.value.provider === 'gitea') {
+    const suggested = suggestSite(prep.value, staticHost.value);
+    if (suggested.needHost) {
+      prep.value = applySite(prep.value, { siteUrl: '', base: '', staticHost: staticHost.value });
+      return;
+    }
+    prepBusy.value = true;
+    try {
+      const probed = await window.xiao.publish.probeHost(
+        prep.value.origin,
+        staticHost.value,
+        prep.value.owner,
+        prep.value.repo,
+      );
+      if (!probed.ok) {
+        prep.value = {
+          ...prep.value,
+          staticHost: staticHost.value,
+          error: probed.message,
+          next: '确认静态服务地址后再探测。已填的地址还留着。',
+        };
+        return;
+      }
+      prep.value = applySite(prep.value, { siteUrl: suggested.siteUrl, base: suggested.base, staticHost: staticHost.value });
+    } finally {
+      prepBusy.value = false;
+    }
+    return;
+  }
+  const suggested = suggestSite(prep.value, '');
+  prep.value = applySite(prep.value, { siteUrl: suggested.siteUrl, base: suggested.base });
+}
+
+async function runPrepare(): Promise<void> {
+  if (!session.siteDir) return;
+  prepBusy.value = true;
+  try {
+    const result = await window.xiao.publish.prepare(session.siteDir, {
+      provider: prep.value.provider === 'gitea' ? 'gitea' : 'github',
+      origin: prep.value.origin,
+      remoteUrl: prep.value.remoteUrl,
+      token: prep.value.token,
+      login: prep.value.report?.account || '',
+      branch: prep.value.branch,
+      owner: prep.value.owner,
+      repo: prep.value.repo,
+      siteUrl: prep.value.siteUrl,
+      base: prep.value.base,
+    });
+    if (!result.ok) {
+      prep.value = applyBuild(prep.value, {
+        workflow: 'idle',
+        hosting: 'idle',
+        runner: 'idle',
+        error: result.message,
+        next: '这一步没有完成，已填内容还在。',
+      });
+      return;
+    }
+    prep.value = applyBuild(prep.value, {
+      workflow: result.data.workflow,
+      hosting: result.data.hosting,
+      runner: result.data.runner,
+      error: result.data.error,
+      next: result.data.next,
+      link: result.data.link,
+    });
+    if (result.data.target) {
+      target.value = result.data.target;
+      notify(`已连接 ${result.data.target.remoteUrl}`, 'info', 'publish-prep');
+      if (result.data.target.persisted === false) {
+        notify('令牌无法写入本机用户目录，只在本次运行有效。下次启动需要重新连接。', 'error', 'publish-persist');
+      }
+      await loadAll();
+    } else if (prep.value.step === 'publish') {
+      prep.value = { ...prep.value, step: 'build', error: '准备没有保存连接。', next: '再点一次重新检查。已填内容还在。' };
+    }
+  } finally {
+    prepBusy.value = false;
   }
 }
 
@@ -466,7 +682,7 @@ async function confirmDisconnect(): Promise<void> {
     return;
   }
   target.value = null;
-  giteaLogin.value = '';
+  prep.value = blankPrep();
   pushResult.value = null;
   pushError.value = '';
   phase.value = 'ready';
@@ -556,8 +772,6 @@ async function loadAll(check = true): Promise<void> {
     if (target.value) {
       const verified = await window.xiao.publish.verify(siteDir);
       tokenReport.value = verified.ok ? verified.data : null;
-      if (!giteaUrl.value) giteaUrl.value = target.value.remoteUrl;
-      if (!giteaLogin.value && target.value.login) giteaLogin.value = target.value.login;
       if (!giteaSiteUrl.value && target.value.siteUrl) giteaSiteUrl.value = target.value.siteUrl;
       if (check && !currentJob) await runPreflight();
     } else {
@@ -606,7 +820,19 @@ watch(
   () => {
     phase.value = 'ready';
     steps.value = [];
+    prep.value = blankPrep();
+    repoChoices.value = [];
+    repoQuery.value = '';
+    staticHost.value = '';
     void loadAll();
+  },
+);
+
+watch(
+  () => prep.value.step,
+  (step) => {
+    if (step === 'repo' && prep.value.token) void loadRepos();
+    if (step === 'site') void loadRememberedHost();
   },
 );
 </script>
@@ -637,30 +863,118 @@ watch(
 
       <p v-if="errorText" class="alert">{{ errorText }}</p>
 
-      <section v-if="!target" class="connect card">
-        <h2>选择发布目标</h2>
-        <p class="dim">先连接一个 Gitea 仓库。令牌只加密保存在本机，不会写进站点。</p>
-        <div class="fields">
-          <UiField label="仓库地址">
-            <UiInput v-model="giteaUrl" placeholder="http://192.168.1.10:3000/owner/site.git" />
-          </UiField>
-          <UiField label="用户名">
-            <UiInput v-model="giteaLogin" placeholder="登录名或邮箱" autocomplete="off" />
-          </UiField>
-          <UiField label="访问令牌">
-            <UiInput v-model="giteaToken" type="password" autocomplete="off" placeholder="粘贴令牌" />
-          </UiField>
-          <UiField label="站点网址">
-            <UiInput v-model="giteaSiteUrl" placeholder="https://blog.example.com" />
-          </UiField>
-        </div>
-        <div class="actions">
-          <UiButton variant="primary" :icon-left="icons.shield" :loading="connecting" @click="connectGitea">
-            连接仓库
-          </UiButton>
-        </div>
-        <p class="dim next">GitHub Pages：下一步支持。</p>
-      </section>
+      <div v-if="!target" class="frame">
+        <section class="panel card">
+          <h2>发布准备</h2>
+          <ol class="prep-steps">
+            <li v-for="step in shownPrep" :key="step">
+              <button
+                v-if="prep.done.includes(step) && prep.step !== step"
+                type="button"
+                class="fold"
+                @click="prep = reopen(prep, step)"
+              >
+                {{ stepLine(prep, step) }}
+              </button>
+              <div v-else-if="prep.step === step" class="prep-current">
+                <template v-if="step === 'platform'">
+                  <h3>平台</h3>
+                  <div class="publish-row">
+                    <UiButton variant="primary" @click="continuePlatform('github')">GitHub</UiButton>
+                    <UiButton @click="continuePlatform('gitea')">Gitea</UiButton>
+                  </div>
+                  <UiField label="Gitea 实例地址">
+                    <UiInput v-model="instanceUrl" placeholder="http://192.168.1.10:3000" />
+                  </UiField>
+                </template>
+                <template v-else-if="step === 'token'">
+                  <h3>令牌验证</h3>
+                  <UiField label="访问令牌">
+                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴令牌" />
+                  </UiField>
+                  <div class="publish-row">
+                    <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
+                    <UiButton v-if="tokenGaps.length" variant="ghost" @click="openLink(tokenPage(prep))">去创建令牌</UiButton>
+                    <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
+                  </div>
+                  <p v-if="prep.report" class="summary">{{ prep.report.account || prep.report.message }}</p>
+                  <ul v-if="prep.report?.status === 'valid'" class="titles">
+                    <li v-for="item in prep.report.capabilities" :key="item.key">
+                      {{ item.label }}：{{ capabilityText(item.state) }}
+                    </li>
+                  </ul>
+                </template>
+                <template v-else-if="step === 'repo'">
+                  <h3>仓库</h3>
+                  <p class="dim">默认用已有仓库，可以是空的。</p>
+                  <UiField label="搜索或粘贴地址">
+                    <UiInput v-model="repoQuery" placeholder="名字，或 https://github.com/owner/repo" />
+                  </UiField>
+                  <ul v-if="filteredRepos.length" class="titles">
+                    <li v-for="item in filteredRepos" :key="item.url">
+                      <button type="button" class="link" @click="useRemote(item.url)">{{ item.owner }}/{{ item.name }}</button>
+                      <span v-if="item.empty" class="dim">空</span>
+                      <span v-if="item.private" class="dim">私有</span>
+                    </li>
+                  </ul>
+                  <p v-else class="dim">列表里还没有仓库。可以粘贴地址，或去网页新建。</p>
+                  <div class="publish-row">
+                    <UiButton :loading="prepBusy" @click="useTypedRepo">使用这个地址</UiButton>
+                    <UiButton variant="ghost" :loading="prepBusy" @click="loadRepos">我已建好，重新检查</UiButton>
+                    <UiButton variant="ghost" @click="openLink(newRepoPage(prep, newRepoName))">去新建仓库</UiButton>
+                  </div>
+                  <template v-if="offerCreate">
+                    <UiField label="直接新建">
+                      <UiInput v-model="newRepoName" placeholder="仓库名，建在当前账号下" />
+                    </UiField>
+                    <UiButton :loading="prepBusy" @click="createRepoNow">直接新建</UiButton>
+                  </template>
+                  <UiButton
+                    v-if="prep.error.includes('xiao.config.json')"
+                    variant="primary"
+                    @click="confirmForeign"
+                  >
+                    确认继续
+                  </UiButton>
+                </template>
+                <template v-else-if="step === 'site'">
+                  <h3>网站地址</h3>
+                  <template v-if="prep.provider === 'github'">
+                    <p class="summary">{{ suggestedSite.siteUrl }}</p>
+                    <p class="dim">路径 {{ suggestedSite.base }}</p>
+                    <UiButton variant="primary" @click="acceptSite">写入并继续</UiButton>
+                  </template>
+                  <template v-else>
+                    <UiField label="静态服务地址">
+                      <UiInput v-model="staticHost" placeholder="http://192.168.1.10:8700" />
+                    </UiField>
+                    <p v-if="suggestedSite.siteUrl" class="dim">探测通过后会是 {{ suggestedSite.siteUrl }}</p>
+                    <UiButton variant="primary" :loading="prepBusy" @click="acceptSite">探测并继续</UiButton>
+                  </template>
+                </template>
+                <template v-else-if="step === 'build'">
+                  <h3>构建准备</h3>
+                  <p class="dim">能自动做的会直接做。做不到的给你链接。</p>
+                  <div class="publish-row">
+                    <UiButton variant="primary" :loading="prepBusy" @click="runPrepare">
+                      {{ prep.manualLink || prep.error ? '我已完成，重新检查' : '开始准备' }}
+                    </UiButton>
+                    <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
+                  </div>
+                </template>
+                <p v-if="prep.error" class="alert">{{ prep.error }}</p>
+                <p v-if="prep.next" class="dim">{{ prep.next }}</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+        <aside class="side">
+          <section class="card">
+            <h2>{{ prepHelp[prep.step]?.title }}</h2>
+            <p>{{ prepHelp[prep.step]?.body }}</p>
+          </section>
+        </aside>
+      </div>
 
       <div v-else class="frame">
         <section class="panel card">
@@ -953,9 +1267,19 @@ watch(
   min-width: 0;
 }
 
-.connect {
-  width: min(560px, 100%);
-  margin-inline: auto;
+.prep-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prep-current h3 {
+  margin: 0;
+  font-size: var(--ui-fs-3);
+  font-weight: 400;
 }
 
 .titles,

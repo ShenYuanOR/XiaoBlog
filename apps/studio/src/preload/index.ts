@@ -84,6 +84,32 @@ const api = {
     preflight: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:preflight', siteDir, force),
     verify: (siteDir: string) => ipcRenderer.invoke('publish:verify', siteDir),
     replaceToken: (siteDir: string, token: string) => ipcRenderer.invoke('publish:replaceToken', siteDir, token),
+    checkToken: (provider: 'github' | 'gitea', origin: string, token: string) =>
+      ipcRenderer.invoke('publish:checkToken', provider, origin, token),
+    repos: (provider: 'github' | 'gitea', origin: string, token: string) =>
+      ipcRenderer.invoke('publish:repos', provider, origin, token),
+    repoFacts: (provider: 'github' | 'gitea', remoteUrl: string, token: string) =>
+      ipcRenderer.invoke('publish:repoFacts', provider, remoteUrl, token),
+    createRepo: (provider: 'github' | 'gitea', origin: string, token: string, name: string) =>
+      ipcRenderer.invoke('publish:createRepo', provider, origin, token, name),
+    rememberedHost: (origin: string) => ipcRenderer.invoke('publish:rememberedHost', origin),
+    probeHost: (origin: string, host: string, owner: string, repo: string) =>
+      ipcRenderer.invoke('publish:probeHost', origin, host, owner, repo),
+    prepare: (
+      siteDir: string,
+      input: {
+        provider: 'github' | 'gitea';
+        origin: string;
+        remoteUrl: string;
+        token: string;
+        login?: string;
+        branch: string;
+        owner: string;
+        repo: string;
+        siteUrl: string;
+        base: string;
+      },
+    ) => ipcRenderer.invoke('publish:prepare', siteDir, input),
     start: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:start', siteDir, force),
     job: (siteDir: string) => ipcRenderer.invoke('publish:job', siteDir),
     dismiss: (siteDir: string) => ipcRenderer.invoke('publish:dismiss', siteDir),
