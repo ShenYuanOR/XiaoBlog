@@ -26,15 +26,20 @@ import {
   readRemoteFacts,
   readRepoChoices,
 } from '../../../../apps/studio/src/main/publish-remote.ts';
-import { readGithubVerify, reuseTokenOn } from '../../../../apps/studio/src/main/publish-token.ts';
+import { reuseTokenOn, type TokenReport } from '../../../../apps/studio/src/main/publish-token.ts';
 import { writeGithubWorkflow } from '../../../../apps/studio/src/main/publish-workflow.ts';
 
-const classic = readGithubVerify({
-  status: 200,
-  scopes: null,
-  expires: '',
-  login: 'ShenYuanOR',
-});
+function report(partial: Partial<TokenReport> = {}): TokenReport {
+  return {
+    status: 'valid',
+    account: 'ShenYuanOR',
+    kind: 'github-app',
+    expiresAt: '',
+    capabilities: [{ key: 'push', label: '推送内容', state: 'ok', how: '' }],
+    message: '',
+    ...partial,
+  };
+}
 
 function reachedRepo() {
   return { ...blankPrep(), token: 'secret-token' };
@@ -56,7 +61,7 @@ describe('发布准备状态机', () => {
     expect(stepTitle('publish')).toBe('首次发布');
   });
 
-  it('令牌验证：先展示结果，失效和不能推送停住，缺建仓库权限仍可继续', () => {
+  it('GitHub 授权：先展示结果，失效和不能推送停住', () => {
     let draft = applyRepo(reachedRepo(), {
       remoteUrl: 'https://github.com/ShenYuanOR/xiao-pages-test',
       owner: 'ShenYuanOR',
@@ -66,32 +71,22 @@ describe('发布准备状态机', () => {
       xiao: false,
       isPrivate: false,
     });
-    draft = { ...draft, token: 'secret-token' };
-    const shown = applyTokenReport(draft, classic);
+    const shown = applyTokenReport(draft, report());
     expect(shown.step).toBe('token');
     expect(shown.report?.account).toBe('ShenYuanOR');
     expect(acceptToken(shown).step).toBe('site');
-    const invalid = applyTokenReport(draft, readGithubVerify({ status: 401, scopes: null, expires: '', login: '' }));
+    const invalid = applyTokenReport(draft, report({ status: 'invalid', account: '', message: '授权已失效，重新授权' }));
     expect(invalid.step).toBe('token');
-    expect(invalid.error).toBe('令牌已失效');
-    expect(invalid.token).toBe('secret-token');
+    expect(invalid.error).toBe('授权已失效，重新授权');
     expect(acceptToken(invalid).step).toBe('token');
-    const fine = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
-    const noPush = applyTokenReport(draft, {
-      ...fine,
-      capabilities: fine.capabilities.map((item) => (item.key === 'push' ? { ...item, state: 'missing' as const } : item)),
-    });
-    expect(noPush.error).toContain('推送内容');
-    expect(noPush.manualLink).toContain('personal-access-tokens/new');
-    const base = readGithubVerify({ status: 200, scopes: null, expires: '', login: 'a' });
-    const noCreateReport = {
-      ...base,
-      capabilities: base.capabilities.map((item) => (item.key === 'create' ? { ...item, state: 'missing' as const } : item)),
-    };
-    const noCreate = acceptToken(applyTokenReport(draft, noCreateReport));
+    const noPush = applyTokenReport(draft, report({
+      capabilities: [{ key: 'push', label: '推送内容', state: 'missing', how: '' }],
+    }));
+    expect(noPush.error).toContain('推送');
+    expect(noPush.manualLink).not.toContain('personal-access-tokens');
+    const noCreate = acceptToken(applyTokenReport(draft, report()));
     expect(noCreate.step).toBe('site');
     expect(canCreateRepo(noCreate.report)).toBe(false);
-    expect(canCreateRepo(classic)).toBe(false);
   });
 
   it('仓库：空仓库继续，非晓站点要确认，确认后地址还在', () => {
@@ -206,7 +201,7 @@ describe('发布准备状态机', () => {
   });
 
   it('网址和新建链接', () => {
-    const draft = { ...reachedRepo(), report: classic };
+    const draft = { ...reachedRepo(), report: report() };
     expect(parseRepoUrl('https://github.com/ShenYuanOR/xiao-pages-test.git')?.remoteUrl).toBe(
       'https://github.com/ShenYuanOR/xiao-pages-test',
     );

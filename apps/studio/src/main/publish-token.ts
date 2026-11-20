@@ -47,36 +47,6 @@ export function githubPagesUrl(owner: string, repo: string): { siteUrl: string; 
   return { siteUrl: `https://${host}.github.io/${name}/`, base: `/${name}/` };
 }
 
-export const TOKEN_CHECKLIST = [
-  '资源只选这一个仓库，不要选所有仓库',
-  'Contents：读写',
-  'Workflows：读写',
-  'Pages：读写',
-  'Actions：只读',
-  'Metadata：只读',
-];
-
-/** 预填是否生效由协调者实测。页面上同时有清单，预填无效时照着勾。 */
-export function githubFineTokenLink(owner: string, repo: string): string {
-  const params = new URLSearchParams({
-    name: `XiaoBlog ${owner}/${repo}`,
-    description: `只用于发布 ${owner}/${repo}`,
-    target_name: owner,
-    expires_in: '90',
-    contents: 'write',
-    workflows: 'write',
-    pages: 'write',
-    actions: 'read',
-    metadata: 'read',
-  });
-  return `https://github.com/settings/personal-access-tokens/new?${params.toString()}`;
-}
-
-export function githubTokenLink(owner = '', repo = ''): string {
-  if (owner && repo) return githubFineTokenLink(owner, repo);
-  return githubFineTokenLink('owner', 'repo');
-}
-
 export function githubNewRepoLink(owner: string, name: string): string {
   const params = new URLSearchParams({ visibility: 'public' });
   if (owner.trim()) params.set('owner', owner.trim());
@@ -99,16 +69,18 @@ export function tokenStatusLine(
   report: {
     status: string;
     message?: string;
+    account?: string;
+    kind?: string;
     expiresAt?: string;
     capabilities?: { key: string; label: string; state: string }[];
   } | null,
   now = Date.now(),
 ): string {
   if (!report) return '还没验证';
-  if (report.status === 'rejected') {
-    return /经典|其他私有|写入其他/.test(report.message ?? '') ? '令牌权限过大' : report.message || '令牌权限过大';
+  if (report.status === 'rejected' || report.status === 'invalid' || report.status === 'expired') {
+    return report.message || '授权已失效，重新授权';
   }
-  if (report.status === 'invalid' || report.status === 'expired') return '已失效';
+  if (report.kind === 'github-app') return report.account ? `已授权 · ${report.account}` : '已授权';
   const missing = (report.capabilities ?? []).find((item) => item.key !== 'create' && item.state === 'missing');
   if (missing) return `缺少${missing.label}`;
   const expires = Date.parse(report.expiresAt ?? '');
@@ -140,101 +112,6 @@ export function requiredMissing(report: TokenReport): TokenCapability[] {
   return report.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing');
 }
 
-export function readGithubVerify(input: {
-  status: number;
-  /** null 表示没有 X-OAuth-Scopes，是细粒度令牌。有这个头就是经典令牌。 */
-  scopes: string | null;
-  expires: string;
-  login: string;
-  now?: number;
-}): TokenReport {
-  const now = input.now ?? Date.now();
-  if (input.scopes !== null) {
-    return {
-      status: 'rejected',
-      account: input.login,
-      kind: 'github-classic',
-      expiresAt: input.expires,
-      capabilities: [],
-      message: '这是经典令牌，能访问你整个账号',
-    };
-  }
-  if (input.status === 401 || input.status === 403) {
-    return {
-      status: 'invalid',
-      account: '',
-      kind: 'github-fine',
-      expiresAt: '',
-      capabilities: [],
-      message: '令牌已失效',
-    };
-  }
-  if (expired(input.expires, now)) {
-    return {
-      status: 'expired',
-      account: input.login,
-      kind: 'github-fine',
-      expiresAt: input.expires,
-      capabilities: [],
-      message: '令牌已过期',
-    };
-  }
-  return {
-    status: 'valid',
-    account: input.login,
-    kind: 'github-fine',
-    expiresAt: input.expires.trim(),
-    capabilities: [
-      cap('push', 'unknown', '细粒度令牌要授予这个仓库的 Contents 写。'),
-      cap('workflow', 'unknown', 'Workflows 写现在测不出来。推送构建配置被拒时会说明怎么补。'),
-      cap('hosting', 'unknown', '读取 Pages 后才能确认。', '开启 Pages'),
-      cap('actions', 'unknown', '读取构建记录需要 Actions 读。'),
-    ],
-    message: '',
-  };
-}
-
-export interface RepoAccessRow {
-  fullName: string;
-  private: boolean;
-  /** 账号在仓库上的角色，不是令牌能不能推送。 */
-  pushRole: boolean;
-}
-
-export function readRepoAccessRows(body: unknown): RepoAccessRow[] {
-  if (!Array.isArray(body)) return [];
-  const rows: RepoAccessRow[] = [];
-  for (const item of body) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { full_name?: string; private?: boolean; permissions?: { push?: boolean } };
-    if (!row.full_name) continue;
-    rows.push({ fullName: row.full_name, private: row.private === true, pushRole: row.permissions?.push === true });
-  }
-  return rows;
-}
-
-export function otherPrivateNames(rows: RepoAccessRow[], owner: string, repo: string): string[] {
-  const target = `${owner}/${repo}`.toLowerCase();
-  return rows.filter((item) => item.private && item.fullName.toLowerCase() !== target).map((item) => item.fullName);
-}
-
-/** 最多挑两个目标以外、账号有推送角色的公开仓库，用来探测令牌能不能写。 */
-export function publicProbeTargets(rows: RepoAccessRow[], owner: string, repo: string, limit = 2): string[] {
-  const target = `${owner}/${repo}`.toLowerCase();
-  return rows
-    .filter((item) => !item.private && item.pushRole && item.fullName.toLowerCase() !== target)
-    .slice(0, limit)
-    .map((item) => item.fullName);
-}
-
-export function explainOrgFineToken(status: number, body: string, owner: string): string {
-  if (status !== 403) return '';
-  if (/fine-grained|personal access token|resource owner|organization/i.test(body)) {
-    return `组织 ${owner} 没有允许细粒度令牌：到组织 Settings → Personal access tokens 打开`;
-  }
-  return '';
-}
-
 /** 只有准备流程里同一步可以复用。进发布页和点发布前都要重新问。 */
 export function reuseTokenOn(surface: 'prep' | 'page' | 'publish'): boolean {
   return surface === 'prep';
@@ -258,30 +135,7 @@ export function createVerifyCache(now: () => number): {
   };
 }
 
-function basicAuth(token: string): string {
-  return `Basic ${Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')}`;
-}
-
-function githubHeaders(token: string): Record<string, string> {
-  return {
-    Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${token}`,
-    'User-Agent': 'XiaoBlog',
-  };
-}
-
 const DEFAULT_TOKEN_CHECK_MS = 8_000;
-
-function offlineToken(): TokenReport {
-  return {
-    status: 'rejected',
-    account: '',
-    kind: 'github-fine',
-    expiresAt: '',
-    capabilities: [],
-    message: '连不上 GitHub',
-  };
-}
 
 async function githubCall(
   fetchImpl: typeof fetch,
@@ -303,192 +157,6 @@ async function releaseBody(response: Response | null): Promise<void> {
   } catch {
     // 用不到正文时把连接放开。
   }
-}
-
-export async function verifyGithubToken(token: string, fetchImpl: typeof fetch, now?: number): Promise<TokenReport> {
-  const response = await fetchImpl('https://api.github.com/user', { headers: githubHeaders(token) });
-  let login = '';
-  if (response.ok) {
-    const body = (await response.json()) as { login?: string };
-    login = body.login ?? '';
-  }
-  return readGithubVerify({
-    status: response.status,
-    scopes: response.headers.get('x-oauth-scopes'),
-    expires: response.headers.get('github-authentication-token-expiration') ?? '',
-    login,
-    now,
-  });
-}
-
-/** 细粒度、且只能访问目标仓库，才算通过。能同时问的请求一起发出，单次超过时限就放弃。 */
-export async function assessGithubToken(input: {
-  token: string;
-  owner: string;
-  repo: string;
-  fetchImpl: typeof fetch;
-  now?: number;
-  timeoutMs?: number;
-  onProgress?: (line: string) => void;
-}): Promise<TokenReport> {
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TOKEN_CHECK_MS;
-  const note = (line: string): void => input.onProgress?.(line);
-  const headers = githubHeaders(input.token);
-  note('正在查看账号…');
-  const user = await githubCall(input.fetchImpl, 'https://api.github.com/user', { headers }, timeoutMs);
-  if (!user) return offlineToken();
-  const userBody = await user.text();
-  const org = explainOrgFineToken(user.status, userBody, input.owner);
-  if (org) {
-    return {
-      status: 'rejected',
-      account: '',
-      kind: 'github-fine',
-      expiresAt: '',
-      capabilities: [],
-      message: org,
-    };
-  }
-  let login = '';
-  if (user.ok) {
-    try {
-      login = (JSON.parse(userBody) as { login?: string }).login ?? '';
-    } catch {
-      login = '';
-    }
-  }
-  const base = readGithubVerify({
-    status: user.status,
-    scopes: user.headers.get('x-oauth-scopes'),
-    expires: user.headers.get('github-authentication-token-expiration') ?? '',
-    login,
-    now: input.now,
-  });
-  if (base.status !== 'valid') return base;
-  note('正在确认只授权了这个仓库…');
-  const repoUrl = `https://api.github.com/repos/${input.owner}/${input.repo}`;
-  const privateTask = githubCall(
-    input.fetchImpl,
-    'https://api.github.com/user/repos?visibility=private&per_page=100&affiliation=owner,collaborator,organization_member',
-    { headers },
-    timeoutMs,
-  );
-  const publicTask = githubCall(
-    input.fetchImpl,
-    'https://api.github.com/user/repos?visibility=public&per_page=100&affiliation=owner,collaborator,organization_member',
-    { headers },
-    timeoutMs,
-  );
-  const repoTask = githubCall(input.fetchImpl, repoUrl, { headers }, timeoutMs);
-  let pagesReady = false;
-  const pagesTask = githubCall(input.fetchImpl, `${repoUrl}/pages`, { headers }, timeoutMs).then((response) => {
-    pagesReady = true;
-    return response;
-  });
-  const probeTask = probeTokenCapabilities({
-    remoteUrl: `https://github.com/${input.owner}/${input.repo}`,
-    token: input.token,
-    login,
-    fetchImpl: input.fetchImpl,
-    timeoutMs,
-  });
-  const publicList = await publicTask;
-  let probes: string[] = [];
-  if (publicList?.ok) {
-    try {
-      probes = publicProbeTargets(readRepoAccessRows(await publicList.json()), input.owner, input.repo);
-    } catch {
-      probes = [];
-    }
-  } else {
-    await releaseBody(publicList);
-  }
-  note('正在确认能不能推送到这个仓库…');
-  const extraTask = Promise.all(probes.map((fullName) => otherRepoWritable(input.fetchImpl, fullName, input.token, timeoutMs)));
-  const [privateList, repoResponse, probe, extraHits] = await Promise.all([
-    privateTask,
-    repoTask,
-    probeTask,
-    extraTask,
-  ]);
-  if (!pagesReady) note('正在查看 Pages…');
-  const pages = await pagesTask;
-  if (privateList?.ok) {
-    const privateRows = readRepoAccessRows(await privateList.json());
-    const morePrivate = (privateList.headers.get('link') ?? '').includes('rel="next"');
-    if (morePrivate || otherPrivateNames(privateRows, input.owner, input.repo).length > 0) {
-      await releaseBody(repoResponse);
-      await releaseBody(pages);
-      return { ...base, status: 'rejected', message: '这个令牌能访问其他私有仓库' };
-    }
-  } else {
-    await releaseBody(privateList);
-  }
-  if (extraHits.some(Boolean)) {
-    await releaseBody(repoResponse);
-    await releaseBody(pages);
-    return { ...base, status: 'rejected', message: '这个令牌能写入其他仓库' };
-  }
-  if (!repoResponse) {
-    await releaseBody(pages);
-    return { ...base, status: 'rejected', message: '连不上 GitHub' };
-  }
-  if (repoResponse.status !== 200) {
-    await releaseBody(repoResponse);
-    await releaseBody(pages);
-    return { ...base, status: 'rejected', message: '令牌看不到这个仓库。' };
-  }
-  await releaseBody(repoResponse);
-  let buildType = '';
-  let pagesStatus = 0;
-  if (pages) {
-    pagesStatus = pages.status;
-    if (pages.ok) {
-      try {
-        buildType = ((await pages.json()) as { build_type?: string }).build_type ?? '';
-      } catch {
-        buildType = '';
-      }
-    } else {
-      await releaseBody(pages);
-    }
-  }
-  const { pushAnswered, ...states } = probe;
-  const merged = applyPagesCapability(mergeProbe(base, states), pagesStatus, buildType);
-  if (pushAnswered && states.push !== 'ok') {
-    return { ...merged, status: 'rejected', message: '令牌不能推送到这个仓库。' };
-  }
-  return merged;
-}
-
-async function otherRepoWritable(
-  fetchImpl: typeof fetch,
-  fullName: string,
-  token: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  const [owner, repo] = fullName.split('/');
-  if (!owner || !repo) return false;
-  const response = await githubCall(
-    fetchImpl,
-    `https://github.com/${owner}/${repo}.git/info/refs?service=git-receive-pack`,
-    { headers: { Authorization: basicAuth(token), 'User-Agent': 'XiaoBlog' } },
-    timeoutMs,
-  );
-  if (!response) return false;
-  const writable = response.status === 200;
-  await releaseBody(response);
-  return writable;
-}
-
-function applyPagesCapability(report: TokenReport, status: number, buildType: string): TokenReport {
-  const fact = pagesCapability(status, buildType);
-  return {
-    ...report,
-    capabilities: report.capabilities.map((item) =>
-      item.key === 'hosting' ? { ...item, state: fact.state, how: fact.how } : item,
-    ),
-  };
 }
 
 /** 只把还不确定的项改成探测结果。scopes 已经标明的不改。 */
@@ -516,7 +184,7 @@ export function readProbeStatus(status: number): CapabilityState {
 /** 读 Pages 只能说明现在开没开，不能当成令牌有没有改设置的权限。 */
 export function pagesCapability(status: number, buildType: string): { state: CapabilityState; how: string } {
   if (status === 200 && buildType === 'workflow') return { state: 'ok', how: '已开启' };
-  return { state: 'unknown', how: '首次开启需要在网页设置（或令牌带 Administration 读写）' };
+  return { state: 'unknown', how: '首次开启需要在网页设置' };
 }
 
 function parseRemote(remoteUrl: string): { origin: string; owner: string; repo: string } | null {

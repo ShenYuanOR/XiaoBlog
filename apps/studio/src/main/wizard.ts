@@ -1,6 +1,6 @@
-import { githubFineTokenLink } from './publish-token.ts';
+import { GITHUB_APP_INSTALL_URL } from './publish-device.ts';
 
-export const tokenUrl = githubFineTokenLink('owner', 'repo');
+export const tokenUrl = GITHUB_APP_INSTALL_URL;
 
 export const guides = [
   {
@@ -13,11 +13,11 @@ export const guides = [
   },
   {
     id: 'token',
-    title: '只给这一个仓库发 Token',
+    title: '用 GitHub 授权',
     href: tokenUrl,
-    doc: 'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
+    doc: 'https://docs.github.com/en/apps/using-github-apps/authorizing-github-apps',
     image: '02-token.svg',
-    text: '资源只选当前博客仓库。Token 只留在本机加密存储里，不会写进站点文件。',
+    text: '安装 XiaoBlog Studio 时只选这个仓库，再在 Studio 里完成设备授权。授权只留在本机。',
   },
   {
     id: 'pages',

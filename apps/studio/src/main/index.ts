@@ -100,16 +100,7 @@ import { collectChanges } from './publish-changes.ts';
 import { buildPreflight, itemsForConfigReadError, type PreflightItem } from './publish-preflight.ts';
 import { createPublishJobs, quitKind, type PublishJobSnapshot } from './publish-job.ts';
 import { cachedCheck, checkFingerprint, retargetCache, type CheckCacheEntry } from './publish-check.ts';
-import {
-  createVerifyCache,
-  mergeProbe,
-  reuseTokenOn,
-  probeTokenCapabilities,
-  verifyCacheKey,
-  assessGithubToken,
-  verifyGithubToken,
-  type TokenReport,
-} from './publish-token.ts';
+import { type TokenReport } from './publish-token.ts';
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { parseRepoUrl } from './publish-prep.ts';
 import { parseGitRemote, writeGithubWorkflow } from './publish-workflow.ts';
@@ -318,7 +309,6 @@ const publishHttp = createNetHttpClient(async (url, init) => {
 
 let deployStoreInstance: ReturnType<typeof createDeployStore> | undefined;
 
-const tokenCache = createVerifyCache(() => Date.now());
 const apiFetch: typeof fetch = (input, init) => net.fetch(input as string, init);
 let deviceCancel: (() => void) | null = null;
 
@@ -344,31 +334,15 @@ function publicDevice(view: DeviceView): {
 
 async function accessFor(siteDir: string): Promise<{ token: string; login: string } | { error: string }> {
   const stored = secretStore().load(siteDir);
-  if (!stored) return { error: '令牌丢了，重新填一次' };
+  if (!stored) return { error: '先用 GitHub 授权' };
   const grant = decodeGrant(stored);
-  if (!grant) return { token: stored, login: '' };
+  if (!grant) return { error: '改用 GitHub 授权' };
   const fresh = await ensureFreshGrant({ grant, fetchImpl: apiFetch, now: Date.now() });
   if (!fresh.ok) return { error: fresh.message };
   if (fresh.changed) {
     secretStore().save(siteDir, encodeGrant(fresh.grant), new Date(fresh.grant.accessExpiresAt).toISOString());
   }
   return { token: fresh.grant.accessToken, login: fresh.grant.account };
-}
-
-async function verifyLooseToken(token: string, remoteUrl?: string, login?: string): Promise<TokenReport> {
-  const report = await verifyGithubToken(token, apiFetch);
-  if (report.status !== 'valid' || !remoteUrl) return report;
-  try {
-    const probe = await probeTokenCapabilities({
-      remoteUrl,
-      token,
-      login,
-      fetchImpl: apiFetch,
-    });
-    return mergeProbe(report, { push: probe.push, actions: probe.actions });
-  } catch {
-    return report;
-  }
 }
 
 async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
@@ -1376,57 +1350,6 @@ app.whenReady().then(() => {
     if (!report) return fail('PUBLISH_TOKEN', '还没有连接仓库');
     return ok(report);
   });
-  ipcMain.handle('publish:replaceToken', async (event, siteDir: string, token: string) => {
-    const target = deployStore().read()[siteDir];
-    const trimmed = typeof token === 'string' ? token.trim() : '';
-    if (!siteDir || !target) return fail('PUBLISH_TOKEN', '还没有连接仓库');
-    if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
-    let origin = 'https://github.com';
-    if (target.provider !== 'github') {
-      try {
-        origin = new URL(target.remoteUrl).origin;
-      } catch {
-        return fail('PUBLISH_URL', '仓库地址解析不了');
-      }
-    }
-    if (target.provider !== 'github') return fail('PUBLISH_PROVIDER', 'Gitea 已不再作为发布目标，请连接 GitHub 仓库');
-    const remote = parseGitRemote(target.remoteUrl);
-    const report = remote
-      ? await assessGithubToken({
-          token: trimmed,
-          owner: remote.owner,
-          repo: remote.repo,
-          fetchImpl: apiFetch,
-          onProgress: (line) => event.sender.send('publish:token-progress', line),
-        })
-      : await verifyLooseToken(trimmed);
-    if (report.status !== 'valid') return ok(report);
-    secretStore().save(siteDir, trimmed, report.expiresAt || '');
-    tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
-    return ok(report);
-  });
-  ipcMain.handle('publish:checkToken', async (event, _provider: string, _origin: string, token: string) => {
-    const trimmed = typeof token === 'string' ? token.trim() : '';
-    if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
-    const root = 'https://github.com';
-    const key = verifyCacheKey('github', String(_origin || root), trimmed);
-    if (reuseTokenOn('prep')) {
-      const cached = tokenCache.get(key);
-      if (cached) return ok(cached);
-    }
-    const remote = parseGitRemote(String(_origin || ''));
-    const report = remote
-      ? await assessGithubToken({
-          token: trimmed,
-          owner: remote.owner,
-          repo: remote.repo,
-          fetchImpl: apiFetch,
-          onProgress: (line) => event.sender.send('publish:token-progress', line),
-        })
-      : await verifyLooseToken(trimmed);
-    if (reuseTokenOn('prep')) tokenCache.put(key, report);
-    return ok(report);
-  });
   ipcMain.handle('publish:deviceStart', async (event, siteDir: string) => {
     deviceCancel?.();
     let stop = false;
@@ -1438,7 +1361,14 @@ app.whenReady().then(() => {
     const view = await runDeviceFlow({
       fetchImpl: apiFetch,
       now: () => Date.now(),
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      sleep: async (ms) => {
+        let left = ms;
+        while (left > 0) {
+          if (stop) return;
+          await new Promise((resolve) => setTimeout(resolve, Math.min(200, left)));
+          left -= 200;
+        }
+      },
       shouldStop: () => stop,
       onView: (next) => {
         if (!opened && next.phase === 'pending' && next.verificationUri) {
@@ -1500,7 +1430,7 @@ app.whenReady().then(() => {
         provider: 'github' | 'gitea';
         origin: string;
         remoteUrl: string;
-        token: string;
+        token?: string;
         login?: string;
         branch: string;
         owner: string;
@@ -1511,11 +1441,13 @@ app.whenReady().then(() => {
         recheck?: boolean;
       },
     ) => {
-      if (!siteDir || !input?.token || !input.remoteUrl || !input.siteUrl) {
-        return fail('PUBLISH_PREP', '还没填完仓库、令牌和网站地址');
+      if (!siteDir || !input?.remoteUrl || !input.siteUrl) {
+        return fail('PUBLISH_PREP', '还没填完仓库和网站地址');
       }
+      const access = await accessFor(siteDir);
+      if ('error' in access) return fail('PUBLISH_TOKEN', access.error);
       const idle = { workflow: 'idle' as const, hosting: 'idle' as const, runner: 'idle' as const, link: '', target: null };
-      const probe = await probeRemote(input.remoteUrl, input.login || '', input.token, publishHttp);
+      const probe = await probeRemote(input.remoteUrl, input.login || access.login, access.token, publishHttp);
       if (!probe.ok) {
         return ok({ ...idle, error: probe.message, next: '确认仓库地址和令牌后重新检查。' });
       }
@@ -1549,7 +1481,7 @@ app.whenReady().then(() => {
         link = `https://github.com/${input.owner}/${input.repo}/new/${branch}?filename=.github/workflows/xiao-deploy.yml`;
       }
       if (workflow === 'ok') {
-        const pages = await enableGithubPages(input.owner, input.repo, input.token, apiFetch, {
+        const pages = await enableGithubPages(input.owner, input.repo, access.token, apiFetch, {
           recheck: input.recheck === true,
         });
         if (pages.state === 'ok') {
@@ -1570,13 +1502,12 @@ app.whenReady().then(() => {
         provider: 'github',
         remoteUrl: input.remoteUrl.replace(/\/$/, ''),
         branch,
-        ...(input.login ? { login: input.login } : {}),
+        ...((input.login || access.login) ? { login: input.login || access.login } : {}),
         siteUrl: input.siteUrl,
         actionsState,
         actionsDetail,
         remoteEmpty: input.empty === true,
       };
-      secretStore().save(siteDir, input.token, '');
       const all = deployStore().read();
       all[siteDir] = target;
       deployStore().write(all);

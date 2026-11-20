@@ -17,10 +17,9 @@ import {
   stepPhase,
   stepTitle,
   suggestSite,
-  tokenPage,
   type PrepStep,
 } from '../../../main/publish-prep.ts';
-import { tokenExpiryText, tokenKindLabel, tokenStatusLine } from '../../../main/publish-token.ts';
+import { tokenStatusLine } from '../../../main/publish-token.ts';
 import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -137,7 +136,9 @@ const target = ref<DeployTarget | null>(null);
 const tokenReport = ref<{
   status: 'valid' | 'invalid' | 'expired' | 'rejected';
   account: string;
+  kind?: string;
   message: string;
+  link?: string;
   capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
 } | null>(null);
 const prep = ref(blankPrep());
@@ -159,7 +160,15 @@ const steps = ref<StepRow[]>([]);
 const filesOpen = ref(false);
 const settingsOpen = ref(false);
 const reconnectOpen = ref(false);
-const reconnectToken = ref('');
+const device = ref<{
+  phase: 'idle' | 'pending' | 'success' | 'denied' | 'expired' | 'cancelled' | 'error';
+  userCode: string;
+  verificationUri: string;
+  expiresAt: number;
+  interval: number;
+  message: string;
+  account: string;
+} | null>(null);
 const reconnecting = ref(false);
 const historyAll = ref(false);
 const moreKey = ref('');
@@ -203,7 +212,7 @@ const failureView = computed(() => {
   return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
 });
 const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
-  if (tokenBlocked.value) return { text: '令牌失效，无法确认', tone: 'neutral' };
+  if (tokenBlocked.value) return { text: '授权失效，无法确认', tone: 'neutral' };
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready'
       ? { text: 'GitHub 构建', tone: 'ok' }
@@ -218,7 +227,7 @@ const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral'
 });
 const tokenStatusText = computed(() => tokenStatusLine(tokenReport.value, publish.now));
 const pagesLabel = computed(() => {
-  if (tokenBlocked.value) return '令牌失效，无法确认';
+  if (tokenBlocked.value) return '授权失效，无法确认';
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready' ? 'Pages 已开启' : 'Pages 未开启';
   }
@@ -231,8 +240,8 @@ const prepHelp: Record<PrepStep, { title: string; body: string }> = {
     body: '填 owner/repo 或仓库网址。公开仓库会看出是不是空的、是不是晓的站点。找不到可以去网页新建，或先继续。不是晓站点的非空仓库会先警告。',
   },
   token: {
-    title: '令牌验证',
-    body: '先在 GitHub 创建只授权这个仓库的细粒度令牌，再粘贴验证。经典令牌，以及能访问其他仓库的令牌，都不会通过。',
+    title: 'GitHub 授权',
+    body: '用 GitHub 授权 XiaoBlog Studio。安装时只选这一个仓库。装到所有仓库，或还装了别的仓库，都不会通过。',
   },
   site: {
     title: '网站地址',
@@ -255,6 +264,13 @@ const foreignWarn = computed(
 const tokenCanContinue = computed(
   () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
 );
+const deviceLeft = computed(() => {
+  if (!device.value?.expiresAt) return '';
+  const left = Math.max(0, device.value.expiresAt - publish.now);
+  const minutes = Math.floor(left / 60_000);
+  const seconds = Math.floor((left % 60_000) / 1000);
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+});
 const suggestedSite = computed(() => suggestSite(prep.value));
 
 const resultEntries = computed(() => {
@@ -272,10 +288,10 @@ const resultEntries = computed(() => {
     } else if (item?.action === 'seo') {
       entries.push({ key: 'seo', label: '去 SEO', run: () => go('seo') });
     }
-  } else if (failed.key === 'push' && /令牌|认证|权限/.test(failed.detail)) {
+  } else if (failed.key === 'push' && /令牌|授权|认证|权限/.test(failed.detail)) {
     entries.push({
       key: 'reconnect',
-      label: '重新连接',
+      label: '重新授权',
       run: () => {
         reconnectOpen.value = true;
       },
@@ -380,34 +396,68 @@ function finishPublish(): void {
   void dismissJob();
 }
 
-async function submitReconnect(): Promise<void> {
+async function copyDeviceCode(): Promise<void> {
+  if (!device.value?.userCode) return;
+  await navigator.clipboard.writeText(device.value.userCode);
+  notify('授权码已复制', 'info', 'publish-auth');
+}
+
+async function runInstallCheck(): Promise<void> {
   if (!session.siteDir) return;
-  const token = reconnectToken.value.trim();
-  if (!token) {
-    notify('先粘贴访问令牌。', 'error', 'publish-token');
-    return;
-  }
-  reconnecting.value = true;
-  tokenProgress.value = '正在查看账号…';
+  prepBusy.value = true;
   try {
-    const result = await window.xiao.publish.replaceToken(session.siteDir, token);
+    const result = await window.xiao.publish.installCheck(session.siteDir, prep.value.owner, prep.value.repo);
     if (!result.ok) {
-      notify(result.message, 'error', 'publish-token');
+      prep.value = { ...prep.value, error: result.message, next: '先完成 GitHub 授权。' };
       return;
     }
-    tokenReport.value = result.data;
-    if (result.data.status !== 'valid') {
-      notify(result.data.message || '令牌已失效', 'error', 'publish-token');
-      return;
-    }
-    reconnectToken.value = '';
-    reconnectOpen.value = false;
-    notify(`令牌验证通过：${result.data.account || '已连接'}`, 'info', 'publish-token');
-    await runPreflight();
+    prep.value = applyTokenReport(prep.value, asTokenReport(result.data));
+    if (result.data.status === 'valid') notify(`已授权：${result.data.account || 'GitHub'}`, 'info', 'publish-auth');
   } finally {
-    reconnecting.value = false;
-    tokenProgress.value = '';
+    prepBusy.value = false;
   }
+}
+
+async function startDevice(): Promise<void> {
+  if (!session.siteDir) return;
+  prepBusy.value = true;
+  reconnecting.value = true;
+  device.value = {
+    phase: 'pending',
+    userCode: '',
+    verificationUri: '',
+    expiresAt: 0,
+    interval: 5,
+    message: '',
+    account: '',
+  };
+  try {
+    const result = await window.xiao.publish.deviceStart(session.siteDir);
+    if (!result.ok) {
+      notify(result.message, 'error', 'publish-auth');
+      return;
+    }
+    device.value = result.data;
+    if (result.data.phase !== 'success') {
+      if (result.data.message) prep.value = { ...prep.value, error: result.data.message, next: '可以再点「用 GitHub 授权」。' };
+      return;
+    }
+    if (target.value) {
+      const verified = await window.xiao.publish.verify(session.siteDir);
+      tokenReport.value = verified.ok ? verified.data : null;
+      reconnectOpen.value = false;
+      if (verified.ok && verified.data.status === 'valid') await runPreflight();
+      return;
+    }
+    await runInstallCheck();
+  } finally {
+    prepBusy.value = false;
+    reconnecting.value = false;
+  }
+}
+
+async function cancelDevice(): Promise<void> {
+  await window.xiao.publish.deviceCancel();
 }
 
 function openLink(url: string): void {
@@ -426,26 +476,7 @@ function capIcon(state: 'ok' | 'missing' | 'unknown'): string {
   return icons.help;
 }
 
-async function verifyPasted(): Promise<void> {
-  const token = prep.value.token.trim();
-  if (!token) {
-    notify('先粘贴访问令牌。', 'error', 'publish-prep');
-    return;
-  }
-  prepBusy.value = true;
-  tokenProgress.value = '正在查看账号…';
-  try {
-    const result = await window.xiao.publish.checkToken('github', prep.value.remoteUrl, token);
-    if (!result.ok) {
-      notify(result.message, 'error', 'publish-prep');
-      return;
-    }
-    prep.value = applyTokenReport({ ...prep.value, token }, asTokenReport(result.data));
-  } finally {
-    prepBusy.value = false;
-    tokenProgress.value = '';
-  }
-}
+
 
 function clearRepoPick(): void {
   prep.value = {
@@ -498,7 +529,7 @@ async function useTypedRepo(): Promise<void> {
         repo: data.repo,
         branch: 'main',
         error: data.message,
-        next: '可以去网页新建。建好后点「我已建好，重新检查」，或先继续，等令牌验证再确认。',
+        next: '可以去网页新建。建好后点「我已建好，重新检查」，或先继续，等 GitHub 授权再确认。',
       };
       return;
     }
@@ -550,7 +581,6 @@ async function runPrepare(): Promise<void> {
       provider: 'github',
       origin: prep.value.origin,
       remoteUrl: prep.value.remoteUrl,
-      token: prep.value.token,
       login: prep.value.report?.account || '',
       branch: prep.value.branch,
       owner: prep.value.owner,
@@ -582,7 +612,7 @@ async function runPrepare(): Promise<void> {
       heldTarget.value = result.data.target;
       notify('构建准备完成。点「开始首次发布」进入四步。', 'info', 'publish-prep');
       if (result.data.target.persisted === false) {
-        notify('令牌无法写入本机用户目录，只在本次运行有效。下次启动需要重新连接。', 'error', 'publish-persist');
+        notify('授权无法写入本机用户目录，只在本次运行有效。下次启动需要重新授权。', 'error', 'publish-persist');
       }
     } else if (prep.value.step === 'publish') {
       prep.value = { ...prep.value, step: 'build', error: '准备没有保存连接。', next: '再点一次重新检查。已填内容还在。' };
@@ -688,7 +718,7 @@ async function confirmDisconnect(): Promise<void> {
   pushError.value = '';
   phase.value = 'ready';
   steps.value = [];
-  notify('已断开远端连接，并删除这个站点在本机保存的令牌。', 'info', 'publish-connect');
+  notify('已断开连接。授权只从本机删除。', 'info', 'publish-connect');
 }
 
 async function runPreflight(force = false): Promise<void> {
@@ -798,18 +828,17 @@ async function openSite(): Promise<void> {
   session.setNav('publish');
 }
 
-const tokenProgress = ref('');
-let stopTokenProgress: (() => void) | undefined;
+let stopDevice: (() => void) | undefined;
 
 onMounted(() => {
-  stopTokenProgress = window.xiao.publish.onTokenProgress((line) => {
-    if (prepBusy.value || reconnecting.value) tokenProgress.value = line;
+  stopDevice = window.xiao.publish.onDevice((payload) => {
+    device.value = payload;
   });
   void loadAll();
 });
 
 onUnmounted(() => {
-  stopTokenProgress?.();
+  stopDevice?.();
 });
 
 watch(
@@ -897,28 +926,26 @@ watch(
               <p v-else-if="stepPhase(prep.step, step, prep.done) === 'later'" class="later-step">{{ stepTitle(step) }}</p>
               <div v-else class="prep-current">
                 <template v-if="step === 'token'">
-                  <h3>创建令牌</h3>
-                  <p>仓库：只选 {{ prep.owner }}/{{ prep.repo }}。权限：Contents 读写、Workflows 读写、Pages 读写、Actions 只读。</p>
-                  <div class="prep-actions">
-                    <UiButton variant="primary" @click="openLink(tokenPage(prep))">在 GitHub 创建只授权这个仓库的令牌</UiButton>
-                  </div>
-                  <h3>粘贴并验证</h3>
-                  <UiField label="访问令牌">
-                    <UiInput v-model="prep.token" type="password" autocomplete="off" placeholder="粘贴刚才创建的细粒度令牌" />
-                  </UiField>
-                  <div class="prep-actions">
-                    <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
-                    <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
-                  </div>
-                  <p v-if="prepBusy && tokenProgress" class="dim">{{ tokenProgress }}</p>
-                  <p v-if="prep.report?.status === 'rejected'" class="summary">
-                    账号 {{ prep.report.account || '未知' }} · {{ prep.report.kind === 'github-classic' ? '经典令牌' : '细粒度令牌' }}
-                  </p>
-                  <p v-else-if="prep.report?.status === 'valid'" class="summary">
-                    {{ prep.report.account }} · {{ tokenKindLabel(prep.report.kind) }} · {{ tokenExpiryText(prep.report.expiresAt) }}
-                  </p>
-                  <p v-else-if="prep.report" class="summary">{{ prep.report.message }}</p>
-                  <ul v-if="prep.report?.status === 'valid'" class="cap-list">
+                  <h3>GitHub 授权</h3>
+                  <template v-if="device?.phase === 'pending'">
+                    <p class="summary">{{ device.userCode || '正在向 GitHub 要授权码…' }}</p>
+                    <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
+                    <div class="prep-actions">
+                      <UiButton :disabled="!device.userCode" @click="copyDeviceCode">复制</UiButton>
+                      <UiButton variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
+                      <UiButton variant="ghost" @click="cancelDevice">取消</UiButton>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="prep-actions">
+                      <UiButton v-if="!tokenCanContinue" variant="primary" :loading="prepBusy" @click="startDevice">用 GitHub 授权</UiButton>
+                      <UiButton v-if="prep.manualLink || prep.error" variant="ghost" :loading="prepBusy" @click="runInstallCheck">我已安装，重新检查</UiButton>
+                      <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
+                      <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
+                    </div>
+                    <p v-if="prep.report?.status === 'valid'" class="summary">已授权 · {{ prep.report.account }}</p>
+                  </template>
+                  <ul v-if="device?.phase !== 'pending' && prep.report?.status === 'valid'" class="cap-list">
                     <li v-for="item in prep.report.capabilities" :key="item.key">
                       <UiIcon :path="capIcon(item.state)" :size="16" />
                       <span>{{ item.label }}</span>
@@ -1003,7 +1030,7 @@ watch(
               <span v-else class="dim">还没有网址</span>
             </p>
             <span class="token-status">{{ tokenStatusText }}</span>
-            <UiButton v-if="tokenBlocked" size="sm" variant="primary" @click="reconnectOpen = true">重新连接</UiButton>
+            <UiButton v-if="tokenBlocked" size="sm" variant="primary" @click="reconnectOpen = true">重新授权</UiButton>
           </div>
           <template v-if="phase === 'ready'">
             <h2>将发布什么</h2>
@@ -1069,7 +1096,10 @@ watch(
               </ul>
             </template>
             <div class="publish-row">
-              <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message || '令牌已失效' }}</p>
+              <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message || '授权已失效，重新授权' }}</p>
+              <div v-if="tokenBlocked && tokenReport?.link" class="prep-actions">
+                <UiButton size="sm" variant="ghost" @click="openLink(tokenReport.link)">打开网页</UiButton>
+              </div>
               <p v-else-if="blockReason" class="dim">{{ blockReason }}</p>
               <UiButton
                 v-if="!tokenBlocked"
@@ -1147,7 +1177,7 @@ watch(
             </div>
             <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
             <p class="dim">分支 {{ target?.branch }}</p>
-            <p class="dim">令牌账号 {{ tokenReport?.account || '—' }}</p>
+            <p class="dim">授权账号 {{ tokenReport?.account || '—' }}</p>
             <p class="dim">{{ pagesLabel }}</p>
             <p v-if="target?.actionsDetail && !tokenBlocked" class="dim">{{ target.actionsDetail }}</p>
             <button
@@ -1180,21 +1210,24 @@ watch(
         </aside>
       </div>
 
-      <UiDialog v-model="reconnectOpen" title="重新连接" :width="440">
-        <p>粘贴新的访问令牌。令牌验证通过后才会换掉本机保存的旧令牌。</p>
-        <UiField label="访问令牌">
-          <UiInput v-model="reconnectToken" type="password" autocomplete="off" placeholder="粘贴令牌" />
-        </UiField>
-        <p v-if="reconnecting && tokenProgress" class="dim">{{ tokenProgress }}</p>
+      <UiDialog v-model="reconnectOpen" title="重新授权" :width="440">
+        <p>用 GitHub 重新授权 XiaoBlog Studio。安装范围仍然只能是当前这一个仓库。</p>
+        <template v-if="device?.phase === 'pending'">
+          <p class="summary">{{ device.userCode || '正在向 GitHub 要授权码…' }}</p>
+          <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
+        </template>
         <template #actions>
           <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
-          <UiButton variant="primary" :loading="reconnecting" @click="submitReconnect">令牌验证</UiButton>
+          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="copyDeviceCode">复制</UiButton>
+          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
+          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="cancelDevice">取消授权</UiButton>
+          <UiButton v-else variant="primary" :loading="reconnecting" @click="startDevice">用 GitHub 授权</UiButton>
         </template>
       </UiDialog>
 
       <UiDialog v-model="settingsOpen" title="发布设置" :width="440">
         <p class="summary">{{ repoName(target?.remoteUrl ?? '') }}</p>
-        <p class="dim dialog-meta">分支 {{ target?.branch }}。令牌只存在本机。</p>
+        <p class="dim dialog-meta">分支 {{ target?.branch }}。授权只存在本机。</p>
         <UiField label="站点网址">
           <UiInput v-model="siteUrlDraft" placeholder="https://blog.example.com" />
         </UiField>
@@ -1253,7 +1286,8 @@ watch(
       </UiDialog>
 
       <UiDialog v-model="disconnectOpen" title="断开连接" :width="420">
-        <p>将断开当前站点的发布连接，并删除本机保存的仓库地址与令牌。站点文件和远端仓库不受影响。</p>
+        <p>Studio 已忘记授权；如要彻底撤销，到 GitHub 设置的 Applications → Authorized GitHub Apps 里撤销 XiaoBlog Studio。站点文件和远端仓库不受影响。</p>
+        <p><button type="button" class="link" @click="openLink('https://github.com/settings/apps/authorizations')">打开 GitHub 授权页</button></p>
         <template #actions="{ close }">
           <UiButton variant="ghost" @click="close">取消</UiButton>
           <UiButton variant="danger" @click="confirmDisconnect">断开连接</UiButton>

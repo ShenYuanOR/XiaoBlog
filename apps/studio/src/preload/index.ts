@@ -83,9 +83,6 @@ const api = {
       ipcRenderer.invoke('publish:setSiteUrl', siteDir, siteUrl),
     preflight: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:preflight', siteDir, force),
     verify: (siteDir: string) => ipcRenderer.invoke('publish:verify', siteDir),
-    replaceToken: (siteDir: string, token: string) => ipcRenderer.invoke('publish:replaceToken', siteDir, token),
-    checkToken: (provider: 'github' | 'gitea', origin: string, token: string) =>
-      ipcRenderer.invoke('publish:checkToken', provider, origin, token),
     installCheck: (siteDir: string, owner: string, repo: string) =>
       ipcRenderer.invoke('publish:installCheck', siteDir, owner, repo),
     deviceStart: (siteDir: string) => ipcRenderer.invoke('publish:deviceStart', siteDir),
@@ -109,7 +106,7 @@ const api = {
         provider: 'github' | 'gitea';
         origin: string;
         remoteUrl: string;
-        token: string;
+        token?: string;
         login?: string;
         branch: string;
         owner: string;

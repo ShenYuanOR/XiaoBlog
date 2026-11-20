@@ -391,19 +391,7 @@ export interface XiaoApi {
         kind: 'github-classic' | 'github-fine' | 'github-app';
         expiresAt: string;
         message: string;
-        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
-      }>
-    >;
-    replaceToken: (
-      siteDir: string,
-      token: string,
-    ) => Promise<
-      IpcResult<{
-        status: 'valid' | 'invalid' | 'expired' | 'rejected';
-        account: string;
-        kind: 'github-classic' | 'github-fine' | 'github-app';
-        expiresAt: string;
-        message: string;
+        link?: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
@@ -445,20 +433,6 @@ export interface XiaoApi {
         account: string;
       }) => void,
     ) => () => void;
-    checkToken: (
-      provider: 'github' | 'gitea',
-      origin: string,
-      token: string,
-    ) => Promise<
-      IpcResult<{
-        status: 'valid' | 'invalid' | 'expired' | 'rejected';
-        account: string;
-        kind: 'github-classic' | 'github-fine' | 'github-app';
-        expiresAt: string;
-        message: string;
-        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
-      }>
-    >;
     lookup: (text: string) => Promise<
       IpcResult<{
         owner: string;
@@ -491,7 +465,7 @@ export interface XiaoApi {
         provider: 'github' | 'gitea';
         origin: string;
         remoteUrl: string;
-        token: string;
+        token?: string;
         login?: string;
         branch: string;
         owner: string;

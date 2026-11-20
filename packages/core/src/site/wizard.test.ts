@@ -27,9 +27,8 @@ describe('部署向导', () => {
     expect(siteBase('Owner', 'Blog')).toBe('/Blog/');
     expect(deployWorkflow('main')).toContain('XIAO_BUILD_SHA: ${{ github.sha }}');
     expect(guides.map((item) => item.id)).toEqual(['repo', 'token', 'pages']);
-    expect(tokenUrl).toContain('target_name=owner');
-    expect(tokenUrl).toContain('pages=write');
-    expect(tokenUrl).not.toContain('pages=read');
+    expect(tokenUrl).toBe('https://github.com/apps/xiaoblog-studio/installations/new');
+    expect(tokenUrl).not.toContain('personal-access-tokens');
     expect(pagesSettingsUrl('Owner', 'Blog')).toBe('https://github.com/Owner/Blog/settings/pages');
   });
 

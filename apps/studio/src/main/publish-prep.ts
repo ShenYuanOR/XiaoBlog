@@ -1,10 +1,4 @@
-import {
-  githubNewRepoLink,
-  githubPagesUrl,
-  githubTokenLink,
-  type CapabilityKey,
-  type TokenReport,
-} from './publish-token.ts';
+import { githubNewRepoLink, githubPagesUrl, type CapabilityKey, type TokenReport } from './publish-token.ts';
 
 export type PrepStep = 'token' | 'repo' | 'site' | 'build' | 'publish';
 export type PrepFlag = 'idle' | 'ok' | 'manual' | 'warn';
@@ -38,7 +32,7 @@ export interface PrepDraft {
 export const PREP_ORDER: PrepStep[] = ['repo', 'token', 'site', 'build', 'publish'];
 
 const STEP_TITLES: Record<PrepStep, string> = {
-  token: '令牌验证',
+  token: 'GitHub 授权',
   repo: '仓库',
   site: '网站地址',
   build: '构建准备',
@@ -96,10 +90,6 @@ function advance(draft: PrepDraft, step: PrepStep): PrepDraft {
   return clearHint({ ...draft, step, done });
 }
 
-export function tokenPage(draft: PrepDraft): string {
-  return githubTokenLink(draft.owner, draft.repo);
-}
-
 export function newRepoPage(draft: PrepDraft, name = ''): string {
   return githubNewRepoLink(draft.report?.account || draft.owner, name);
 }
@@ -112,15 +102,18 @@ export function pushBlocks(report: TokenReport): boolean {
   return report.capabilities.some((item) => item.key === 'push' && item.state === 'missing');
 }
 
-/** 验证结果先留在这一步，让人看完能力再继续。失效和不能推送则停住。 */
+/** 授权结果先留在这一步。安装范围不对或不能推送则停住。 */
 export function applyTokenReport(draft: PrepDraft, report: TokenReport): PrepDraft {
-  const next = { ...draft, report };
-  const link = tokenPage(draft);
-  if (report.status === 'invalid') return stay(next, '令牌已失效', '换一个令牌再验证。', link);
-  if (report.status === 'expired') return stay(next, '令牌已过期', '去创建令牌，再粘贴新的。', link);
-  if (report.status === 'rejected') return stay(next, report.message, '换一个只授权这个仓库的细粒度令牌。', link);
+  const next = { ...draft, report, token: '' };
+  const link = report.link || '';
+  if (report.status === 'invalid' || report.status === 'expired') {
+    return stay(next, report.message || '授权已失效，重新授权', '点「重新授权」。', link);
+  }
+  if (report.status === 'rejected') {
+    return stay(next, report.message, '改好后点「我已安装，重新检查」。', link);
+  }
   if (report.status === 'valid' && pushBlocks(report)) {
-    return stay(next, '缺少：推送内容', '去创建令牌并勾上仓库写权限，再回来验证。', link);
+    return stay(next, '还不能推送到这个仓库。', '改好后点「我已安装，重新检查」。', link);
   }
   return clearHint(next);
 }
@@ -227,6 +220,7 @@ export function asTokenReport(data: {
   kind: TokenReport['kind'];
   expiresAt: string;
   message: string;
+  link?: string;
   capabilities: { key: string; label: string; state: TokenReport['capabilities'][number]['state']; how: string }[];
 }): TokenReport {
   return {
@@ -235,6 +229,7 @@ export function asTokenReport(data: {
     kind: data.kind,
     expiresAt: data.expiresAt,
     message: data.message,
+    link: data.link || '',
     capabilities: data.capabilities.flatMap((item) => {
       if (!CAPABILITY_KEYS.includes(item.key as CapabilityKey)) return [];
       return [{ key: item.key as CapabilityKey, label: item.label, state: item.state, how: item.how }];
@@ -243,12 +238,12 @@ export function asTokenReport(data: {
 }
 
 export function tokenResultLine(report: TokenReport | null): string {
-  if (!report?.account) return '令牌验证：已验证';
+  if (!report?.account) return 'GitHub 授权：已授权';
   const missing = report.capabilities.filter((item) => item.key !== 'create' && item.state === 'missing');
-  if (missing.length > 0) return `令牌验证：${report.account}，缺少${missing.map((item) => item.label).join('、')}`;
+  if (missing.length > 0) return `GitHub 授权：${report.account}，缺少${missing.map((item) => item.label).join('、')}`;
   const unknown = report.capabilities.filter((item) => item.state === 'unknown');
-  if (report.capabilities.length > 0 && unknown.length === 0) return `令牌验证：${report.account}，能力已确认`;
-  return `令牌验证：${report.account}`;
+  if (report.capabilities.length > 0 && unknown.length === 0) return `GitHub 授权：${report.account}，能力已确认`;
+  return `GitHub 授权：${report.account}`;
 }
 
 export function stepLine(draft: PrepDraft, step: PrepStep): string {
