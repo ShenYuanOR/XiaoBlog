@@ -274,7 +274,7 @@ let linkTimer = 0;
 const devicePage = computed(() => device.value?.verificationUri || DEVICE_PAGE);
 const deviceLeft = computed(() => {
   if (!device.value?.expiresAt) return '';
-  const left = Math.max(0, device.value.expiresAt - publish.now);
+  const left = Math.max(0, device.value.expiresAt - Math.max(publish.now, Date.now()));
   const minutes = Math.floor(left / 60_000);
   const seconds = Math.floor((left % 60_000) / 1000);
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
@@ -982,7 +982,7 @@ watch(
                       </p>
                     </div>
                     <div class="prep-actions">
-                      <UiButton :disabled="!device.userCode" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制' }}</UiButton>
+                      <UiButton :disabled="!device.userCode" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制授权码' }}</UiButton>
                       <UiButton variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
                       <UiButton variant="ghost" @click="cancelDevice">取消</UiButton>
                     </div>
@@ -1302,7 +1302,7 @@ watch(
         </template>
         <template #actions>
           <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
-          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制' }}</UiButton>
+          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制授权码' }}</UiButton>
           <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
           <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="cancelDevice">取消授权</UiButton>
           <UiButton v-else variant="primary" :loading="reconnecting" @click="startDevice">用 GitHub 授权</UiButton>
