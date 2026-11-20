@@ -10,6 +10,7 @@ import {
   readRepoAccessRows,
   githubPagesUrl,
   mergeProbe,
+  pagesCapability,
   probeTokenCapabilities,
   reuseTokenOn,
   readGithubVerify,
@@ -150,6 +151,21 @@ describe('令牌验证', () => {
     expect(report.kind).toBe('github-fine');
     expect(report.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
     expect(report.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
+    expect(report.capabilities.find((item) => item.key === 'hosting')).toMatchObject({ state: 'ok', how: '已开启' });
+    expect(pagesCapability(200, 'legacy').how).toContain('Administration');
+    expect(pagesCapability(404, '').state).toBe('unknown');
+    const closed = await assessGithubToken({
+      token: 'fine',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      fetchImpl: (async (url: string) => {
+        if (url.endsWith('/pages')) return new Response('', { status: 404 });
+        return fetchImpl(url);
+      }) as typeof fetch,
+    });
+    expect(closed.status).toBe('valid');
+    expect(closed.capabilities.find((item) => item.key === 'hosting')?.state).toBe('unknown');
+    expect(closed.capabilities.find((item) => item.key === 'hosting')?.how).toContain('网页设置');
   });
 
   it('看得到其他私有仓库，或能写入其他公开仓库，都不通过', async () => {

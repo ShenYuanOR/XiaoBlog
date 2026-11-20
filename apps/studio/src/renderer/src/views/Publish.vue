@@ -907,7 +907,7 @@ watch(
                     <li v-for="item in prep.report.capabilities" :key="item.key">
                       <UiIcon :path="capIcon(item.state)" :size="16" />
                       <span>{{ item.label }}</span>
-                      <span class="dim">{{ capabilityText(item.state) }}</span>
+                      <span class="dim cap-note">{{ item.key === 'hosting' && item.how ? item.how : capabilityText(item.state) }}</span>
                     </li>
                   </ul>
                 </template>
@@ -1366,9 +1366,13 @@ watch(
 
 .cap-list li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: var(--ui-s2);
+}
+
+.cap-note {
+  min-width: 0;
 }
 
 .prep-actions {

@@ -360,11 +360,29 @@ export async function assessGithubToken(input: {
     fetchImpl: input.fetchImpl,
   });
   const pages = await input.fetchImpl(`https://api.github.com/repos/${input.owner}/${input.repo}/pages`, { headers });
-  const merged = mergeProbe(base, { ...probe, hosting: readProbeStatus(pages.status) });
+  let buildType = '';
+  if (pages.ok) {
+    try {
+      buildType = ((await pages.json()) as { build_type?: string }).build_type ?? '';
+    } catch {
+      buildType = '';
+    }
+  }
+  const merged = applyPagesCapability(mergeProbe(base, probe), pages.status, buildType);
   if (probe.push !== 'ok') {
     return { ...merged, status: 'rejected', message: '令牌不能推送到这个仓库。' };
   }
   return merged;
+}
+
+function applyPagesCapability(report: TokenReport, status: number, buildType: string): TokenReport {
+  const fact = pagesCapability(status, buildType);
+  return {
+    ...report,
+    capabilities: report.capabilities.map((item) =>
+      item.key === 'hosting' ? { ...item, state: fact.state, how: fact.how } : item,
+    ),
+  };
 }
 
 /** 只把还不确定的项改成探测结果。scopes 已经标明的不改。 */
@@ -387,6 +405,12 @@ export function readProbeStatus(status: number): CapabilityState {
   if (status >= 200 && status < 300) return 'ok';
   if (status === 401 || status === 403) return 'missing';
   return 'unknown';
+}
+
+/** 读 Pages 只能说明现在开没开，不能当成令牌有没有改设置的权限。 */
+export function pagesCapability(status: number, buildType: string): { state: CapabilityState; how: string } {
+  if (status === 200 && buildType === 'workflow') return { state: 'ok', how: '已开启' };
+  return { state: 'unknown', how: '首次开启需要在网页设置（或令牌带 Administration 读写）' };
 }
 
 function parseRemote(remoteUrl: string): { origin: string; owner: string; repo: string } | null {
