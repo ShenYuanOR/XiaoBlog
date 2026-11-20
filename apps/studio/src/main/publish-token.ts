@@ -90,7 +90,7 @@ export function githubPagesSettingsLink(owner: string, repo: string): string {
 /** 推送构建配置被 GitHub 拒绝时的中文。对不上就返回空串。 */
 export function explainWorkflowScope(message: string): string {
   if (!/workflow/i.test(message)) return '';
-  return '令牌不能修改构建配置。GitHub 需要勾上 workflow（或细粒度令牌的 Workflows 写权限），然后重新连接。';
+  return '令牌没有修改构建配置的权限。到 GitHub 的令牌设置里给 Workflows 加上读写权限，保存后点「重试」。';
 }
 
 /** 已连接那一行右侧的短句。 */

@@ -42,7 +42,7 @@ describe('远端默认分支', () => {
   it('缺 workflow 权限时用中文说明怎么补', () => {
     const text = explainPushFailure(new Error('refusing to allow a Personal Access Token to create or update workflow without `workflow` scope'));
     expect(text).toContain('构建配置');
-    expect(text).toContain('workflow');
+    expect(text).toContain('Workflows');
     expect(text).not.toContain('refusing');
   });
 
