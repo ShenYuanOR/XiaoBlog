@@ -205,8 +205,8 @@ describe('发布准备状态机', () => {
     expect(parseRepoUrl('https://github.com/ShenYuanOR/xiao-pages-test.git')?.remoteUrl).toBe(
       'https://github.com/ShenYuanOR/xiao-pages-test',
     );
-    expect(parseRepoUrl('ShenYuan/xiao-gate', 'http://192.168.1.170:3000')?.remoteUrl).toBe(
-      'http://192.168.1.170:3000/ShenYuan/xiao-gate',
+    expect(parseRepoUrl('ShenYuan/xiao-gate', 'http://git.example.com:3000')?.remoteUrl).toBe(
+      'http://git.example.com:3000/ShenYuan/xiao-gate',
     );
     expect(newRepoPage(draft, 'xiao-pages-test')).toContain('owner=ShenYuanOR');
     expect(newRepoPage(draft, 'xiao-pages-test')).toContain('visibility=public');
