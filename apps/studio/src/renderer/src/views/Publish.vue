@@ -213,7 +213,7 @@ const failureView = computed(() => {
   return { reason: reason || failed.detail, log: [rest.join('\n'), extra].filter(Boolean).join('\n') };
 });
 const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral' } => {
-  if (tokenBlocked.value) return { text: '授权失效，无法确认', tone: 'neutral' };
+  if (tokenBlocked.value) return { text: authFollow.value.rail, tone: 'warn' };
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready'
       ? { text: 'GitHub 构建', tone: 'ok' }
@@ -228,7 +228,6 @@ const runnerBadge = computed((): { text: string; tone: 'ok' | 'warn' | 'neutral'
 });
 const tokenStatusText = computed(() => tokenStatusLine(tokenReport.value, publish.now));
 const pagesLabel = computed(() => {
-  if (tokenBlocked.value) return '授权失效，无法确认';
   if (target.value?.provider === 'github') {
     return target.value.actionsState === 'ready' ? 'Pages 已开启' : 'Pages 未开启';
   }
