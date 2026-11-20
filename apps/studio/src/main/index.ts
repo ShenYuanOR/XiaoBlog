@@ -113,7 +113,7 @@ import {
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { parseRepoUrl } from './publish-prep.ts';
 import { parseGitRemote, writeGithubWorkflow } from './publish-workflow.ts';
-import { createRemoteRepo, enableGithubPages, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
+import { enableGithubPages, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -1365,17 +1365,6 @@ app.whenReady().then(() => {
     if (!facts.ok) return fail('PUBLISH_REPO', facts.message);
     return ok(facts);
   });
-  ipcMain.handle(
-    'publish:createRepo',
-    async (_event, _provider: string, _origin: string, token: string, name: string) => {
-      const created = await createRemoteRepo({
-        token: String(token || ''),
-        name: String(name || ''),
-        fetchImpl: apiFetch,
-      });
-      return ok(created);
-    },
-  );
   ipcMain.handle(
     'publish:prepare',
     async (

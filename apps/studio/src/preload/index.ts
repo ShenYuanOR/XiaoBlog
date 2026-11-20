@@ -88,11 +88,6 @@ const api = {
       ipcRenderer.invoke('publish:checkToken', provider, origin, token),
     lookup: (text: string) => ipcRenderer.invoke('publish:lookup', text),
     repoFacts: (remoteUrl: string, token: string) => ipcRenderer.invoke('publish:repoFacts', remoteUrl, token),
-    createRepo: (provider: 'github' | 'gitea', origin: string, token: string, name: string) =>
-      ipcRenderer.invoke('publish:createRepo', provider, origin, token, name),
-    rememberedHost: (origin: string) => ipcRenderer.invoke('publish:rememberedHost', origin),
-    probeHost: (origin: string, host: string, owner: string, repo: string) =>
-      ipcRenderer.invoke('publish:probeHost', origin, host, owner, repo),
     prepare: (
       siteDir: string,
       input: {

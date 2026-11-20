@@ -447,16 +447,6 @@ export interface XiaoApi {
         isPrivate: boolean;
       }>
     >;
-    createRepo: (
-      provider: 'github' | 'gitea',
-      origin: string,
-      token: string,
-      name: string,
-    ) => Promise<
-      IpcResult<{ ok: boolean; remoteUrl: string; owner: string; repo: string; branch: string; message: string }>
-    >;
-    rememberedHost: (origin: string) => Promise<IpcResult<string>>;
-    probeHost: (origin: string, host: string, owner: string, repo: string) => Promise<IpcResult<null>>;
     prepare: (
       siteDir: string,
       input: {

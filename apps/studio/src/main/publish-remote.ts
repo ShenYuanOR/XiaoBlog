@@ -220,36 +220,6 @@ export async function readRemoteFacts(input: {
   }
 }
 
-export async function createRemoteRepo(input: {
-  token: string;
-  name: string;
-  fetchImpl: typeof fetch;
-}): Promise<{ ok: boolean; remoteUrl: string; owner: string; repo: string; branch: string; message: string }> {
-  const name = input.name.trim();
-  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
-    return { ok: false, remoteUrl: '', owner: '', repo: '', branch: '', message: '仓库名只能用字母、数字、点、下划线和横线。' };
-  }
-  const url = 'https://api.github.com/user/repos';
-  const headers = { ...githubHeaders(input.token), 'Content-Type': 'application/json' };
-  try {
-    const response = await input.fetchImpl(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name, private: false, auto_init: false }),
-    });
-    return readCreatedRepo(response.status, response.ok ? await response.json() : {});
-  } catch (error) {
-    return {
-      ok: false,
-      remoteUrl: '',
-      owner: '',
-      repo: '',
-      branch: '',
-      message: `连不上：${error instanceof Error ? error.message : '网络失败'}`,
-    };
-  }
-}
-
 async function readPagesState(
   url: string,
   headers: Record<string, string>,
