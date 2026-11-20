@@ -264,6 +264,8 @@ const foreignWarn = computed(
 const tokenCanContinue = computed(
   () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
 );
+const codeCopied = ref(false);
+let copyTimer = 0;
 const deviceLeft = computed(() => {
   if (!device.value?.expiresAt) return '';
   const left = Math.max(0, device.value.expiresAt - publish.now);
@@ -399,7 +401,11 @@ function finishPublish(): void {
 async function copyDeviceCode(): Promise<void> {
   if (!device.value?.userCode) return;
   await navigator.clipboard.writeText(device.value.userCode);
-  notify('授权码已复制', 'info', 'publish-auth');
+  codeCopied.value = true;
+  window.clearTimeout(copyTimer);
+  copyTimer = window.setTimeout(() => {
+    codeCopied.value = false;
+  }, 1600);
 }
 
 async function runInstallCheck(): Promise<void> {
@@ -928,10 +934,12 @@ watch(
                 <template v-if="step === 'token'">
                   <h3>GitHub 授权</h3>
                   <template v-if="device?.phase === 'pending'">
-                    <p class="summary">{{ device.userCode || '正在向 GitHub 要授权码…' }}</p>
+                    <p>在打开的 GitHub 页面输入这个授权码，然后点 Authorize</p>
+                    <p v-if="device.userCode" class="device-code">{{ device.userCode }}</p>
+                    <p v-else class="dim">正在向 GitHub 要授权码…</p>
                     <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
                     <div class="prep-actions">
-                      <UiButton :disabled="!device.userCode" @click="copyDeviceCode">复制</UiButton>
+                      <UiButton :disabled="!device.userCode" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制' }}</UiButton>
                       <UiButton variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
                       <UiButton variant="ghost" @click="cancelDevice">取消</UiButton>
                     </div>
@@ -1213,12 +1221,14 @@ watch(
       <UiDialog v-model="reconnectOpen" title="重新授权" :width="440">
         <p>用 GitHub 重新授权 XiaoBlog Studio。安装范围仍然只能是当前这一个仓库。</p>
         <template v-if="device?.phase === 'pending'">
-          <p class="summary">{{ device.userCode || '正在向 GitHub 要授权码…' }}</p>
+          <p>在打开的 GitHub 页面输入这个授权码，然后点 Authorize</p>
+          <p v-if="device.userCode" class="device-code">{{ device.userCode }}</p>
+          <p v-else class="dim">正在向 GitHub 要授权码…</p>
           <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
         </template>
         <template #actions>
           <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
-          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="copyDeviceCode">复制</UiButton>
+          <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制' }}</UiButton>
           <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
           <UiButton v-if="device?.phase === 'pending'" variant="ghost" @click="cancelDevice">取消授权</UiButton>
           <UiButton v-else variant="primary" :loading="reconnecting" @click="startDevice">用 GitHub 授权</UiButton>
@@ -1732,6 +1742,14 @@ h2 {
 
 .summary {
   font-size: var(--ui-fs-3);
+}
+
+.device-code {
+  margin: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .more-link {
