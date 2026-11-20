@@ -266,8 +266,12 @@ const tokenCanContinue = computed(
 );
 const rechecking = ref(false);
 const authFollow = computed(() => authFollowUp(tokenReport.value?.message || ''));
+const DEVICE_PAGE = 'https://github.com/login/device';
 const codeCopied = ref(false);
+const linkCopied = ref('');
 let copyTimer = 0;
+let linkTimer = 0;
+const devicePage = computed(() => device.value?.verificationUri || DEVICE_PAGE);
 const deviceLeft = computed(() => {
   if (!device.value?.expiresAt) return '';
   const left = Math.max(0, device.value.expiresAt - publish.now);
@@ -482,6 +486,24 @@ async function cancelDevice(): Promise<void> {
 
 function openLink(url: string): void {
   if (url) void window.xiao.app.openExternal(url);
+}
+
+function showWebFallback(url: string): boolean {
+  return (
+    url.includes('/apps/xiaoblog-studio/installations') ||
+    url.includes('/settings/installations/') ||
+    url.includes('/settings/pages')
+  );
+}
+
+async function copyLink(url: string): Promise<void> {
+  if (!url) return;
+  await navigator.clipboard.writeText(url);
+  linkCopied.value = url;
+  window.clearTimeout(linkTimer);
+  linkTimer = window.setTimeout(() => {
+    linkCopied.value = '';
+  }, 1600);
 }
 
 function capabilityText(state: 'ok' | 'missing' | 'unknown'): string {
@@ -952,6 +974,13 @@ watch(
                     <p v-if="device.userCode" class="device-code">{{ device.userCode }}</p>
                     <p v-else class="dim">正在向 GitHub 要授权码…</p>
                     <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
+                    <div class="link-fallback">
+                      <p class="dim">浏览器没有自动打开时，复制这个网址到浏览器里打开</p>
+                      <p class="link-line">
+                        <a class="link link-url" :href="devicePage" @click.prevent="openLink(devicePage)">{{ devicePage }}</a>
+                        <UiButton size="sm" variant="ghost" @click="copyLink(devicePage)">{{ linkCopied === devicePage ? '已复制' : '复制链接' }}</UiButton>
+                      </p>
+                    </div>
                     <div class="prep-actions">
                       <UiButton :disabled="!device.userCode" @click="copyDeviceCode">{{ codeCopied ? '已复制' : '复制' }}</UiButton>
                       <UiButton variant="ghost" @click="openLink(device.verificationUri)">重新打开授权页</UiButton>
@@ -964,6 +993,13 @@ watch(
                       <UiButton v-if="prep.manualLink" variant="ghost" :loading="prepBusy" @click="runInstallCheck">我已安装，重新检查</UiButton>
                       <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
                       <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
+                    </div>
+                    <div v-if="prep.manualLink && showWebFallback(prep.manualLink)" class="link-fallback">
+                      <p class="dim">浏览器没有自动打开时，复制这个网址到浏览器里打开</p>
+                      <p class="link-line">
+                        <a class="link link-url" :href="prep.manualLink" @click.prevent="openLink(prep.manualLink)">{{ prep.manualLink }}</a>
+                        <UiButton size="sm" variant="ghost" @click="copyLink(prep.manualLink)">{{ linkCopied === prep.manualLink ? '已复制' : '复制链接' }}</UiButton>
+                      </p>
                     </div>
                     <p v-if="prep.report?.status === 'valid'" class="summary">已授权 · {{ prep.report.account }}</p>
                   </template>
@@ -1019,6 +1055,13 @@ watch(
                       {{ prep.manualLink || prep.error ? '我已完成，重新检查' : '开始准备' }}
                     </UiButton>
                     <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
+                  </div>
+                  <div v-if="prep.manualLink && showWebFallback(prep.manualLink)" class="link-fallback">
+                    <p class="dim">浏览器没有自动打开时，复制这个网址到浏览器里打开</p>
+                    <p class="link-line">
+                      <a class="link link-url" :href="prep.manualLink" @click.prevent="openLink(prep.manualLink)">{{ prep.manualLink }}</a>
+                      <UiButton size="sm" variant="ghost" @click="copyLink(prep.manualLink)">{{ linkCopied === prep.manualLink ? '已复制' : '复制链接' }}</UiButton>
+                    </p>
                   </div>
                 </template>
                 <template v-else-if="step === 'publish'">
@@ -1125,6 +1168,13 @@ watch(
             </template>
             <div class="publish-row">
               <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message || '授权已失效，重新授权' }}</p>
+              <div v-if="tokenBlocked && tokenReport?.link && showWebFallback(tokenReport.link)" class="link-fallback">
+                <p class="dim">浏览器没有自动打开时，复制这个网址到浏览器里打开</p>
+                <p class="link-line">
+                  <a class="link link-url" :href="tokenReport.link" @click.prevent="openLink(tokenReport.link)">{{ tokenReport.link }}</a>
+                  <UiButton size="sm" variant="ghost" @click="copyLink(tokenReport.link)">{{ linkCopied === tokenReport.link ? '已复制' : '复制链接' }}</UiButton>
+                </p>
+              </div>
               <p v-else-if="blockReason" class="dim">{{ blockReason }}</p>
               <UiButton
                 v-if="!tokenBlocked"
@@ -1242,6 +1292,13 @@ watch(
           <p v-if="device.userCode" class="device-code">{{ device.userCode }}</p>
           <p v-else class="dim">正在向 GitHub 要授权码…</p>
           <p v-if="device.expiresAt" class="dim">剩余 {{ deviceLeft }}</p>
+          <div class="link-fallback">
+            <p class="dim">浏览器没有自动打开时，复制这个网址到浏览器里打开</p>
+            <p class="link-line">
+              <a class="link link-url" :href="devicePage" @click.prevent="openLink(devicePage)">{{ devicePage }}</a>
+              <UiButton size="sm" variant="ghost" @click="copyLink(devicePage)">{{ linkCopied === devicePage ? '已复制' : '复制链接' }}</UiButton>
+            </p>
+          </div>
         </template>
         <template #actions>
           <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
@@ -1767,6 +1824,25 @@ h2 {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: 0.08em;
+}
+
+.link-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s2);
+}
+
+.link-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-s2);
+  margin: 0;
+}
+
+.link-url {
+  user-select: text;
+  word-break: break-all;
 }
 
 .more-link {
