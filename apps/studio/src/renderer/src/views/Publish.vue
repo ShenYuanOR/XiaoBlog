@@ -961,7 +961,7 @@ watch(
                   <template v-else>
                     <div class="prep-actions">
                       <UiButton v-if="!tokenCanContinue" variant="primary" :loading="prepBusy" @click="startDevice">用 GitHub 授权</UiButton>
-                      <UiButton v-if="prep.manualLink || prep.error" variant="ghost" :loading="prepBusy" @click="runInstallCheck">我已安装，重新检查</UiButton>
+                      <UiButton v-if="prep.manualLink" variant="ghost" :loading="prepBusy" @click="runInstallCheck">我已安装，重新检查</UiButton>
                       <UiButton v-if="prep.manualLink" variant="ghost" @click="openLink(prep.manualLink)">打开网页</UiButton>
                       <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
                     </div>
