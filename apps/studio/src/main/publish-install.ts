@@ -8,6 +8,17 @@ export interface InstallationRow {
   selection: string;
 }
 
+/** 已连接时按原因给下一步。只有授权本身失效才重新授权。 */
+export function authFollowUp(message: string): { rail: string; action: 'reauth' | 'install' | 'settings'; button: string } {
+  if (message.includes('先把 XiaoBlog Studio 安装')) {
+    return { rail: '还没安装 XiaoBlog Studio', action: 'install', button: '安装 XiaoBlog Studio' };
+  }
+  if (message.includes('所有仓库') || message.includes('加入安装') || message.includes('其他仓库')) {
+    return { rail: '安装范围不对', action: 'settings', button: '打开安装设置' };
+  }
+  return { rail: '授权已失效', action: 'reauth', button: '重新授权' };
+}
+
 export function installationSettingsUrl(owner: string, id: number, accountType: string): string {
   if (accountType.toLowerCase() === 'organization') {
     return `https://github.com/organizations/${owner}/settings/installations/${id}`;

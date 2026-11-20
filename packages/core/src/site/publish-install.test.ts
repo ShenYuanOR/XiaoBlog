@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GithubGrant } from '../../../../apps/studio/src/main/publish-device.ts';
 import {
+  authFollowUp,
   checkInstallation,
   installationSettingsUrl,
   interpretInstallScope,
@@ -27,6 +28,25 @@ function install(selection: string, login = 'ShenYuanOR', type = 'Organization')
     ],
   };
 }
+
+describe('已连接后的操作', () => {
+  it('按原因区分重新授权和改安装', () => {
+    expect(authFollowUp('授权已失效，重新授权').action).toBe('reauth');
+    expect(authFollowUp('改用 GitHub 授权').button).toBe('重新授权');
+    expect(authFollowUp('先把 XiaoBlog Studio 安装到这个仓库')).toMatchObject({
+      action: 'install',
+      button: '安装 XiaoBlog Studio',
+      rail: '还没安装 XiaoBlog Studio',
+    });
+    expect(authFollowUp('XiaoBlog Studio 被安装到了所有仓库，请改成只选这个仓库')).toMatchObject({
+      action: 'settings',
+      button: '打开安装设置',
+      rail: '安装范围不对',
+    });
+    expect(authFollowUp('把 ShenYuanOR/xiao-pages-test 加入安装').button).toBe('打开安装设置');
+    expect(authFollowUp('XiaoBlog Studio 还安装了其他仓库，请改成只选 ShenYuanOR/xiao-pages-test').rail).toBe('安装范围不对');
+  });
+});
 
 describe('安装范围', () => {
   it('没有安装、装到所有仓库、没包含目标、还装了别的仓库', () => {

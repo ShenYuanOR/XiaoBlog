@@ -20,6 +20,7 @@ import {
   type PrepStep,
 } from '../../../main/publish-prep.ts';
 import { tokenStatusLine } from '../../../main/publish-token.ts';
+import { authFollowUp } from '../../../main/publish-install.ts';
 import { changeSummary, historyConclusion, historyStepDetail } from '../../../main/release-gate.ts';
 import { icons } from '../icons.ts';
 import { notify } from '../notice.ts';
@@ -264,6 +265,8 @@ const foreignWarn = computed(
 const tokenCanContinue = computed(
   () => prep.value.report?.status === 'valid' && !pushBlocks(prep.value.report),
 );
+const rechecking = ref(false);
+const authFollow = computed(() => authFollowUp(tokenReport.value?.message || ''));
 const codeCopied = ref(false);
 let copyTimer = 0;
 const deviceLeft = computed(() => {
@@ -396,6 +399,18 @@ function openBuildLog(): void {
 
 function finishPublish(): void {
   void dismissJob();
+}
+
+async function recheckAuth(): Promise<void> {
+  if (!session.siteDir) return;
+  rechecking.value = true;
+  try {
+    const verified = await window.xiao.publish.verify(session.siteDir);
+    tokenReport.value = verified.ok ? verified.data : null;
+    if (verified.ok && verified.data.status === 'valid') await runPreflight();
+  } finally {
+    rechecking.value = false;
+  }
 }
 
 async function copyDeviceCode(): Promise<void> {
@@ -1038,7 +1053,13 @@ watch(
               <span v-else class="dim">还没有网址</span>
             </p>
             <span class="token-status">{{ tokenStatusText }}</span>
-            <UiButton v-if="tokenBlocked" size="sm" variant="primary" @click="reconnectOpen = true">重新授权</UiButton>
+            <UiButton v-if="tokenBlocked && authFollow.action === 'reauth'" size="sm" variant="primary" @click="reconnectOpen = true">
+              重新授权
+            </UiButton>
+            <template v-else-if="tokenBlocked">
+              <UiButton size="sm" variant="primary" @click="openLink(tokenReport?.link || '')">{{ authFollow.button }}</UiButton>
+              <UiButton size="sm" :loading="rechecking" @click="recheckAuth">我已改好，重新检查</UiButton>
+            </template>
           </div>
           <template v-if="phase === 'ready'">
             <h2>将发布什么</h2>
@@ -1105,9 +1126,6 @@ watch(
             </template>
             <div class="publish-row">
               <p v-if="tokenBlocked" class="dim">{{ tokenReport?.message || '授权已失效，重新授权' }}</p>
-              <div v-if="tokenBlocked && tokenReport?.link" class="prep-actions">
-                <UiButton size="sm" variant="ghost" @click="openLink(tokenReport.link)">打开网页</UiButton>
-              </div>
               <p v-else-if="blockReason" class="dim">{{ blockReason }}</p>
               <UiButton
                 v-if="!tokenBlocked"
