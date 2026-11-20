@@ -117,6 +117,13 @@ import { enableGithubPages, lookupPublicRepo, readRemoteFacts } from './publish-
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
+import {
+  decodeGrant,
+  encodeGrant,
+  ensureFreshGrant,
+  runDeviceFlow,
+  type DeviceView,
+} from './publish-device.ts';
 import { manifest } from '@xiao/core/components';
 import { layoutSpecs } from '@xiao/core/components/layouts';
 
@@ -312,6 +319,40 @@ let deployStoreInstance: ReturnType<typeof createDeployStore> | undefined;
 
 const tokenCache = createVerifyCache(() => Date.now());
 const apiFetch: typeof fetch = (input, init) => net.fetch(input as string, init);
+let deviceCancel: (() => void) | null = null;
+
+function publicDevice(view: DeviceView): {
+  phase: DeviceView['phase'];
+  userCode: string;
+  verificationUri: string;
+  expiresAt: number;
+  interval: number;
+  message: string;
+  account: string;
+} {
+  return {
+    phase: view.phase,
+    userCode: view.userCode,
+    verificationUri: view.verificationUri,
+    expiresAt: view.expiresAt,
+    interval: view.interval,
+    message: view.message,
+    account: view.grant?.account ?? '',
+  };
+}
+
+async function accessFor(siteDir: string): Promise<{ token: string; login: string } | { error: string }> {
+  const stored = secretStore().load(siteDir);
+  if (!stored) return { error: '令牌丢了，重新填一次' };
+  const grant = decodeGrant(stored);
+  if (!grant) return { token: stored, login: '' };
+  const fresh = await ensureFreshGrant({ grant, fetchImpl: apiFetch, now: Date.now() });
+  if (!fresh.ok) return { error: fresh.message };
+  if (fresh.changed) {
+    secretStore().save(siteDir, encodeGrant(fresh.grant), new Date(fresh.grant.accessExpiresAt).toISOString());
+  }
+  return { token: fresh.grant.accessToken, login: fresh.grant.account };
+}
 
 async function verifyLooseToken(token: string, remoteUrl?: string, login?: string): Promise<TokenReport> {
   const report = await verifyGithubToken(token, apiFetch);
@@ -822,14 +863,15 @@ app.whenReady().then(() => {
   ipcMain.handle('publish:push', async (_event, siteDir: string, force?: boolean) => {
     const target = deployStore().read()[siteDir];
     if (!target) return fail('PUBLISH_TARGET', '还没有连接仓库，先填地址和令牌');
-    const token = secretStore().load(siteDir);
-    if (!token) return fail('PUBLISH_TOKEN', '令牌丢了，重新填一次');
+    const access = await accessFor(siteDir);
+    if ('error' in access) return fail('PUBLISH_TOKEN', access.error);
+    const token = access.token;
     try {
       const result = await pushSite({
         siteDir,
         target,
         token,
-        login: target.login,
+        login: target.login || access.login,
         http: publishHttp,
         force: Boolean(force),
       });
@@ -871,8 +913,9 @@ app.whenReady().then(() => {
   ipcMain.handle('publish:follow', async (event, siteDir: string, sha: string) => {
     const target = deployStore().read()[siteDir];
     if (!target) return fail('PUBLISH_TARGET', '还没有连接仓库');
-    const token = secretStore().load(siteDir);
-    if (!token) return fail('PUBLISH_TOKEN', '令牌丢了，重新连接一次');
+    const access = await accessFor(siteDir);
+    if ('error' in access) return fail('PUBLISH_TOKEN', access.error);
+    const token = access.token;
     const buildStarted = Date.now();
     const build = await watchBuild({
       remoteUrl: target.remoteUrl,
@@ -1206,14 +1249,15 @@ app.whenReady().then(() => {
     async push(siteDir, force) {
       const target = deployStore().read()[siteDir];
       if (!target) return { ok: false, message: '还没有连接仓库。' };
-      const token = secretStore().load(siteDir);
-      if (!token) return { ok: false, message: '令牌丢了，重新填一次' };
+      const access = await accessFor(siteDir);
+      if ('error' in access) return { ok: false, message: access.error };
+      const token = access.token;
       try {
         const result = await pushSite({
           siteDir,
           target,
           token,
-          login: target.login,
+          login: target.login || access.login,
           http: publishHttp,
           force,
         });
@@ -1229,8 +1273,9 @@ app.whenReady().then(() => {
     async follow(siteDir, sha) {
       const target = deployStore().read()[siteDir];
       if (!target) return { ok: false, message: '还没有连接仓库', ms: 0 };
-      const token = secretStore().load(siteDir);
-      if (!token) return { ok: false, message: '令牌丢了，重新连接一次', ms: 0 };
+      const access = await accessFor(siteDir);
+      if ('error' in access) return { ok: false, message: access.error, ms: 0 };
+      const token = access.token;
       const buildStarted = Date.now();
       const build = await watchBuild({
         remoteUrl: target.remoteUrl,
@@ -1348,6 +1393,38 @@ app.whenReady().then(() => {
       : await verifyLooseToken(trimmed);
     if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);
+  });
+  ipcMain.handle('publish:deviceStart', async (event, siteDir: string) => {
+    deviceCancel?.();
+    let stop = false;
+    const cancel = (): void => {
+      stop = true;
+    };
+    deviceCancel = cancel;
+    let opened = false;
+    const view = await runDeviceFlow({
+      fetchImpl: apiFetch,
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      shouldStop: () => stop,
+      onView: (next) => {
+        if (!opened && next.phase === 'pending' && next.verificationUri) {
+          opened = true;
+          void shell.openExternal(next.verificationUri).catch(() => undefined);
+        }
+        event.sender.send('publish:device', publicDevice(next));
+      },
+    });
+    if (view.phase === 'success' && view.grant && siteDir) {
+      secretStore().save(siteDir, encodeGrant(view.grant), new Date(view.grant.accessExpiresAt).toISOString());
+    }
+    if (deviceCancel === cancel) deviceCancel = null;
+    return ok(publicDevice(view));
+  });
+  ipcMain.handle('publish:deviceCancel', () => {
+    deviceCancel?.();
+    deviceCancel = null;
+    return ok(null);
   });
   ipcMain.handle('publish:lookup', async (_event, text: string) => {
     const parsed = parseRepoUrl(String(text || ''), 'https://github.com');

@@ -86,6 +86,19 @@ const api = {
     replaceToken: (siteDir: string, token: string) => ipcRenderer.invoke('publish:replaceToken', siteDir, token),
     checkToken: (provider: 'github' | 'gitea', origin: string, token: string) =>
       ipcRenderer.invoke('publish:checkToken', provider, origin, token),
+    deviceStart: (siteDir: string) => ipcRenderer.invoke('publish:deviceStart', siteDir),
+    deviceCancel: () => ipcRenderer.invoke('publish:deviceCancel'),
+    onDevice: (
+      callback: (payload: {
+        phase: 'idle' | 'pending' | 'success' | 'denied' | 'expired' | 'cancelled' | 'error';
+        userCode: string;
+        verificationUri: string;
+        expiresAt: number;
+        interval: number;
+        message: string;
+        account: string;
+      }) => void,
+    ): (() => void) => listen('publish:device', callback),
     lookup: (text: string) => ipcRenderer.invoke('publish:lookup', text),
     repoFacts: (remoteUrl: string, token: string) => ipcRenderer.invoke('publish:repoFacts', remoteUrl, token),
     prepare: (

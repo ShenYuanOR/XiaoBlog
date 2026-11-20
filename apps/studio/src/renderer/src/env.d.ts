@@ -407,6 +407,29 @@ export interface XiaoApi {
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
+    deviceStart: (siteDir: string) => Promise<
+      IpcResult<{
+        phase: 'idle' | 'pending' | 'success' | 'denied' | 'expired' | 'cancelled' | 'error';
+        userCode: string;
+        verificationUri: string;
+        expiresAt: number;
+        interval: number;
+        message: string;
+        account: string;
+      }>
+    >;
+    deviceCancel: () => Promise<IpcResult<null>>;
+    onDevice: (
+      callback: (payload: {
+        phase: 'idle' | 'pending' | 'success' | 'denied' | 'expired' | 'cancelled' | 'error';
+        userCode: string;
+        verificationUri: string;
+        expiresAt: number;
+        interval: number;
+        message: string;
+        account: string;
+      }) => void,
+    ) => () => void;
     checkToken: (
       provider: 'github' | 'gitea',
       origin: string,
