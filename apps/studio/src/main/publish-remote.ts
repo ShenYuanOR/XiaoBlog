@@ -268,11 +268,34 @@ export async function createRemoteRepo(input: {
   }
 }
 
+async function readPagesState(
+  url: string,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch,
+): Promise<{ status: number; buildType: string } | { error: string }> {
+  try {
+    const current = await fetchImpl(url, { headers });
+    let buildType = '';
+    if (current.ok) {
+      try {
+        buildType = ((await current.json()) as { build_type?: string }).build_type ?? '';
+      } catch {
+        buildType = '';
+      }
+    }
+    return { status: current.status, buildType };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : '网络失败' };
+  }
+}
+
+/** 先读 Pages。已是 workflow 就不写。重新检查只看这次读取，不再 POST / PUT。 */
 export async function enableGithubPages(
   owner: string,
   repo: string,
   token: string,
   fetchImpl: typeof fetch,
+  options?: { recheck?: boolean },
 ): Promise<{ state: 'ok' | 'manual'; detail: string; link: string }> {
   const headers = { ...githubHeaders(token), 'Content-Type': 'application/json' };
   const url = `https://api.github.com/repos/${owner}/${repo}/pages`;
@@ -282,38 +305,26 @@ export async function enableGithubPages(
     detail: '这个令牌开不了 Pages。打开仓库 Settings → Pages，Source 选 GitHub Actions。',
     link,
   };
-  let created: Response;
+  const read = await readPagesState(url, headers, fetchImpl);
+  if ('error' in read) return { state: 'manual', detail: `连不上 GitHub：${read.error}`, link };
+  if (interpretPagesRead(read.status, read.buildType) === 'ok') {
+    return { state: 'ok', detail: 'Pages 已经是 workflow。', link: '' };
+  }
+  if (options?.recheck) return manual;
+  if (read.status !== 404 && read.status !== 200) return manual;
+  const method = read.status === 404 ? 'POST' : 'PUT';
+  let written: Response;
   try {
-    created = await fetchImpl(url, { method: 'POST', headers, body: JSON.stringify({ build_type: 'workflow' }) });
+    written = await fetchImpl(url, { method, headers, body: JSON.stringify({ build_type: 'workflow' }) });
   } catch (error) {
     return { state: 'manual', detail: `连不上 GitHub：${error instanceof Error ? error.message : '网络失败'}`, link };
   }
-  const createdKind = interpretPagesCreate(created.status);
-  if (createdKind === 'ok') return { state: 'ok', detail: 'Pages 已按 workflow 开启。', link: '' };
-  if (createdKind === 'manual') return manual;
-  let current: Response;
-  try {
-    current = await fetchImpl(url, { headers });
-  } catch {
-    return manual;
-  }
-  let buildType = '';
-  if (current.ok) {
-    try {
-      buildType = ((await current.json()) as { build_type?: string }).build_type ?? '';
-    } catch {
-      buildType = '';
-    }
-  }
-  const readKind = interpretPagesRead(current.status, buildType);
-  if (readKind === 'ok') return { state: 'ok', detail: 'Pages 已经是 workflow。', link: '' };
-  if (readKind === 'update') {
-    try {
-      const updated = await fetchImpl(url, { method: 'PUT', headers, body: JSON.stringify({ build_type: 'workflow' }) });
-      if (updated.ok) return { state: 'ok', detail: 'Pages 已改成 workflow。', link: '' };
-    } catch {
-      return manual;
-    }
+  if (interpretPagesCreate(written.status) === 'ok') {
+    return {
+      state: 'ok',
+      detail: method === 'POST' ? 'Pages 已按 workflow 开启。' : 'Pages 已改成 workflow。',
+      link: '',
+    };
   }
   return manual;
 }

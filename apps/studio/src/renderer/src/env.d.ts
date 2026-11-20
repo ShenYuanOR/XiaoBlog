@@ -494,6 +494,7 @@ export interface XiaoApi {
         siteUrl: string;
         base: string;
         empty?: boolean;
+        recheck?: boolean;
       },
     ) => Promise<
       IpcResult<{

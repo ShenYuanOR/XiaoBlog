@@ -322,6 +322,49 @@ describe('准备用的远端判断', () => {
     expect(result.link).toBe('https://github.com/ShenYuanOR/xiao-pages-test/settings/pages');
   });
 
+  it('已是 workflow 时不发写请求，重新检查也只读', async () => {
+    const methods: string[] = [];
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      methods.push((init?.method ?? 'GET').toUpperCase());
+      return new Response(JSON.stringify({ build_type: 'workflow' }), { status: 200 });
+    }) as typeof fetch;
+    const ready = await enableGithubPages('ShenYuanOR', 'xiao-pages-test', 'token', fetchImpl);
+    expect(ready.state).toBe('ok');
+    expect(ready.detail).toContain('workflow');
+    expect(methods).toEqual(['GET']);
+    methods.length = 0;
+    const again = await enableGithubPages('ShenYuanOR', 'xiao-pages-test', 'token', fetchImpl, { recheck: true });
+    expect(again.state).toBe('ok');
+    expect(methods).toEqual(['GET']);
+    const missedMethods: string[] = [];
+    const missed = await enableGithubPages(
+      'ShenYuanOR',
+      'xiao-pages-test',
+      'token',
+      (async (_url: string, init?: RequestInit) => {
+        missedMethods.push((init?.method ?? 'GET').toUpperCase());
+        return new Response('', { status: 404 });
+      }) as typeof fetch,
+      { recheck: true },
+    );
+    expect(missed.state).toBe('manual');
+    expect(missedMethods).toEqual(['GET']);
+    const createdMethods: string[] = [];
+    const created = await enableGithubPages(
+      'ShenYuanOR',
+      'xiao-pages-test',
+      'token',
+      (async (_url: string, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        createdMethods.push(method);
+        if (method === 'GET') return new Response('', { status: 404 });
+        return new Response('', { status: 403 });
+      }) as typeof fetch,
+    );
+    expect(created.state).toBe('manual');
+    expect(createdMethods).toEqual(['GET', 'POST']);
+  });
+
   it('GitHub 构建配置带上提交号', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xiao-workflow-'));
     try {

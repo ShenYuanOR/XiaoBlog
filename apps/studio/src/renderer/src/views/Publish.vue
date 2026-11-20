@@ -554,6 +554,7 @@ async function runPrepare(): Promise<void> {
       siteUrl: prep.value.siteUrl,
       base: prep.value.base,
       empty: prep.value.empty === true,
+      recheck: Boolean(prep.value.manualLink || prep.value.error),
     });
     if (!result.ok) {
       prep.value = applyBuild(prep.value, {

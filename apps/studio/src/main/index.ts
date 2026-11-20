@@ -1390,6 +1390,7 @@ app.whenReady().then(() => {
         siteUrl: string;
         base: string;
         empty?: boolean;
+        recheck?: boolean;
       },
     ) => {
       if (!siteDir || !input?.token || !input.remoteUrl || !input.siteUrl) {
@@ -1430,7 +1431,9 @@ app.whenReady().then(() => {
         link = `https://github.com/${input.owner}/${input.repo}/new/${branch}?filename=.github/workflows/xiao-deploy.yml`;
       }
       if (workflow === 'ok') {
-        const pages = await enableGithubPages(input.owner, input.repo, input.token, apiFetch);
+        const pages = await enableGithubPages(input.owner, input.repo, input.token, apiFetch, {
+          recheck: input.recheck === true,
+        });
         if (pages.state === 'ok') {
           actionsState = 'ready';
           actionsDetail = pages.detail;
