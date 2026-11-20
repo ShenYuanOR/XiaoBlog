@@ -102,24 +102,6 @@ function githubHeaders(token: string): Record<string, string> {
   };
 }
 
-export async function listRemoteRepos(input: {
-  origin: string;
-  token: string;
-  fetchImpl: typeof fetch;
-}): Promise<{ ok: true; repos: RepoChoice[] } | { ok: false; message: string }> {
-  const root = 'https://github.com';
-  const url = 'https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member';
-  const headers = githubHeaders(input.token);
-  try {
-    const response = await input.fetchImpl(url, { headers });
-    if (response.status === 401 || response.status === 403) return { ok: false, message: '令牌已失效' };
-    if (!response.ok) return { ok: false, message: `列不出仓库（HTTP ${response.status}）。可以直接粘贴地址。` };
-    return { ok: true, repos: readRepoChoices(root, await response.json()) };
-  } catch (error) {
-    return { ok: false, message: `连不上：${error instanceof Error ? error.message : '网络失败'}` };
-  }
-}
-
 export interface PublicLookup {
   owner: string;
   repo: string;

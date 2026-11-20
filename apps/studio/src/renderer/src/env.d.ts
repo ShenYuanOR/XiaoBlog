@@ -421,22 +421,6 @@ export interface XiaoApi {
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
-    refineToken: (
-      provider: 'gitea',
-      origin: string,
-      remoteUrl: string,
-      token: string,
-      login?: string,
-    ) => Promise<
-      IpcResult<{
-        status: 'valid' | 'invalid' | 'expired' | 'rejected';
-        account: string;
-        kind: 'github-classic' | 'github-fine';
-        expiresAt: string;
-        message: string;
-        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
-      }>
-    >;
     lookup: (text: string) => Promise<
       IpcResult<{
         owner: string;
@@ -450,15 +434,7 @@ export interface XiaoApi {
         message: string;
       }>
     >;
-    repos: (
-      provider: 'github' | 'gitea',
-      origin: string,
-      token: string,
-    ) => Promise<
-      IpcResult<{ owner: string; name: string; private: boolean; empty: boolean; url: string; branch: string }[]>
-    >;
     repoFacts: (
-      provider: 'github' | 'gitea',
       remoteUrl: string,
       token: string,
     ) => Promise<

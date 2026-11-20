@@ -268,7 +268,6 @@ describe('准备用的远端判断', () => {
       url: remoteUrl,
     });
     const facts = await readRemoteFacts({
-      provider: 'github',
       remoteUrl,
       token: 'token',
       fetchImpl: (async (url: string) => {

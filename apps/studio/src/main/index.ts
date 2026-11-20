@@ -113,7 +113,7 @@ import {
 import { waitForLive, watchBuild } from './publish-follow.ts';
 import { parseRepoUrl } from './publish-prep.ts';
 import { parseGitRemote, writeGithubWorkflow } from './publish-workflow.ts';
-import { createRemoteRepo, enableGithubPages, listRemoteRepos, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
+import { createRemoteRepo, enableGithubPages, lookupPublicRepo, readRemoteFacts } from './publish-remote.ts';
 import { historyRows, rememberDeploy, type DeployRecord } from './release-gate.ts';
 import { GitHubService } from './github.ts';
 import { redactSecrets, SecretService } from './secret.ts';
@@ -1356,16 +1356,7 @@ app.whenReady().then(() => {
     if ('ok' in looked && looked.ok === false) return fail('PUBLISH_REPO', looked.message);
     return ok(looked);
   });
-  ipcMain.handle('publish:repos', async (_event, _provider: string, _origin: string, token: string) => {
-    const listed = await listRemoteRepos({
-      origin: 'https://github.com',
-      token: String(token || ''),
-      fetchImpl: apiFetch,
-    });
-    if (!listed.ok) return fail('PUBLISH_REPOS', listed.message);
-    return ok(listed.repos);
-  });
-  ipcMain.handle('publish:repoFacts', async (_event, _provider: string, remoteUrl: string, token: string) => {
+  ipcMain.handle('publish:repoFacts', async (_event, remoteUrl: string, token: string) => {
     const facts = await readRemoteFacts({
       remoteUrl: String(remoteUrl || ''),
       token: String(token || ''),
