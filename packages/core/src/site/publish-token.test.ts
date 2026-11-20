@@ -111,6 +111,7 @@ describe('令牌验证', () => {
     });
     expect(seen.some((url) => url.startsWith('https://github.com/ShenYuanOR/xiao-pages-test/info/refs'))).toBe(true);
     expect(seen.some((url) => url.startsWith('https://api.github.com/repos/ShenYuanOR/xiao-pages-test/actions/runs'))).toBe(true);
+    expect(probe.pushAnswered).toBe(true);
     const merged = mergeProbe(base, probe);
     expect(merged.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
     expect(merged.capabilities.find((item) => item.key === 'actions')?.state).toBe('missing');
@@ -207,6 +208,56 @@ describe('令牌验证', () => {
     });
     expect(writable.status).toBe('rejected');
     expect(writable.message).toContain('写入其他仓库');
+  });
+
+  it('慢请求会放弃，其余请求并行，并报出步骤', async () => {
+    const lines: string[] = [];
+    let inflight = 0;
+    let max = 0;
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      inflight += 1;
+      max = Math.max(max, inflight);
+      try {
+        if (url.includes('visibility=public')) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(resolve, 5_000);
+            const abort = (): void => {
+              clearTimeout(timer);
+              reject(init?.signal?.reason ?? new Error('aborted'));
+            };
+            if (init?.signal?.aborted) abort();
+            else init?.signal?.addEventListener('abort', abort, { once: true });
+          });
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        if (url.endsWith('/user')) return new Response(JSON.stringify({ login: 'ShenYuanOR' }), { status: 200 });
+        if (url.includes('visibility=private')) return new Response('[]', { status: 200 });
+        if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
+        if (url.endsWith('/pages')) return new Response(JSON.stringify({ build_type: 'workflow' }), { status: 200 });
+        if (url.includes('/actions/runs') || url.includes('/repos/ShenYuanOR/xiao-pages-test')) {
+          return new Response('{}', { status: 200 });
+        }
+        return new Response('[]', { status: 200 });
+      } finally {
+        inflight -= 1;
+      }
+    }) as typeof fetch;
+    const started = Date.now();
+    const report = await assessGithubToken({
+      token: 'fine',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      fetchImpl,
+      timeoutMs: 80,
+      onProgress: (line) => lines.push(line),
+    });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(max).toBeGreaterThan(1);
+    expect(report.status).toBe('valid');
+    expect(lines[0]).toContain('正在查看账号');
+    expect(lines.some((line) => line.includes('只授权'))).toBe(true);
+    expect(lines.some((line) => line.includes('推送'))).toBe(true);
   });
 
   it('缺 workflow 权限的推送失败写成中文', () => {

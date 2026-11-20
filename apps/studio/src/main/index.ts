@@ -323,7 +323,7 @@ async function verifyLooseToken(token: string, remoteUrl?: string, login?: strin
       login,
       fetchImpl: apiFetch,
     });
-    return mergeProbe(report, probe);
+    return mergeProbe(report, { push: probe.push, actions: probe.actions });
   } catch {
     return report;
   }
@@ -1298,7 +1298,7 @@ app.whenReady().then(() => {
     if (!report) return fail('PUBLISH_TOKEN', '还没有连接仓库');
     return ok(report);
   });
-  ipcMain.handle('publish:replaceToken', async (_event, siteDir: string, token: string) => {
+  ipcMain.handle('publish:replaceToken', async (event, siteDir: string, token: string) => {
     const target = deployStore().read()[siteDir];
     const trimmed = typeof token === 'string' ? token.trim() : '';
     if (!siteDir || !target) return fail('PUBLISH_TOKEN', '还没有连接仓库');
@@ -1314,14 +1314,20 @@ app.whenReady().then(() => {
     if (target.provider !== 'github') return fail('PUBLISH_PROVIDER', 'Gitea 已不再作为发布目标，请连接 GitHub 仓库');
     const remote = parseGitRemote(target.remoteUrl);
     const report = remote
-      ? await assessGithubToken({ token: trimmed, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch })
+      ? await assessGithubToken({
+          token: trimmed,
+          owner: remote.owner,
+          repo: remote.repo,
+          fetchImpl: apiFetch,
+          onProgress: (line) => event.sender.send('publish:token-progress', line),
+        })
       : await verifyLooseToken(trimmed);
     if (report.status !== 'valid') return ok(report);
     secretStore().save(siteDir, trimmed, report.expiresAt || '');
     tokenCache.put(verifyCacheKey(target.provider, origin, trimmed), report);
     return ok(report);
   });
-  ipcMain.handle('publish:checkToken', async (_event, _provider: string, _origin: string, token: string) => {
+  ipcMain.handle('publish:checkToken', async (event, _provider: string, _origin: string, token: string) => {
     const trimmed = typeof token === 'string' ? token.trim() : '';
     if (!trimmed) return fail('PUBLISH_TOKEN', '先粘贴令牌');
     const root = 'https://github.com';
@@ -1332,7 +1338,13 @@ app.whenReady().then(() => {
     }
     const remote = parseGitRemote(String(_origin || ''));
     const report = remote
-      ? await assessGithubToken({ token: trimmed, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch })
+      ? await assessGithubToken({
+          token: trimmed,
+          owner: remote.owner,
+          repo: remote.repo,
+          fetchImpl: apiFetch,
+          onProgress: (line) => event.sender.send('publish:token-progress', line),
+        })
       : await verifyLooseToken(trimmed);
     if (reuseTokenOn('prep')) tokenCache.put(key, report);
     return ok(report);

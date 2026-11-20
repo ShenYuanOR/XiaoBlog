@@ -120,6 +120,7 @@ const api = {
     dismiss: (siteDir: string) => ipcRenderer.invoke('publish:dismiss', siteDir),
     onJob: (callback: (payload: { siteDir: string; job: PublishJobSnapshot | null }) => void): (() => void) =>
       listen('publish:job-update', callback),
+    onTokenProgress: (callback: (line: string) => void): (() => void) => listen('publish:token-progress', callback),
     push: (siteDir: string, force?: boolean) => ipcRenderer.invoke('publish:push', siteDir, force),
     repair: (siteDir: string) => ipcRenderer.invoke('publish:repair', siteDir),
     disconnect: (siteDir: string) => ipcRenderer.invoke('publish:disconnect', siteDir),

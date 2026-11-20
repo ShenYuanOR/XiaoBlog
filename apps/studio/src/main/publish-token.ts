@@ -268,6 +268,41 @@ function githubHeaders(token: string): Record<string, string> {
   };
 }
 
+const DEFAULT_TOKEN_CHECK_MS = 8_000;
+
+function offlineToken(): TokenReport {
+  return {
+    status: 'rejected',
+    account: '',
+    kind: 'github-fine',
+    expiresAt: '',
+    capabilities: [],
+    message: '连不上 GitHub',
+  };
+}
+
+async function githubCall(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response | null> {
+  try {
+    return await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch {
+    return null;
+  }
+}
+
+async function releaseBody(response: Response | null): Promise<void> {
+  if (!response?.body) return;
+  try {
+    await response.body.cancel();
+  } catch {
+    // 用不到正文时把连接放开。
+  }
+}
+
 export async function verifyGithubToken(token: string, fetchImpl: typeof fetch, now?: number): Promise<TokenReport> {
   const response = await fetchImpl('https://api.github.com/user', { headers: githubHeaders(token) });
   let login = '';
@@ -284,16 +319,22 @@ export async function verifyGithubToken(token: string, fetchImpl: typeof fetch, 
   });
 }
 
-/** 细粒度、且只能访问目标仓库，才算通过。 */
+/** 细粒度、且只能访问目标仓库，才算通过。能同时问的请求一起发出，单次超过时限就放弃。 */
 export async function assessGithubToken(input: {
   token: string;
   owner: string;
   repo: string;
   fetchImpl: typeof fetch;
   now?: number;
+  timeoutMs?: number;
+  onProgress?: (line: string) => void;
 }): Promise<TokenReport> {
+  const timeoutMs = input.timeoutMs ?? DEFAULT_TOKEN_CHECK_MS;
+  const note = (line: string): void => input.onProgress?.(line);
   const headers = githubHeaders(input.token);
-  const user = await input.fetchImpl('https://api.github.com/user', { headers });
+  note('正在查看账号…');
+  const user = await githubCall(input.fetchImpl, 'https://api.github.com/user', { headers }, timeoutMs);
+  if (!user) return offlineToken();
   const userBody = await user.text();
   const org = explainOrgFineToken(user.status, userBody, input.owner);
   if (org) {
@@ -322,57 +363,120 @@ export async function assessGithubToken(input: {
     now: input.now,
   });
   if (base.status !== 'valid') return base;
-  const privateList = await input.fetchImpl(
+  note('正在确认只授权了这个仓库…');
+  const repoUrl = `https://api.github.com/repos/${input.owner}/${input.repo}`;
+  const privateTask = githubCall(
+    input.fetchImpl,
     'https://api.github.com/user/repos?visibility=private&per_page=100&affiliation=owner,collaborator,organization_member',
     { headers },
+    timeoutMs,
   );
-  if (privateList.ok) {
-    const privateRows = readRepoAccessRows(await privateList.json());
-    const morePrivate = (privateList.headers.get('link') ?? '').includes('rel="next"');
-    if (morePrivate || otherPrivateNames(privateRows, input.owner, input.repo).length > 0) {
-      return { ...base, status: 'rejected', message: '这个令牌能访问其他私有仓库' };
-    }
-  }
-  const publicList = await input.fetchImpl(
+  const publicTask = githubCall(
+    input.fetchImpl,
     'https://api.github.com/user/repos?visibility=public&per_page=100&affiliation=owner,collaborator,organization_member',
     { headers },
+    timeoutMs,
   );
-  const probes = publicList.ok ? publicProbeTargets(readRepoAccessRows(await publicList.json()), input.owner, input.repo) : [];
-  for (const fullName of probes) {
-    const [probeOwner, probeRepo] = fullName.split('/');
-    if (!probeOwner || !probeRepo) continue;
-    const writable = await input.fetchImpl(
-      `https://github.com/${probeOwner}/${probeRepo}.git/info/refs?service=git-receive-pack`,
-      { headers: { Authorization: basicAuth(input.token), 'User-Agent': 'XiaoBlog' } },
-    );
-    if (writable.status === 200) {
-      return { ...base, status: 'rejected', message: '这个令牌能写入其他仓库' };
-    }
-  }
-  const repoResponse = await input.fetchImpl(`https://api.github.com/repos/${input.owner}/${input.repo}`, { headers });
-  if (repoResponse.status !== 200) {
-    return { ...base, status: 'rejected', message: '令牌看不到这个仓库。' };
-  }
-  const probe = await probeTokenCapabilities({
+  const repoTask = githubCall(input.fetchImpl, repoUrl, { headers }, timeoutMs);
+  let pagesReady = false;
+  const pagesTask = githubCall(input.fetchImpl, `${repoUrl}/pages`, { headers }, timeoutMs).then((response) => {
+    pagesReady = true;
+    return response;
+  });
+  const probeTask = probeTokenCapabilities({
     remoteUrl: `https://github.com/${input.owner}/${input.repo}`,
     token: input.token,
     login,
     fetchImpl: input.fetchImpl,
+    timeoutMs,
   });
-  const pages = await input.fetchImpl(`https://api.github.com/repos/${input.owner}/${input.repo}/pages`, { headers });
-  let buildType = '';
-  if (pages.ok) {
+  const publicList = await publicTask;
+  let probes: string[] = [];
+  if (publicList?.ok) {
     try {
-      buildType = ((await pages.json()) as { build_type?: string }).build_type ?? '';
+      probes = publicProbeTargets(readRepoAccessRows(await publicList.json()), input.owner, input.repo);
     } catch {
-      buildType = '';
+      probes = [];
+    }
+  } else {
+    await releaseBody(publicList);
+  }
+  note('正在确认能不能推送到这个仓库…');
+  const extraTask = Promise.all(probes.map((fullName) => otherRepoWritable(input.fetchImpl, fullName, input.token, timeoutMs)));
+  const [privateList, repoResponse, probe, extraHits] = await Promise.all([
+    privateTask,
+    repoTask,
+    probeTask,
+    extraTask,
+  ]);
+  if (!pagesReady) note('正在查看 Pages…');
+  const pages = await pagesTask;
+  if (privateList?.ok) {
+    const privateRows = readRepoAccessRows(await privateList.json());
+    const morePrivate = (privateList.headers.get('link') ?? '').includes('rel="next"');
+    if (morePrivate || otherPrivateNames(privateRows, input.owner, input.repo).length > 0) {
+      await releaseBody(repoResponse);
+      await releaseBody(pages);
+      return { ...base, status: 'rejected', message: '这个令牌能访问其他私有仓库' };
+    }
+  } else {
+    await releaseBody(privateList);
+  }
+  if (extraHits.some(Boolean)) {
+    await releaseBody(repoResponse);
+    await releaseBody(pages);
+    return { ...base, status: 'rejected', message: '这个令牌能写入其他仓库' };
+  }
+  if (!repoResponse) {
+    await releaseBody(pages);
+    return { ...base, status: 'rejected', message: '连不上 GitHub' };
+  }
+  if (repoResponse.status !== 200) {
+    await releaseBody(repoResponse);
+    await releaseBody(pages);
+    return { ...base, status: 'rejected', message: '令牌看不到这个仓库。' };
+  }
+  await releaseBody(repoResponse);
+  let buildType = '';
+  let pagesStatus = 0;
+  if (pages) {
+    pagesStatus = pages.status;
+    if (pages.ok) {
+      try {
+        buildType = ((await pages.json()) as { build_type?: string }).build_type ?? '';
+      } catch {
+        buildType = '';
+      }
+    } else {
+      await releaseBody(pages);
     }
   }
-  const merged = applyPagesCapability(mergeProbe(base, probe), pages.status, buildType);
-  if (probe.push !== 'ok') {
+  const { pushAnswered, ...states } = probe;
+  const merged = applyPagesCapability(mergeProbe(base, states), pagesStatus, buildType);
+  if (pushAnswered && states.push !== 'ok') {
     return { ...merged, status: 'rejected', message: '令牌不能推送到这个仓库。' };
   }
   return merged;
+}
+
+async function otherRepoWritable(
+  fetchImpl: typeof fetch,
+  fullName: string,
+  token: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const [owner, repo] = fullName.split('/');
+  if (!owner || !repo) return false;
+  const response = await githubCall(
+    fetchImpl,
+    `https://github.com/${owner}/${repo}.git/info/refs?service=git-receive-pack`,
+    { headers: { Authorization: basicAuth(token), 'User-Agent': 'XiaoBlog' } },
+    timeoutMs,
+  );
+  if (!response) return false;
+  const writable = response.status === 200;
+  await releaseBody(response);
+  return writable;
 }
 
 function applyPagesCapability(report: TokenReport, status: number, buildType: string): TokenReport {
@@ -432,32 +536,39 @@ export async function probeTokenCapabilities(input: {
   token: string;
   login?: string;
   fetchImpl: typeof fetch;
-}): Promise<Partial<Record<CapabilityKey, CapabilityState>>> {
+  timeoutMs?: number;
+}): Promise<Partial<Record<CapabilityKey, CapabilityState>> & { pushAnswered: boolean }> {
   const remote = parseRemote(input.remoteUrl);
-  if (!remote) return {};
-  const out: Partial<Record<CapabilityKey, CapabilityState>> = {};
+  if (!remote) return { pushAnswered: false };
+  const timeoutMs = input.timeoutMs ?? DEFAULT_TOKEN_CHECK_MS;
   const login = input.login?.trim() || 'x-access-token';
   const basic = `Basic ${Buffer.from(`${login}:${input.token}`, 'utf8').toString('base64')}`;
-  try {
-    const push = await input.fetchImpl(`${input.remoteUrl.replace(/\/$/, '')}/info/refs?service=git-receive-pack`, {
-      headers: { Authorization: basic, 'User-Agent': 'XiaoBlog' },
-    });
-    out.push = readProbeStatus(push.status);
-  } catch {
-    out.push = 'unknown';
-  }
-  try {
-    const actionsUrl = `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?per_page=1`;
-    const headers = {
-      Authorization: `Bearer ${input.token}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'XiaoBlog',
-    };
-    const actions = await input.fetchImpl(actionsUrl, { headers });
-    out.actions = readProbeStatus(actions.status);
-  } catch {
-    out.actions = 'unknown';
-  }
+  const actionHeaders = {
+    Authorization: `Bearer ${input.token}`,
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'XiaoBlog',
+  };
+  const [push, actions] = await Promise.all([
+    githubCall(
+      input.fetchImpl,
+      `${input.remoteUrl.replace(/\/$/, '')}/info/refs?service=git-receive-pack`,
+      { headers: { Authorization: basic, 'User-Agent': 'XiaoBlog' } },
+      timeoutMs,
+    ),
+    githubCall(
+      input.fetchImpl,
+      `https://api.github.com/repos/${remote.owner}/${remote.repo}/actions/runs?per_page=1`,
+      { headers: actionHeaders },
+      timeoutMs,
+    ),
+  ]);
+  const out: Partial<Record<CapabilityKey, CapabilityState>> & { pushAnswered: boolean } = {
+    push: push ? readProbeStatus(push.status) : 'unknown',
+    actions: actions ? readProbeStatus(actions.status) : 'unknown',
+    pushAnswered: push !== null,
+  };
+  await releaseBody(push);
+  await releaseBody(actions);
   return out;
 }
 

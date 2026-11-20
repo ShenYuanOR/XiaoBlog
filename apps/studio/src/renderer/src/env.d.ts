@@ -383,6 +383,7 @@ export interface XiaoApi {
         } | null;
       }) => void,
     ) => () => void;
+    onTokenProgress: (callback: (line: string) => void) => () => void;
     verify: (siteDir: string) => Promise<
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';

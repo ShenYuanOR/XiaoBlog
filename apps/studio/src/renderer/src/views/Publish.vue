@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   acceptToken,
   asTokenReport,
@@ -388,6 +388,7 @@ async function submitReconnect(): Promise<void> {
     return;
   }
   reconnecting.value = true;
+  tokenProgress.value = '正在查看账号…';
   try {
     const result = await window.xiao.publish.replaceToken(session.siteDir, token);
     if (!result.ok) {
@@ -405,6 +406,7 @@ async function submitReconnect(): Promise<void> {
     await runPreflight();
   } finally {
     reconnecting.value = false;
+    tokenProgress.value = '';
   }
 }
 
@@ -431,6 +433,7 @@ async function verifyPasted(): Promise<void> {
     return;
   }
   prepBusy.value = true;
+  tokenProgress.value = '正在查看账号…';
   try {
     const result = await window.xiao.publish.checkToken('github', prep.value.remoteUrl, token);
     if (!result.ok) {
@@ -440,6 +443,7 @@ async function verifyPasted(): Promise<void> {
     prep.value = applyTokenReport({ ...prep.value, token }, asTokenReport(result.data));
   } finally {
     prepBusy.value = false;
+    tokenProgress.value = '';
   }
 }
 
@@ -794,8 +798,18 @@ async function openSite(): Promise<void> {
   session.setNav('publish');
 }
 
+const tokenProgress = ref('');
+let stopTokenProgress: (() => void) | undefined;
+
 onMounted(() => {
+  stopTokenProgress = window.xiao.publish.onTokenProgress((line) => {
+    if (prepBusy.value || reconnecting.value) tokenProgress.value = line;
+  });
   void loadAll();
+});
+
+onUnmounted(() => {
+  stopTokenProgress?.();
 });
 
 watch(
@@ -896,6 +910,7 @@ watch(
                     <UiButton variant="primary" :loading="prepBusy" @click="verifyPasted">令牌验证</UiButton>
                     <UiButton v-if="tokenCanContinue" @click="prep = acceptToken(prep)">继续</UiButton>
                   </div>
+                  <p v-if="prepBusy && tokenProgress" class="dim">{{ tokenProgress }}</p>
                   <p v-if="prep.report?.status === 'rejected'" class="summary">
                     账号 {{ prep.report.account || '未知' }} · {{ prep.report.kind === 'github-classic' ? '经典令牌' : '细粒度令牌' }}
                   </p>
@@ -1170,6 +1185,7 @@ watch(
         <UiField label="访问令牌">
           <UiInput v-model="reconnectToken" type="password" autocomplete="off" placeholder="粘贴令牌" />
         </UiField>
+        <p v-if="reconnecting && tokenProgress" class="dim">{{ tokenProgress }}</p>
         <template #actions>
           <UiButton variant="ghost" @click="reconnectOpen = false">取消</UiButton>
           <UiButton variant="primary" :loading="reconnecting" @click="submitReconnect">令牌验证</UiButton>
