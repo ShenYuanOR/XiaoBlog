@@ -124,6 +124,7 @@ import {
   runDeviceFlow,
   type DeviceView,
 } from './publish-device.ts';
+import { checkInstallation } from './publish-install.ts';
 import { manifest } from '@xiao/core/components';
 import { layoutSpecs } from '@xiao/core/components/layouts';
 
@@ -372,11 +373,43 @@ async function verifyLooseToken(token: string, remoteUrl?: string, login?: strin
 
 async function verifySavedToken(siteDir: string): Promise<TokenReport | null> {
   const target = deployStore().read()[siteDir];
-  const token = secretStore().load(siteDir);
-  if (!target || !token || target.provider !== 'github') return null;
+  const stored = secretStore().load(siteDir);
+  if (!target || !stored || target.provider !== 'github') return null;
+  const grant = decodeGrant(stored);
+  if (!grant) {
+    return {
+      status: 'rejected',
+      account: '',
+      kind: 'github-app',
+      expiresAt: '',
+      capabilities: [],
+      message: '改用 GitHub 授权',
+      link: '',
+    };
+  }
   const remote = parseGitRemote(target.remoteUrl);
-  if (!remote) return verifyGithubToken(token, apiFetch);
-  return assessGithubToken({ token, owner: remote.owner, repo: remote.repo, fetchImpl: apiFetch });
+  if (!remote) {
+    return {
+      status: 'rejected',
+      account: grant.account,
+      kind: 'github-app',
+      expiresAt: '',
+      capabilities: [],
+      message: '仓库地址解析不了',
+      link: '',
+    };
+  }
+  const checked = await checkInstallation({
+    grant,
+    owner: remote.owner,
+    repo: remote.repo,
+    fetchImpl: apiFetch,
+    now: Date.now(),
+  });
+  if (checked.changed) {
+    secretStore().save(siteDir, encodeGrant(checked.grant), new Date(checked.grant.accessExpiresAt).toISOString());
+  }
+  return checked.report;
 }
 
 function deployStore(): ReturnType<typeof createDeployStore> {
@@ -1420,6 +1453,22 @@ app.whenReady().then(() => {
     }
     if (deviceCancel === cancel) deviceCancel = null;
     return ok(publicDevice(view));
+  });
+  ipcMain.handle('publish:installCheck', async (_event, siteDir: string, owner: string, repo: string) => {
+    const stored = secretStore().load(String(siteDir || ''));
+    const grant = stored ? decodeGrant(stored) : null;
+    if (!grant) return fail('PUBLISH_TOKEN', stored ? '改用 GitHub 授权' : '先用 GitHub 授权');
+    const checked = await checkInstallation({
+      grant,
+      owner: String(owner || ''),
+      repo: String(repo || ''),
+      fetchImpl: apiFetch,
+      now: Date.now(),
+    });
+    if (checked.changed) {
+      secretStore().save(siteDir, encodeGrant(checked.grant), new Date(checked.grant.accessExpiresAt).toISOString());
+    }
+    return ok(checked.report);
   });
   ipcMain.handle('publish:deviceCancel', () => {
     deviceCancel?.();

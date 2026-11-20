@@ -86,6 +86,8 @@ const api = {
     replaceToken: (siteDir: string, token: string) => ipcRenderer.invoke('publish:replaceToken', siteDir, token),
     checkToken: (provider: 'github' | 'gitea', origin: string, token: string) =>
       ipcRenderer.invoke('publish:checkToken', provider, origin, token),
+    installCheck: (siteDir: string, owner: string, repo: string) =>
+      ipcRenderer.invoke('publish:installCheck', siteDir, owner, repo),
     deviceStart: (siteDir: string) => ipcRenderer.invoke('publish:deviceStart', siteDir),
     deviceCancel: () => ipcRenderer.invoke('publish:deviceCancel'),
     onDevice: (

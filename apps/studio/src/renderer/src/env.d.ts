@@ -388,7 +388,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine';
+        kind: 'github-classic' | 'github-fine' | 'github-app';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
@@ -401,9 +401,24 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine';
+        kind: 'github-classic' | 'github-fine' | 'github-app';
         expiresAt: string;
         message: string;
+        capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
+      }>
+    >;
+    installCheck: (
+      siteDir: string,
+      owner: string,
+      repo: string,
+    ) => Promise<
+      IpcResult<{
+        status: 'valid' | 'invalid' | 'expired' | 'rejected';
+        account: string;
+        kind: 'github-classic' | 'github-fine' | 'github-app';
+        expiresAt: string;
+        message: string;
+        link?: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];
       }>
     >;
@@ -438,7 +453,7 @@ export interface XiaoApi {
       IpcResult<{
         status: 'valid' | 'invalid' | 'expired' | 'rejected';
         account: string;
-        kind: 'github-classic' | 'github-fine';
+        kind: 'github-classic' | 'github-fine' | 'github-app';
         expiresAt: string;
         message: string;
         capabilities: { key: string; label: string; state: 'ok' | 'missing' | 'unknown'; how: string }[];

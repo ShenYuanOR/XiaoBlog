@@ -12,10 +12,11 @@ export interface TokenCapability {
 export interface TokenReport {
   status: 'valid' | 'invalid' | 'expired' | 'rejected';
   account: string;
-  kind: 'github-classic' | 'github-fine';
+  kind: 'github-classic' | 'github-fine' | 'github-app';
   expiresAt: string;
   capabilities: TokenCapability[];
   message: string;
+  link?: string;
 }
 
 const LABELS: Record<CapabilityKey, string> = {
@@ -121,6 +122,7 @@ export function tokenStatusLine(
 export function tokenKindLabel(kind: string): string {
   if (kind === 'github-classic') return 'GitHub 经典';
   if (kind === 'github-fine') return 'GitHub 细粒度';
+  if (kind === 'github-app') return 'GitHub App';
   return '令牌';
 }
 
