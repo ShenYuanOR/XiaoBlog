@@ -105,7 +105,7 @@ export function tokenStatusLine(
 ): string {
   if (!report) return '还没验证';
   if (report.status === 'rejected') {
-    return /经典|不止/.test(report.message ?? '') ? '令牌权限过大' : report.message || '令牌权限过大';
+    return /经典|其他私有|写入其他/.test(report.message ?? '') ? '令牌权限过大' : report.message || '令牌权限过大';
   }
   if (report.status === 'invalid' || report.status === 'expired') return '已失效';
   const missing = (report.capabilities ?? []).find((item) => item.key !== 'create' && item.state === 'missing');
@@ -192,10 +192,37 @@ export function readGithubVerify(input: {
   };
 }
 
-export function seesOtherRepos(names: string[], owner: string, repo: string, hasMore: boolean): boolean {
-  if (hasMore) return true;
+export interface RepoAccessRow {
+  fullName: string;
+  private: boolean;
+  /** 账号在仓库上的角色，不是令牌能不能推送。 */
+  pushRole: boolean;
+}
+
+export function readRepoAccessRows(body: unknown): RepoAccessRow[] {
+  if (!Array.isArray(body)) return [];
+  const rows: RepoAccessRow[] = [];
+  for (const item of body) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { full_name?: string; private?: boolean; permissions?: { push?: boolean } };
+    if (!row.full_name) continue;
+    rows.push({ fullName: row.full_name, private: row.private === true, pushRole: row.permissions?.push === true });
+  }
+  return rows;
+}
+
+export function otherPrivateNames(rows: RepoAccessRow[], owner: string, repo: string): string[] {
   const target = `${owner}/${repo}`.toLowerCase();
-  return names.some((name) => name.toLowerCase() !== target);
+  return rows.filter((item) => item.private && item.fullName.toLowerCase() !== target).map((item) => item.fullName);
+}
+
+/** 最多挑两个目标以外、账号有推送角色的公开仓库，用来探测令牌能不能写。 */
+export function publicProbeTargets(rows: RepoAccessRow[], owner: string, repo: string, limit = 2): string[] {
+  const target = `${owner}/${repo}`.toLowerCase();
+  return rows
+    .filter((item) => !item.private && item.pushRole && item.fullName.toLowerCase() !== target)
+    .slice(0, limit)
+    .map((item) => item.fullName);
 }
 
 export function explainOrgFineToken(status: number, body: string, owner: string): string {
@@ -227,6 +254,10 @@ export function createVerifyCache(now: () => number): {
       rows.set(key, { at: now(), value });
     },
   };
+}
+
+function basicAuth(token: string): string {
+  return `Basic ${Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')}`;
 }
 
 function githubHeaders(token: string): Record<string, string> {
@@ -291,15 +322,32 @@ export async function assessGithubToken(input: {
     now: input.now,
   });
   if (base.status !== 'valid') return base;
-  const listed = await input.fetchImpl(
-    'https://api.github.com/user/repos?per_page=100&affiliation=owner,collaborator,organization_member',
+  const privateList = await input.fetchImpl(
+    'https://api.github.com/user/repos?visibility=private&per_page=100&affiliation=owner,collaborator,organization_member',
     { headers },
   );
-  const listBody = listed.ok ? ((await listed.json()) as { full_name?: string }[]) : [];
-  const names = Array.isArray(listBody) ? listBody.map((item) => item.full_name ?? '').filter(Boolean) : [];
-  const hasMore = (listed.headers.get('link') ?? '').includes('rel="next"');
-  if (seesOtherRepos(names, input.owner, input.repo, hasMore)) {
-    return { ...base, status: 'rejected', message: '这个令牌能访问不止这一个仓库' };
+  if (privateList.ok) {
+    const privateRows = readRepoAccessRows(await privateList.json());
+    const morePrivate = (privateList.headers.get('link') ?? '').includes('rel="next"');
+    if (morePrivate || otherPrivateNames(privateRows, input.owner, input.repo).length > 0) {
+      return { ...base, status: 'rejected', message: '这个令牌能访问其他私有仓库' };
+    }
+  }
+  const publicList = await input.fetchImpl(
+    'https://api.github.com/user/repos?visibility=public&per_page=100&affiliation=owner,collaborator,organization_member',
+    { headers },
+  );
+  const probes = publicList.ok ? publicProbeTargets(readRepoAccessRows(await publicList.json()), input.owner, input.repo) : [];
+  for (const fullName of probes) {
+    const [probeOwner, probeRepo] = fullName.split('/');
+    if (!probeOwner || !probeRepo) continue;
+    const writable = await input.fetchImpl(
+      `https://github.com/${probeOwner}/${probeRepo}.git/info/refs?service=git-receive-pack`,
+      { headers: { Authorization: basicAuth(input.token), 'User-Agent': 'XiaoBlog' } },
+    );
+    if (writable.status === 200) {
+      return { ...base, status: 'rejected', message: '这个令牌能写入其他仓库' };
+    }
   }
   const repoResponse = await input.fetchImpl(`https://api.github.com/repos/${input.owner}/${input.repo}`, { headers });
   if (repoResponse.status !== 200) {

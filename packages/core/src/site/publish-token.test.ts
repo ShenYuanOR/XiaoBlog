@@ -5,7 +5,9 @@ import {
   explainOrgFineToken,
   explainWorkflowScope,
   githubFineTokenLink,
-  seesOtherRepos,
+  otherPrivateNames,
+  publicProbeTargets,
+  readRepoAccessRows,
   githubPagesUrl,
   mergeProbe,
   probeTokenCapabilities,
@@ -31,12 +33,19 @@ describe('令牌验证', () => {
     expect(tokenStatusLine(report)).toBe('令牌权限过大');
   });
 
-  it('能访问别的仓库就不通过', () => {
-    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test'], 'ShenYuanOR', 'xiao-pages-test', false)).toBe(false);
-    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test', 'ShenYuanOR/XiaoBlog'], 'ShenYuanOR', 'xiao-pages-test', false)).toBe(
-      true,
-    );
-    expect(seesOtherRepos(['ShenYuanOR/xiao-pages-test'], 'ShenYuanOR', 'xiao-pages-test', true)).toBe(true);
+  it('只有其他私有仓库才算越权，公开仓库只用来挑选探测对象', () => {
+    const rows = readRepoAccessRows([
+      { full_name: 'ShenYuanOR/xiao-pages-test', private: false, permissions: { push: true } },
+      { full_name: 'ShenYuanOR/XiaoBlog', private: false, permissions: { push: true } },
+      { full_name: 'ShenYuanOL/Metadata', private: false, permissions: { push: true } },
+      { full_name: 'ShenYuanOR/secret', private: true, permissions: { push: true } },
+    ]);
+    expect(otherPrivateNames(rows, 'ShenYuanOR', 'xiao-pages-test')).toEqual(['ShenYuanOR/secret']);
+    expect(publicProbeTargets(rows, 'ShenYuanOR', 'xiao-pages-test')).toEqual([
+      'ShenYuanOR/XiaoBlog',
+      'ShenYuanOL/Metadata',
+    ]);
+    expect(publicProbeTargets(rows.filter((item) => item.fullName !== 'ShenYuanOR/secret'), 'ShenYuanOR', 'xiao-pages-test')).toHaveLength(2);
   });
 
   it('组织禁止细粒度令牌时改写成中文', () => {
@@ -110,14 +119,23 @@ describe('令牌验证', () => {
 
   it('只授权目标仓库且能推送才通过', async () => {
     const fetchImpl = (async (url: string) => {
-      if (url.endsWith('/user')) {
-        return new Response(JSON.stringify({ login: 'ShenYuanOR' }), { status: 200 });
+      if (url.endsWith('/user')) return new Response(JSON.stringify({ login: 'ShenYuanOR' }), { status: 200 });
+      if (url.includes('visibility=private')) return new Response('[]', { status: 200 });
+      if (url.includes('visibility=public')) {
+        return new Response(
+          JSON.stringify([
+            { full_name: 'ShenYuanOR/xiao-pages-test', private: false, permissions: { push: true } },
+            { full_name: 'ShenYuanOR/XiaoBlog', private: false, permissions: { push: true } },
+            { full_name: 'ShenYuanOL/Metadata', private: false, permissions: { push: true } },
+          ]),
+          { status: 200 },
+        );
       }
-      if (url.includes('/user/repos')) {
-        return new Response(JSON.stringify([{ full_name: 'ShenYuanOR/xiao-pages-test' }]), { status: 200 });
+      if (url.includes('git-receive-pack') && (url.includes('XiaoBlog') || url.includes('Metadata'))) {
+        return new Response('', { status: 403 });
       }
+      if (url.includes('git-receive-pack') && url.includes('xiao-pages-test')) return new Response('', { status: 200 });
       if (url.endsWith('/pages')) return new Response(JSON.stringify({ build_type: 'workflow' }), { status: 200 });
-      if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
       if (url.includes('/actions/runs')) return new Response('{}', { status: 200 });
       if (url.includes('/repos/ShenYuanOR/xiao-pages-test')) return new Response('{}', { status: 200 });
       return new Response('', { status: 404 });
@@ -132,8 +150,47 @@ describe('令牌验证', () => {
     expect(report.kind).toBe('github-fine');
     expect(report.capabilities.find((item) => item.key === 'push')?.state).toBe('ok');
     expect(report.capabilities.find((item) => item.key === 'workflow')?.state).toBe('unknown');
-    expect(githubFineTokenLink('ShenYuanOR', 'xiao-pages-test')).toContain('target_name=ShenYuanOR');
-    expect(githubFineTokenLink('ShenYuanOR', 'xiao-pages-test')).toContain('contents=write');
+  });
+
+  it('看得到其他私有仓库，或能写入其他公开仓库，都不通过', async () => {
+    const base = async (url: string) => {
+      if (url.endsWith('/user')) return new Response(JSON.stringify({ login: 'ShenYuanOR' }), { status: 200 });
+      if (url.includes('visibility=public')) return new Response('[]', { status: 200 });
+      if (url.includes('/repos/ShenYuanOR/xiao-pages-test')) return new Response('{}', { status: 200 });
+      if (url.includes('git-receive-pack')) return new Response('', { status: 200 });
+      return new Response('', { status: 404 });
+    };
+    const privateHit = await assessGithubToken({
+      token: 'fine',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      fetchImpl: (async (url: string) => {
+        if (url.includes('visibility=private')) {
+          return new Response(JSON.stringify([{ full_name: 'ShenYuanOR/secret', private: true }]), { status: 200 });
+        }
+        return base(url);
+      }) as typeof fetch,
+    });
+    expect(privateHit.status).toBe('rejected');
+    expect(privateHit.message).toContain('其他私有仓库');
+    expect(tokenStatusLine(privateHit)).toBe('令牌权限过大');
+    const writable = await assessGithubToken({
+      token: 'fine',
+      owner: 'ShenYuanOR',
+      repo: 'xiao-pages-test',
+      fetchImpl: (async (url: string) => {
+        if (url.includes('visibility=private')) return new Response('[]', { status: 200 });
+        if (url.includes('visibility=public')) {
+          return new Response(JSON.stringify([{ full_name: 'ShenYuanOR/XiaoBlog', private: false, permissions: { push: true } }]), {
+            status: 200,
+          });
+        }
+        if (url.includes('XiaoBlog.git')) return new Response('', { status: 200 });
+        return base(url);
+      }) as typeof fetch,
+    });
+    expect(writable.status).toBe('rejected');
+    expect(writable.message).toContain('写入其他仓库');
   });
 
   it('缺 workflow 权限的推送失败写成中文', () => {
